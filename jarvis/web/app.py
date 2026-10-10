@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Iterator, Literal
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -30,13 +31,16 @@ from jarvis.control.audit import AuditLog
 from jarvis.control.stop import EmergencyStop, StopSwitch
 from jarvis.core.runtime import Runtime, open_runtime, task_store
 from jarvis.memory.store import MemoryRejected
-from jarvis.paths import default_paths
+from jarvis.paths import CONFIG_DIR, default_paths
 from jarvis.providers.base import ProviderError
 from jarvis.routing.policy import RoutingError
 from jarvis.secrets import get_secret
 from jarvis.tasks.store import FINAL, PRIORITIES, TransitionError
-from jarvis.web import adapters, data
+from jarvis.web import adapters, data, routes_projects, routes_proactive, routes_setup, routes_teach, routes_voice
 from jarvis.web.approvals import ApprovalBroker, ApprovalError
+from jarvis.web.context import WebContext
+from jarvis.web.jobs import Jobs
+from jarvis.web.routes_voice import speak_reply
 from jarvis.web.settings import STATIC_DIR, WebSettings, is_loopback
 from jarvis.web.workers import ChatFactory, ChatManager, TaskManager, default_chat_factory
 
@@ -48,7 +52,8 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "Cross-Origin-Opener-Policy": "same-origin",
     "Cross-Origin-Resource-Policy": "same-origin",
-    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    # Microphone for the dashboard's own page only (push-to-talk in Chat); nothing else.
+    "Permissions-Policy": "camera=(), microphone=(self), geolocation=()",
     # Next.js static export inlines small bootstrap scripts, hence 'unsafe-inline' for scripts.
     # Everything is same-origin; no external fonts, scripts or connections.
     "Content-Security-Policy": ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' "
@@ -61,6 +66,15 @@ SECURITY_HEADERS = {
 
 class ChatSend(BaseModel):
     text: str = Field(min_length=1, max_length=20000)
+    speak: bool = False  # also speak the reply on this computer's speakers
+
+
+class ChatCreate(BaseModel):
+    project: str | None = Field(default=None, max_length=40)
+
+
+class ChatProject(BaseModel):
+    project: str | None = Field(default=None, max_length=40)
 
 
 class MemoryEdit(BaseModel):
@@ -105,7 +119,9 @@ class StopBody(BaseModel):
 def create_app(settings: WebSettings | None = None, token: str | None = None, *,
                chat_factory: ChatFactory | None = None, task_runner_factory=None,
                allowed_hosts: list[str] | None = None, trusted_clients: set[str] | None = None,
-               static_dir: Path | None = STATIC_DIR) -> FastAPI:
+               static_dir: Path | None = STATIC_DIR, config_dir: Path = CONFIG_DIR,
+               proactive_factory=None, speech_factory=None, stt_factory=None, oauth_flow_factory=None,
+               on_quit=None, extra: dict[str, Any] | None = None) -> FastAPI:
     settings = settings or WebSettings()
     if not token:
         raise ValueError("the dashboard needs an access token")
@@ -116,6 +132,8 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
     broker = ApprovalBroker(audit, settings.approval_timeout_s)
     chats = ChatManager(broker, chat_factory or default_chat_factory(settings.provider), settings.chat_idle_minutes)
     tasks = TaskManager(broker, audit, settings.provider, task_runner_factory)
+    ctx = WebContext(settings, audit, stop, chats, Jobs(audit), config_dir, proactive_factory, speech_factory,
+                     stt_factory, oauth_flow_factory, on_quit, extra if extra is not None else {})
     origins = set(settings.origins())
     hosts = set(allowed_hosts if allowed_hosts is not None else settings.hosts())
     clients = trusted_clients or set()
@@ -128,6 +146,14 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
 
     app = FastAPI(title="Jarvis dashboard", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.broker, app.state.chats, app.state.tasks, app.state.stop = broker, chats, tasks, stop
+    app.state.ctx = ctx
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(_request: Request, exc: RequestValidationError):
+        # FastAPI's default 422 body echoes the submitted values ("input"); a secret typed into
+        # the Setup tab must never come back, so only the location and the message are returned.
+        errors = [{"loc": list(e.get("loc", ())), "msg": e.get("msg", "")} for e in exc.errors()]
+        return JSONResponse({"detail": errors}, status_code=422)
 
     @app.middleware("http")
     async def guard(request: Request, call_next):
@@ -151,7 +177,7 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
     extra = [o for o in settings.origins() if o not in settings.origins()[:3]]
     if extra:  # dev origins only (e.g. `npm run dev`); the built dashboard is same-origin
         app.add_middleware(CORSMiddleware, allow_origins=extra, allow_credentials=False,
-                           allow_methods=["GET", "POST", "PATCH"],
+                           allow_methods=["GET", "POST", "PATCH", "PUT"],
                            allow_headers=["X-Jarvis-Token", "Authorization", "Content-Type"])
 
     async def require_token(request: Request) -> None:
@@ -198,20 +224,41 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
     # ---- chat ----
 
     @api.post("/chat/sessions")
-    def chat_new() -> dict[str, Any]:
+    def chat_new(body: ChatCreate | None = None) -> dict[str, Any]:
         try:
-            return chats.create()
+            info = chats.create()
         except RoutingError as e:
             raise HTTPException(400, f"routing error: {e}")
+        info["project"] = None
+        if body and body.project:
+            try:
+                info["project"] = chats.set_project(info["id"], body.project)
+            except ValueError:
+                info["project"] = None
+        return info
 
     @api.get("/chat/sessions")
     def chat_list() -> list[dict]:
         return chats.list()
 
+    @api.post("/chat/sessions/{cid}/project")
+    def chat_project(cid: str, body: ChatProject) -> dict[str, Any]:
+        try:
+            project = chats.set_project(cid, body.project or None)
+        except KeyError:
+            raise HTTPException(404, "chat session not found (it may have expired); start a new one")
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        audit.write("chat_project_set", source="dashboard", chat=cid, project=project)
+        return {"id": cid, "project": project}
+
     @api.post("/chat/sessions/{cid}/messages")
     def chat_send(cid: str, body: ChatSend) -> dict[str, Any]:
         try:
-            return chats.send(cid, body.text)
+            result = chats.send(cid, body.text)
+            if body.speak and result.get("kind") == "chat" and result.get("reply"):
+                result["voice"] = speak_reply(ctx, result["reply"])
+            return result
         except KeyError:
             raise HTTPException(404, "chat session not found (it may have expired); start a new one")
         except EmergencyStop as e:
@@ -463,6 +510,10 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
     def usage(days: int = 30) -> dict[str, Any]:
         with runtime() as rt:
             return data.usage_json(rt, days)
+
+    # ---- everything else the terminal can do (projects, teach, schedules, setup, voice) ----
+    for module in (routes_projects, routes_teach, routes_proactive, routes_setup, routes_voice):
+        api.include_router(module.build_router(ctx))
 
     app.include_router(api)
 
