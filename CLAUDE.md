@@ -28,6 +28,7 @@ Work runs over many days. It stops and resumes, sometimes on this MacBook, somet
 - After each phase: run the tests, report what changed and what failed, then stop.
 - Sachin often brings research from ChatGPT, as well as docs, videos or blueprints. Treat it as input to verify, never as the spec. Check each claim against official docs, live sources or his machine, check that it is useful for Jarvis, and add only what passes. Never add something just because it was suggested. Tell him what was taken, what was dropped, and why.
 - If something blocks you or is unclear, tell Sachin instead of guessing.
+- Every AI call goes through the provider interface in `jarvis/providers/`. Never assume a local model matches Claude: local versus cloud is decided per component from measurements (quality, RAM and latency on this Mac, task importance). See PLAN.md, "AI-dependent components and their migration paths".
 - Explain the reason before adding any new dependency.
 - Permissions, approvals, logs and tests are core features, not polish.
 - Never hide a failing test. Give the cause and the options.

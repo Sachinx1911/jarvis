@@ -1,4 +1,4 @@
-# Jarvis — Master Plan (v3.4)
+# Jarvis — Master Plan (v3.5)
 
 **Date:** 2026-10-09 (updated 2026-10-10)
 **Status:** Planning is nearly complete. No code has been written yet.
@@ -7,6 +7,7 @@
 **v3.2 (2026-10-10):** Files are written in English. Conversations with Sachin happen in Marathi.
 **v3.3 (2026-10-10):** Migration-ready architecture: hybrid now (Claude for reasoning, everything else local), fully local AI later without a rewrite. Added the AI provider layer, privacy controls, migration roadmap (Stages A–D) and migration evaluation suite. The brain-loop recommendation changed from the Claude Agent SDK to a Jarvis-owned loop. Nothing implemented; fully local inference is not verified.
 **v3.4 (2026-10-10):** Sachin decided: Jarvis-owned loop, Tavily for web search, no P2 (sensitive) data sent to the cloud at the start.
+**v3.5 (2026-10-10):** Added a migration path for every AI-dependent component and an explicit rule for when a component may move to a local model. Local models are not assumed to match Claude.
 
 ---
 
@@ -194,6 +195,7 @@ Plus SCHEDULED and PAUSED. Details in the "Task system" section.
   - Model capabilities are declared or measured, never assumed.
   - A local adapter is designed now but built only in Stage B, with Sachin's approval.
   - **Not claimed:** fully local inference on this Mac is unverified. Stage B measures it.
+  - **Not assumed:** a local model on an M4 with 16 GB is not assumed to match Claude. Whether full local AI is possible depends on model quality, memory requirements and the tasks Sachin actually needs. Each AI-dependent component has its own migration path (see "AI-dependent components and their migration paths"), and some may stay on Claude.
 
 ### 5.2 What stays local and what may go to the cloud
 
@@ -309,7 +311,40 @@ Machine-specific overrides go in `config/local.yaml`, which Phase 0 adds to `.gi
 - **Context budget:** The context builder sizes injected memories and document chunks from the model's context window. The "context fit" evaluation checks this.
 - **Evaluation:** Test tasks are stored provider-neutral, and the same suite runs against every provider.
 
-### 5.8 Privacy controls for cloud AI
+### 5.8 AI-dependent components and their migration paths
+
+Only the components below use an AI model. Everything else is AI-independent by design and needs no rewrite when the provider changes: memory storage and index, task queue and state, tools and connectors, T0–T4, approvals and audit, receipts, scheduler, Telegram and the dashboard.
+
+| Component | Stage A (now) | Local path | If local is not good enough | Decided in |
+|---|---|---|---|---|
+| Main conversation | Claude Opus 5.5 | Local chat model via the local adapter | Stays on Claude | Stage B |
+| Planning, team manager | Claude Opus 5.5, high effort | Strongest local model that fits | Stays on Claude. Likely the last route to move | Stage B |
+| Agent team workers (Researcher, Writer) | Claude (Opus low or Sonnet) | Local model, fewer agents in parallel | Team stays on Claude, or one agent at a time locally | Stage B |
+| Checker | Claude, after deterministic checks | Local model, after deterministic checks | Deterministic checks only, marked "not model-checked" | Stage B |
+| Memory extractor | Claude Haiku 5.5 | Small local model with JSON-schema output | Stays on Claude, or save only on an explicit "remember this" | Stage B |
+| Query rewrite (romanized Marathi to English keywords) | Claude Haiku 5.5 | Small local model | Keyword and trigram search without the rewrite | Stage B |
+| Intent and risk labels | Claude Haiku 5.5 | Small local model | Rules, and ask Sachin whenever unclear | Stage B |
+| Heartbeat check, receipt summary | Claude Haiku 5.5 | Small local model | Template text (receipts are already built from logs) | Stage B |
+| Quarantined extraction of untrusted content | Claude, for P0/P1 content only | Local model. This is where local helps most, because email bodies are P2 | Stays off for P2 content | Stage B |
+| Skill drafting (teach-by-demonstration) | Claude | Local model | Stays on Claude (rare, high value) | Stage B |
+| Schedule parsing ("every Monday at 9") | Claude | Deterministic date parser first, model only for ambiguous text | Ask Sachin to confirm the schedule | Phase 4 |
+| Document Q&A | Claude, P0/P1 documents only | Local model, which would also allow private (P2) documents | P2 documents stay unavailable | Stage B |
+| Vision (screenshots) | Off (screenshots are P2) | Local vision model, if one fits in memory | Stays off | Stage B |
+| Embeddings | Local (multilingual-e5-small) | Already local | — | Done |
+| Speech-to-text | Local Whisper (English) | Already local. Marathi via a local Indic model | — | Phase 6 |
+| Text-to-speech, English | Local macOS `say` | Already local | — | Phase 6 |
+| Text-to-speech, Marathi | edge-tts (cloud) | Offline Marathi voice, not yet found | Recorded exception, or English voice | Stage B / Phase 6 |
+| Evaluation judge | One fixed judge model plus human spot checks | Deterministic checks plus human review | Cloud judge for evaluation only (open decision) | Stage B |
+| Coding agent (later) | Claude Opus 5.5 | Local coding model | Stays on Claude | Later |
+
+**Rule for moving a component to a local model.** A component moves only when all three hold:
+1. **Quality:** on that component's evaluation tasks, the local model is within the agreed threshold of the Claude baseline.
+2. **Fits this Mac:** enough RAM headroom with Jarvis and normal apps running, and acceptable latency.
+3. **Importance:** components that serve Sachin's top 5 daily tasks need stricter thresholds.
+
+Staying hybrid for some components is an acceptable result. "Fully local" is the goal, not an assumption.
+
+### 5.9 Privacy controls for cloud AI
 
 | Class | Examples | Cloud AI in Stage A | Stored in memory |
 |---|---|---|---|
@@ -329,7 +364,7 @@ Machine-specific overrides go in `config/local.yaml`, which Phase 0 adds to `.gi
 - Anthropic's API data retention and training terms must be checked before Stage A goes live. Nothing is assumed here.
 - **Effect of "no P2 at start":** features that need email or message bodies, private documents or screenshots cannot use Claude until Sachin enables that category, or until a local model handles them (Stage C). This limits email summaries in the daily brief, screenshot analysis and Q&A over private documents. Jarvis says clearly when a task is blocked for this reason. Whether email sender and subject count as P1 or P2 is decided before Phase 5.
 
-### 5.9 Migration roadmap
+### 5.10 Migration roadmap
 
 **Stage A — Hybrid MVP** (Phases 0–7)
 
@@ -355,7 +390,7 @@ Machine-specific overrides go in `config/local.yaml`, which Phase 0 adds to `.gi
   - The local adapter passes the contract suite, or each failing capability is documented.
   - An evaluation report exists for every candidate: all categories against the Claude baseline, with model, version, quantization, runtime, context size, hardware, date and git commit.
   - Capability profiles are written from measurements.
-  - Each route gets a verdict: local-ready or not ready.
+  - Each component gets a verdict, local-ready or not ready, using the three-part rule in "AI-dependent components and their migration paths".
   - Live routing does not change.
 - **Risks:** RAM contention on 16 GB, low free disk (~32 GB), weak tool calling or structured output, weak Marathi, slow output or thermal throttling, model license limits, judge bias in the evaluation.
 - **Dependencies:** Stage A baseline, Sachin's approval for downloads, disk space, a resource-measurement library.
@@ -387,7 +422,7 @@ Machine-specific overrides go in `config/local.yaml`, which Phase 0 adds to `.gi
 - **Dependencies:** Stable Stage C, possibly new hardware (Sachin's decision).
 - **Tests:** Offline suite, full migration evaluation, fake-provider suite.
 
-### 5.10 Migration evaluation suite
+### 5.11 Migration evaluation suite
 
 - **Location:** `tests/evals/migration/`. Synthetic tasks only, because the repo is public. Results with any personal data stay in `data/evals/`.
 - **Each task records:** id, category, language (en / mr-roman / mr-deva / mixed), input, available tools, expected tool calls or acceptance checks, grading method (deterministic, rubric or human), privacy class.
@@ -410,7 +445,7 @@ Machine-specific overrides go in `config/local.yaml`, which Phase 0 adds to `.gi
 - **Judge:** Deterministic checks first. Rubric judging uses one fixed judge model and prompt version across all runs, never the candidate being tested, plus human spot checks.
 - **Reproducibility:** Record provider, model, version, quantization, runtime, context size, hardware, date and git commit. Use fixed seeds where supported, and repeat stochastic tests several times.
 
-### 5.11 Unresolved technical decisions
+### 5.12 Unresolved technical decisions
 
 1. ~~Brain loop~~ Decided 2026-10-10: Jarvis-owned loop with a Claude adapter.
 2. ~~P2 categories for Claude~~ Decided 2026-10-10: none at the start. Still open: whether email sender and subject count as P1 (before Phase 5).
