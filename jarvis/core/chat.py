@@ -135,6 +135,11 @@ class ChatSession:
             self.browser = None
         if not self.extractor or not self.user_messages():
             return []
-        results = self.extractor.extract_session(self.user_messages())
+        from jarvis.memory.quiet import mark_extracted, unextracted_user_messages
+
+        # The quiet-session job may have extracted part of this chat already.
+        pending = unextracted_user_messages(self.store.conn, self.session_id)
+        results = self.extractor.extract_session(pending) if pending else []
+        mark_extracted(self.store.conn, self.session_id, results)
         self.audit.write("session_extracted", session_id=self.session_id, results=results)
         return results
