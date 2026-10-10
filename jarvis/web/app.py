@@ -122,7 +122,7 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
                allowed_hosts: list[str] | None = None, trusted_clients: set[str] | None = None,
                static_dir: Path | None = STATIC_DIR, config_dir: Path = CONFIG_DIR,
                proactive_factory=None, speech_factory=None, stt_factory=None, oauth_flow_factory=None,
-               on_quit=None, extra: dict[str, Any] | None = None) -> FastAPI:
+               on_quit=None, extra: dict[str, Any] | None = None, wake_factory=None) -> FastAPI:
     settings = settings or WebSettings()
     if not token:
         raise ValueError("the dashboard needs an access token")
@@ -134,7 +134,8 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
     chats = ChatManager(broker, chat_factory or default_chat_factory(settings.provider), settings.chat_idle_minutes)
     tasks = TaskManager(broker, audit, settings.provider, task_runner_factory)
     ctx = WebContext(settings, audit, stop, chats, Jobs(audit), config_dir, proactive_factory, speech_factory,
-                     stt_factory, oauth_flow_factory, on_quit, extra if extra is not None else {})
+                     stt_factory, oauth_flow_factory, on_quit, extra if extra is not None else {},
+                     wake_factory=wake_factory)
     origins = set(settings.origins())
     hosts = set(allowed_hosts if allowed_hosts is not None else settings.hosts())
     clients = trusted_clients or set()

@@ -234,13 +234,14 @@ class LanguageRouter:
 
     cloud = False
 
-    def __init__(self, english: Any, marathi: Any, mode: str = "auto"):
+    def __init__(self, english: Any, marathi: Any, mode: str = "auto", min_confidence: float = 0.0):
         mode = (mode or "auto").lower()
         if mode not in ("auto", "en", "mr"):
             raise ValueError(f"stt.language must be auto, en or mr, not {mode!r}")
         self.english = english
         self.marathi = marathi
         self.mode = mode
+        self.min_confidence = min_confidence
         self.name = f"{english.name}+{marathi.name}"
 
     def check(self) -> None:
@@ -266,6 +267,17 @@ class LanguageRouter:
             return replace(self.marathi.transcribe(audio, "mr"), engine=self.marathi.name)
         t, lang, prob = self.english.transcribe_if_english(audio)
         if t is not None:
+            if t.confidence >= self.min_confidence or not self.marathi_ready()[0]:
+                return replace(t, engine=self.english.name)
+            # Unsure English. Marathi speech that starts with an English word ("Jarvis, aaj...")
+            # is often labelled English and comes out as nonsense. Try the Marathi engine and
+            # keep it if it is surer (English speech it writes in Devanagari, which still reads).
+            try:
+                mr = self.marathi.transcribe(audio, "mr")
+            except VoiceUnavailable:
+                return replace(t, engine=self.english.name)
+            if mr.text.strip() and mr.confidence > t.confidence:
+                return replace(mr, engine=self.marathi.name)
             return replace(t, engine=self.english.name)
         if not (lang == "mr" and prob >= SURE_MARATHI):
             # Whisper named another language (often Hindi or Urdu, both for Marathi speech and for
@@ -306,7 +318,7 @@ def make_stt(cfg: dict[str, Any], home: Path):
         marathi = make_marathi_stt(cfg, home)
         if marathi is None:
             return whisper  # no Marathi engine: Whisper handles every language itself
-        return LanguageRouter(whisper, marathi, stt.get("language", "auto"))
+        return LanguageRouter(whisper, marathi, stt.get("language", "auto"), float(stt.get("min_confidence", 0.45)))
     if engine == "fake":
         return FakeSTT()
     raise ValueError(f"unknown stt engine {engine!r}")

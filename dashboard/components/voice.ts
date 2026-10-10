@@ -14,15 +14,23 @@ import { errText } from "@/lib/hooks";
 export const NOT_INSTALLED = "speech-to-text not installed (run voice setup)";
 
 export type Stt = { ready: boolean; detail: string };
-export type Transcript = { status: string; text: string; heard?: string; language?: string; confidence?: number };
+export type Transcript = {
+  status: string; // ok | unclear | no_audio | wake_only
+  text: string;
+  heard?: string;
+  language?: string;
+  confidence?: number;
+  wake?: number; // hands-free: the local wake-word model's score for "hey Jarvis"
+  wake_hit?: boolean;
+};
 
 // The server answers "ok" for a clear transcript (its audit log calls it "transcribed").
 export function isClear(status: string): boolean {
   return status === "ok" || status === "transcribed";
 }
 
-export function transcribe(wav: ArrayBuffer): Promise<Transcript> {
-  return upload<Transcript>("/api/voice/transcribe", wav, "audio/wav");
+export function transcribe(wav: ArrayBuffer, wake = false): Promise<Transcript> {
+  return upload<Transcript>(`/api/voice/transcribe${wake ? "?wake=1" : ""}`, wav, "audio/wav");
 }
 
 export function isCommand(text: string): boolean {
@@ -189,10 +197,36 @@ export function useHandsFree(opts: { enabled: boolean; mode: HandsFreeMode; paus
       try {
         const wav = await toWav16k(new Blob([pcmWav(chunks, rate)], { type: "audio/wav" }));
         if (cancelled) return;
-        const r = await transcribe(wav);
-        if (cancelled) return;
         const o = optsRef.current;
+        const r = await transcribe(wav, o.mode === "wake");
+        if (cancelled) return;
+        if (o.mode === "wake" && r.status === "wake_only") {
+          // "Hey Jarvis" alone (heard by the wake-word model): the next request needs no wake word.
+          armedUntil = Date.now() + ARMED_MS;
+          setArmed(true);
+          window.clearTimeout(armTimer);
+          armTimer = window.setTimeout(() => setArmed(false), ARMED_MS);
+          o.onNote("Yes? I am listening.");
+          return;
+        }
         let text = (isClear(r.status) ? r.text : "").trim();
+        if (o.mode === "wake" && r.wake_hit) {
+          // The server already cut "hey Jarvis" off; what is left is the request.
+          if (!text && r.heard && (r.confidence ?? 0) >= WAKE_MIN_CONFIDENCE) text = r.heard.trim();
+          if (!text) {
+            o.onNote(`I heard “Hey Jarvis” but not the rest${r.heard ? ` (“${r.heard}”)` : ""}. Please say it again.`);
+            return;
+          }
+          armedUntil = 0;
+          setArmed(false);
+          if (isCommand(text)) {
+            o.onDraft(text);
+            o.onNote("Commands are never sent by voice. Check the text in the box and press Send.");
+            return;
+          }
+          o.onUtterance(stripWakeWord(text) ?? text);
+          return;
+        }
         if (!text && r.status !== "no_audio" && r.heard && o.mode === "wake") {
           // Short phrases often come back just under the server's confidence bar. When the
           // unsure text still starts with the wake word, the user clearly meant Jarvis: use it.

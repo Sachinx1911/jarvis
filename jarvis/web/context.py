@@ -28,6 +28,7 @@ class WebContext:
     oauth_flow_factory: Callable | None = None           # tests: fake Google sign-in
     on_quit: Callable[[], None] | None = None            # set by `jarvis app`
     extra: dict[str, Any] = field(default_factory=dict)
+    wake_factory: Callable[[], Any] | None = None        # -> wake-word detector (tests)
 
     @contextmanager
     def runtime(self) -> Iterator[Runtime]:

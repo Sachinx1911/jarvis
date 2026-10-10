@@ -102,6 +102,25 @@ class OpenWakeWordDetector:
         if self._model is not None and hasattr(self._model, "reset"):
             self._model.reset()
 
+    def scan(self, pcm: bytes, frame_samples: int = 1280) -> tuple[float, int]:
+        """Best wake-word score in a recorded clip and the byte offset just after that frame
+        (where the wake phrase has been heard), so the caller can transcribe only the rest."""
+        import numpy as np  # installed with openwakeword
+
+        model = self._load()
+        self.reset()
+        samples = np.frombuffer(pcm[: len(pcm) // 2 * 2], dtype=np.int16)
+        silence = np.zeros(frame_samples * 4, dtype=np.int16)  # settle the model's feature buffer
+        for i in range(0, len(silence), frame_samples):
+            model.predict(silence[i:i + frame_samples])
+        best, best_end = 0.0, 0
+        for i in range(0, len(samples) - frame_samples + 1, frame_samples):
+            score = max(model.predict(samples[i:i + frame_samples]).values())
+            if score > best:
+                best, best_end = float(score), (i + frame_samples) * 2
+        self.reset()
+        return best, best_end
+
 
 class FakeWakeWord:
     name = "fake"
