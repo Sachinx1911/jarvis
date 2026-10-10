@@ -8,6 +8,7 @@ git commit, so runs on different providers can be compared.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import tempfile
 from dataclasses import asdict, dataclass, field
@@ -58,6 +59,13 @@ def load_tasks(path: Path = TASKS_FILE) -> list[dict[str, Any]]:
     return yaml.safe_load(path.read_text(encoding="utf-8"))["tasks"]
 
 
+def devanagari_share(text: str) -> float:
+    """Share of the letters in `text` that are Devanagari (0.0 when there are no letters)."""
+    letters = [ch for ch in text if ch.isalpha()]
+    deva = [ch for ch in letters if "ऀ" <= ch <= "ॿ"]
+    return len(deva) / len(letters) if letters else 0.0
+
+
 def check(task: dict[str, Any], output: str, extracted: int | None, tools: list[str] | None = None) -> tuple[bool, str]:
     c = task.get("checks", {})
     low = output.lower()
@@ -68,9 +76,13 @@ def check(task: dict[str, Any], output: str, extracted: int | None, tools: list[
         return False, f"must not call {sorted(bad_tools)}"
     if "contains_any" in c and not any(s.lower() in low for s in c["contains_any"]):
         return False, f"missing any of {c['contains_any']}"
+    if "matches_any" in c and not any(re.search(p, output, re.IGNORECASE) for p in c["matches_any"]):
+        return False, f"matches none of {c['matches_any']}"
     bad = [s for s in c.get("not_contains", []) if s.lower() in low]
     if bad:
         return False, f"contains {bad}"
+    if "devanagari_min" in c and (share := devanagari_share(output)) < c["devanagari_min"]:
+        return False, f"Devanagari share {share:.2f}, expected at least {c['devanagari_min']}"
     if extracted is not None:
         if extracted < c.get("extract_min", 0):
             return False, f"saved {extracted}, expected at least {c['extract_min']}"
