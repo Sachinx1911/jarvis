@@ -8,7 +8,7 @@ Ending a session: update this file and commit.
 - **Phase:** Planning complete. Phase 0 has not started.
 - **Code:** None yet.
 - **Half-done work:** None.
-- **Last update:** 2026-10-10, MacBook (Apple M4)
+- **Last update:** 2026-10-10, MacBook (Apple M4). Session ended here; Sachin continues from the office laptop.
 - **GitHub:** Pushed to `main` on 2026-10-10 with Sachin's OK.
 
 ## Next step
