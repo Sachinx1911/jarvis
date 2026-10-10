@@ -12,6 +12,13 @@ quiet_extract:
   max_failures: 3             # after this many failed extractions of one session, give up on it
   output: file                # telegram | file | both (only runs that saved something produce output)
 
+# Nightly review: what happened today -> memory/episodes/YYYY-MM-DD.md (local, no model).
+# Possible memory conflicts also appear (as a count) in the morning brief.
+review:
+  enabled: true
+  cron: "30 22 * * *"         # 22:30 in the proactive timezone
+  output: file                # telegram | file | both (the output has counts only)
+
 # Weekly cleanup: duplicates, relative dates, archiving, MEMORY.md size.
 cleanup:
   enabled: true

@@ -182,39 +182,57 @@ class Recorder:
               tool_tiers: dict[str, str]) -> Path:
         folder = self.dir / rec_id
         evidence = (folder / "evidence.md").read_text(encoding="utf-8")
-        req = LLMRequest(route="skill_draft", model=decision.model,
-                         system=(PROMPTS_DIR / "skill_draft.md").read_text(encoding="utf-8"),
-                         messages=[Message.text("user", evidence[:20000])], reasoning=decision.effort,  # type: ignore[arg-type]
-                         response_schema=DRAFT_SCHEMA)
-        res = provider.structured(req, DRAFT_SCHEMA)
-        if not res.valid or not validate(res.data, DRAFT_SCHEMA):
-            raise ValueError("the model did not return a valid skill draft")
         path = folder / "SKILL.draft.md"
-        path.write_text(render_skill(res.data or {}, tool_tiers, version=1, source=rec_id), encoding="utf-8")
+        path.write_text(draft_skill(evidence, provider, decision, tool_tiers, f"recording {rec_id}"), encoding="utf-8")
         return path
 
     def approve(self, rec_id: str, skills_dir: Path) -> Path:
         draft = self.dir / rec_id / "SKILL.draft.md"
         if not draft.exists():
             raise FileNotFoundError("no draft for this recording (jarvis record draft)")
-        text = draft.read_text(encoding="utf-8")
-        meta = yaml.safe_load(re.match(r"^---\n(.*?)\n---", text, re.DOTALL).group(1))  # type: ignore[union-attr]
-        name = re.sub(r"[^a-z0-9-]+", "-", str(meta["name"]).lower()).strip("-") or "skill"
-        target = skills_dir / name / "SKILL.md"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if target.exists():  # keep the old version; the new one gets the next number
-            old = yaml.safe_load(re.match(r"^---\n(.*?)\n---", target.read_text(encoding="utf-8"), re.DOTALL).group(1))  # type: ignore[union-attr]
-            v = int(old.get("version", 1))
-            target.rename(target.parent / f"SKILL.v{v}.md")
-            text = re.sub(r"^version: \d+$", f"version: {v + 1}", text, count=1, flags=re.MULTILINE)
-        target.write_text(text, encoding="utf-8")
-        return target
+        return save_skill(draft.read_text(encoding="utf-8"), skills_dir)
+
+
+def draft_skill(evidence: str, provider: ReasoningProvider, decision: RouteDecision, tool_tiers: dict[str, str],
+                source: str) -> str:
+    """Evidence (markdown: conversation, tools run, file changes, notes) -> SKILL.md text.
+    Shared by teach-by-demonstration and "do this every time" (jarvis/tasks/repeat.py)."""
+    req = LLMRequest(route="skill_draft", model=decision.model,
+                     system=(PROMPTS_DIR / "skill_draft.md").read_text(encoding="utf-8"),
+                     messages=[Message.text("user", evidence[:20000])], reasoning=decision.effort,  # type: ignore[arg-type]
+                     response_schema=DRAFT_SCHEMA)
+    res = provider.structured(req, DRAFT_SCHEMA)
+    if not res.valid or not validate(res.data, DRAFT_SCHEMA):
+        raise ValueError("the model did not return a valid skill draft")
+    return render_skill(res.data or {}, tool_tiers, version=1, source=source)
+
+
+def skill_name(text: str) -> str:
+    """The name in a SKILL.md front matter, made safe for a folder name."""
+    meta = yaml.safe_load(re.match(r"^---\n(.*?)\n---", text, re.DOTALL).group(1))  # type: ignore[union-attr]
+    return re.sub(r"[^a-z0-9-]+", "-", str(meta["name"]).lower()).strip("-") or "skill"
+
+
+def save_skill(text: str, skills_dir: Path) -> Path:
+    """Save an approved SKILL.md. An existing skill of that name is kept as SKILL.v<n>.md."""
+    target = skills_dir / skill_name(text) / "SKILL.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():  # keep the old version; the new one gets the next number
+        old = yaml.safe_load(re.match(r"^---\n(.*?)\n---", target.read_text(encoding="utf-8"), re.DOTALL).group(1))  # type: ignore[union-attr]
+        v = int(old.get("version", 1))
+        target.rename(target.parent / f"SKILL.v{v}.md")
+        text = re.sub(r"^version: \d+$", f"version: {v + 1}", text, count=1, flags=re.MULTILINE)
+    target.write_text(text, encoding="utf-8")
+    return target
 
 
 def render_skill(d: dict[str, Any], tool_tiers: dict[str, str], version: int, source: str) -> str:
-    """The risk tier of each step comes from Jarvis's own registry, never from the model."""
+    """The risk tier of each step comes from Jarvis's own registry, never from the model.
+    source: where the skill came from, e.g. "recording r-1a2b3c" or "task t-004"; a bare id
+    is read as a recording id."""
     name = re.sub(r"[^a-z0-9-]+", "-", d["name"].lower()).strip("-")[:50] or "skill"
-    front = {"name": name, "description": d["description"], "version": version, "source": f"recording {source}"}
+    origin = source if " " in source else f"recording {source}"
+    front = {"name": name, "description": d["description"], "version": version, "source": origin}
     out = ["---", yaml.safe_dump(front, sort_keys=False, allow_unicode=True).strip(), "---", "",
            f"# {name}", "", d["description"], ""]
     if d["inputs"]:

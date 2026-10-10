@@ -30,6 +30,8 @@ from jarvis.tools.files import PathBlocked, PathDenied
 
 TIERS = ("T0", "T1", "T2", "T3", "T4")
 MAX_RESULT_CHARS = 8000
+MAX_STORED_CHARS = 4000  # tool_runs.result
+MAX_VERIFY_NOTE_CHARS = 300
 INJECTION_MARKER = "[injection attempt detected]"  # quarantine output; makes the session hostile
 MAX_UNTRUSTED_KEPT = 40  # recent untrusted outputs kept to label approval arguments
 
@@ -205,14 +207,19 @@ class ToolRegistry:
         self._record_writes(tool, call, agent)
 
         verified = None
+        tag = ""
         if tool.verify:
             try:
                 ok, how = tool.verify(call.arguments)
             except Exception as e:
                 ok, how = False, f"verifier error: {e}"
-            verified = ok
-            result += f"\n[verified: {how}]" if ok else f"\n[NOT verified: {how}]"
-        return self._finish(call, tool, task_id, result[:MAX_RESULT_CHARS], decision, True, verified)
+            verified = bool(ok)
+            how = " ".join(str(how).split())[:MAX_VERIFY_NOTE_CHARS]
+            tag = f"\n[verified: {how}]" if ok else f"\n[NOT verified: {how}]"
+        # The post-check tag stays the last line, however long the output: verify-after-act
+        # (jarvis/tasks/verify.py) reads it from tool_runs as evidence.
+        return self._finish(call, tool, task_id, result[:MAX_RESULT_CHARS - len(tag)] + tag, decision, True,
+                            verified, tag)
 
     def _record_writes(self, tool: Tool, call: ToolCall, agent: str | None) -> None:
         if tool.writes is None or self.provenance is None:
@@ -228,11 +235,13 @@ class ToolRegistry:
                              paths=[str(p) for p in paths])
 
     def _finish(self, call: ToolCall, tool: Tool | None, task_id: str | None, content: str, decision: str,
-                ok: bool, verified: bool | None = None) -> ToolResult:
+                ok: bool, verified: bool | None = None, tag: str = "") -> ToolResult:
         tier = tool.tier if tool else "?"
+        stored = content if len(content) <= MAX_STORED_CHARS else (
+            content[:MAX_STORED_CHARS - len(tag)] + tag if tag and content.endswith(tag) else content[:MAX_STORED_CHARS])
         self.store.conn.execute(
             "INSERT INTO tool_runs (task_id, tool, tier, arguments, result, ok, agent) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (task_id, call.name, tier, json.dumps(call.arguments, ensure_ascii=False), content[:4000], int(ok),
+            (task_id, call.name, tier, json.dumps(call.arguments, ensure_ascii=False), stored, int(ok),
              getattr(self, "_agent", None)),
         )
         self.store.conn.commit()

@@ -40,6 +40,8 @@ HELP = """Jarvis commands:
 /triggers - list event triggers
 /trigger <text> - new trigger, e.g. /trigger when a new file arrives in workspace/inbox summarize it
 /trigger_pause <id>, /trigger_resume <id>, /trigger_delete <id>
+/repeat <when> - turn the last thing Jarvis did into a skill + schedule, e.g. /repeat every Monday at 9
+/repeat <task id> <when> - the same for a finished task; both are saved only after you press Save
 /approvals - actions from unattended runs that wait for you (Approve/Deny buttons)
 /approve <id> - run that exact queued action once;  /deny <id>;  /dismiss <id>
 /remind <text> - e.g. /remind in 10 minutes call back
@@ -318,6 +320,44 @@ class BotCore:
             ok = pid.strip().lstrip("#").isdigit() and PendingApprovals(rt.store.conn).dismiss(int(pid.strip().lstrip("#")))
             return f"Dismissed #{pid.strip().lstrip('#')}." if ok else f"No pending approval {pid}."
         return self._with_rt(go)
+
+    # ---- repeat-this (jarvis/tasks/repeat.py) ----
+
+    def draft_repeat(self, text: str) -> tuple[str, str | None]:
+        """Chat thread only (it reads the chat session). (text to show, proposal id or None).
+        Nothing is saved here: only the Save button on this draft saves the skill and schedule."""
+        from jarvis.tasks.repeat import EXAMPLE_WHEN, RepeatError, propose, split_task_id
+
+        task_id, when = split_task_id(text)
+        if not when:
+            return (f"Say when, e.g. /repeat {EXAMPLE_WHEN} (the last thing Jarvis did here), or "
+                    f"/repeat <task id> {EXAMPLE_WHEN}."), None
+        if self.stop.engaged():
+            return "Emergency stop is ON. /resume first.", None
+        session = self._session
+        if task_id is None and session is None:
+            return "Nothing to repeat yet: ask Jarvis to do something first, then /repeat <when>.", None
+        rt = self._rt if session is not None else self.p.open_rt()
+        try:
+            proposal = propose(rt, self.p, when, task_id=task_id,
+                               session_id=None if task_id else session.session_id,  # type: ignore[union-attr]
+                               tools=session.tools.all() if session is not None else None,
+                               owner_session=session.session_id if session is not None else None,
+                               channel="telegram")
+        except RepeatError as e:
+            return str(e), None
+        except (RoutingError, ProviderError) as e:
+            return f"Could not draft it ({type(e).__name__}: {e}).", None
+        finally:
+            if rt is not self._rt:
+                rt.close()
+        # Telegram is a cloud service: only the P2-safe summary goes there (PLAN.md privacy controls).
+        return proposal.show_brief(self.p.now(), rt.paths.home / "skills") + "\n\nSave this skill and schedule?", proposal.id
+
+    def confirm_repeat(self, proposal_id: str, save: bool) -> str:
+        from jarvis.tasks.repeat import confirm
+
+        return self._with_rt(lambda rt: confirm(rt, self.p, proposal_id, save, channel="telegram"))
 
     # ---- reminders and brief ----
 

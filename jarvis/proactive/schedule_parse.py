@@ -23,7 +23,7 @@ from jarvis.schema import validate
 from jarvis.proactive.timeparse import DAY_NAMES, parse_recurring
 
 ROUTE = "schedule_parser"
-KINDS = ("prompt", "skill", "agent", "brief", "heartbeat", "memory_extract", "memory_cleanup")
+KINDS = ("prompt", "skill", "agent", "brief", "heartbeat", "memory_extract", "memory_cleanup", "review")
 OUTPUTS = ("telegram", "file", "both")
 
 PARSE_SCHEMA: dict[str, Any] = {
@@ -114,11 +114,13 @@ class ScheduleDraft:
     source: str = "rules"       # rules | model | explicit
 
     def show(self, now: datetime | None = None) -> str:
-        what = {"prompt": f"ask Jarvis: {self.input!r}", "skill": f"run skill {self.target!r} with {self.input!r}",
+        what = {"prompt": f"ask Jarvis: {self.input!r}",
+                "skill": f"run skill {self.target!r}" + (f" with {self.input!r}" if self.input else " (no extra input)"),
                 "agent": f"give agent {self.target!r} the task {self.input!r}", "brief": "send the daily brief",
                 "heartbeat": "run the heartbeat check",
                 "memory_extract": "extract memories from chats that went quiet",
-                "memory_cleanup": "clean up memories (duplicates, dates, unused)"}[self.kind]
+                "memory_cleanup": "clean up memories (duplicates, dates, unused)",
+                "review": "write the nightly review into memory/episodes"}[self.kind]
         lines = [f"Schedule: {self.description} ({self.timezone})", f"Runs: {what}", f"Cron: {self.cron}",
                  f"Output: {self.output}", f"Read by: {self.source}"]
         if self.budget:
