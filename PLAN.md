@@ -1076,7 +1076,7 @@ These rules are already in the repo's `CLAUDE.md`.
 
 - **No** new hardware. The M4 Mac is enough.
 - Main cost = Claude API usage. More when the agent team runs (15× tokens).
-- Web search: Anthropic tool at $10 per 1,000 searches. Tavily as a free backup.
+- Web search: Tavily, starting on its free tier (1,000 credits a month).
 - Cost limits per task and per month, with warnings.
 - Sachin sets the monthly budget.
 
