@@ -106,6 +106,8 @@ class TaskStore:
             raise TransitionError(f"{task_id}: {task.state} -> {state} is not allowed")
         self.db.execute("UPDATE tasks SET state=?, updated_at=datetime('now') WHERE id=?", (state, task_id))
         self.db.commit()
+        if state == "CANCELLED":  # a running task (any thread) sees this file and stops
+            (self.folder(task_id) / "CANCEL").write_text(note or "cancelled", encoding="utf-8")
         self.event(task_id, "state", {"from": task.state, "to": state, "note": note})
         return self.get(task_id)  # type: ignore[return-value]
 

@@ -234,3 +234,15 @@ def test_open_app_allowlist_and_url_scheme():
     assert "not in the allowed apps" in st.open_app({"name": "cmd"})
     assert st.open_url({"url": "file:///C:/Windows"}) == "Only http(s) links can be opened."
     assert "Unknown media action" in st.media({"action": "format_disk"})
+
+
+def test_chat_browser_only_for_sites_the_user_named(env):
+    home, _ = env
+    s = _session(env, ["ok", "ok"])
+    s.send("hello")
+    assert s.browser is None and s.tools.get("browser_open") is None
+    s.send("check https://shop.example/item for me")
+    assert s.browser_domains == ["shop.example"] and s.tools.get("browser_open") is not None
+    assert s.browser.started is False  # nothing launched until a browser tool is used
+    s.end()
+    assert s.browser is None

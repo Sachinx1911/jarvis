@@ -49,6 +49,7 @@ PLAN_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
         "title": {"type": "string"},
+        "mode": {"type": "string", "enum": ["research", "operate", "code", "answer"]},
         "use_team": {"type": "boolean"},
         "research": {"type": "array", "items": {
             "type": "object",
@@ -74,6 +75,10 @@ VERDICT_SCHEMA: dict[str, Any] = {
     },
     "required": ["passed", "checks", "problems"],
 }
+
+
+class TaskCancelled(Exception):
+    pass
 
 
 def _safe_filename(name: str) -> str:
@@ -145,6 +150,8 @@ class TaskRunner:
                                      used["notional_usd"])
         self.stop = StopSwitch(self.home / "data")
         self.task_dir = self.tasks.folder(task_id)
+        if task.state == "CANCELLED":
+            return task
         try:
             self.stop.check()
             if task.state in ("BACKLOG", "FAILED", "PAUSED"):
@@ -157,10 +164,18 @@ class TaskRunner:
                 self.tasks.set_state(task_id, "RUNNING")
             if self.tasks.get(task_id).state == "VERIFYING":  # type: ignore[union-attr]
                 self.tasks.set_state(task_id, "RUNNING", "resumed during verification")
-            if task.plan.get("use_team"):
+            mode = task.plan.get("mode")
+            if mode == "operate":
+                self._run_extra(task_id, "operator")
+            elif mode == "code":
+                self._run_extra(task_id, "coder")
+            elif task.plan.get("use_team"):
                 self._run_team(task_id)
             else:
                 self._run_solo(task_id)
+        except TaskCancelled:
+            self.tasks.event(task_id, "cancelled", "stopped at the next step")
+            self.progress("Cancelled.")
         except BudgetExceeded as e:
             self._fail(task_id, f"budget: {e}")
         except EmergencyStop as e:
@@ -209,7 +224,15 @@ class TaskRunner:
         task_id = self.task_dir.name
         steps = Budget.from_config(self.config.tasks.get("budget")).max_steps_per_agent
         return AgentEnv(self.config, self.home, self.db_path, self.audit, self.stop, task_id, self.task_dir,
-                        self.provider_for, self.decision_for, self._quarantine, self.tracker.charge, self.web, steps)
+                        self.provider_for, self.decision_for, self._quarantine, self._charge, self.web, steps)
+
+    def _charge(self, resp) -> None:
+        self.tracker.charge(resp)
+        self._check_cancel()
+
+    def _check_cancel(self) -> None:
+        if (self.task_dir / "CANCEL").exists():
+            raise TaskCancelled()
 
     def _run_team(self, task_id: str) -> None:
         task = self.tasks.get(task_id)
@@ -297,7 +320,7 @@ class TaskRunner:
             d = self.decision_for("main_chat")
             loop = AgentLoop(self.provider_for(d), d, registry, self.store, self.audit, self.stop,
                              max_steps=Budget.from_config(self.config.tasks.get("budget")).max_steps_per_agent,
-                             task_id=task_id, on_usage=self.tracker.charge, agent="jarvis")
+                             task_id=task_id, on_usage=self._charge, agent="jarvis")
             system = ("You are Jarvis doing a task for the user. Use your tools. Finish with the complete answer "
                       "the user needs, in plain words.\n\nAcceptance criteria:\n- " + "\n- ".join(plan["acceptance_criteria"]))
             result = loop.run([Message.text("user", plan.get("solo_instructions") or task.goal)], system, task_id)
@@ -305,6 +328,51 @@ class TaskRunner:
             cp.update(report=filename, version=1)
             self.tasks.update(task_id, checkpoint=cp)
         passed, problems = self._verify(task_id, cp["report"], plan, [], use_checker=len(plan["acceptance_criteria"]) > 1)
+        if passed:
+            self._complete(task_id, cp["report"])
+        else:
+            self._fail(task_id, "verification failed: " + "; ".join(problems)[:500])
+
+    def _run_extra(self, task_id: str, role: str) -> None:
+        """Operator (computer and named websites, asks Jarvis's approver) or Coder (its own code folder)."""
+        from jarvis.agents.extra import CODER, OPERATOR, open_browser_session, run_extra_agent
+        from jarvis.browser import domains_from_text
+
+        task = self.tasks.get(task_id)
+        assert task
+        plan, cp = task.plan, dict(task.checkpoint)
+        filename = plan["deliverable"]["filename"]
+        if "report" not in cp:
+            self._step(task_id, f"{role} working")
+            order = WorkOrder(objective=task.goal,
+                              context="Acceptance criteria:\n- " + "\n- ".join(plan["acceptance_criteria"])
+                              + self._project_context(task),
+                              output_format="Finish with a short report of what you did and what you checked.",
+                              stop_condition="the task is done and checked, or it cannot be done")
+            env = self._env()
+            if role == "operator":
+                domains = domains_from_text(task.goal)
+                browser = open_browser_session(self.home, self.task_dir, domains, audit=self.audit) if domains else None
+                try:
+                    result = run_extra_agent(OPERATOR, "operator", order, env, approver=self._approver(task_id),
+                                             browser=browser)
+                finally:
+                    if browser is not None:
+                        browser.close()
+            else:
+                project = re.sub(r"[^a-z0-9_-]+", "-", (task.project or task.title).lower()).strip("-")[:40] or "code"
+                result = run_extra_agent(CODER, "coder", order, env, coder_project=project)
+            (self.task_dir / filename).write_text(result.text, encoding="utf-8")
+            cp.update(report=filename, version=1)
+            self.tasks.update(task_id, checkpoint=cp)
+        passed, problems = self._verify(task_id, cp["report"], plan, [])
+        if role == "coder":
+            last = self.store.conn.execute(
+                "SELECT ok FROM tool_runs WHERE task_id=? AND tool='run_tests' ORDER BY id DESC LIMIT 1",
+                (task_id,)).fetchone()
+            if not last or not last[0]:
+                passed = False
+                problems.append("the tests were not run, or the last test run failed")
         if passed:
             self._complete(task_id, cp["report"])
         else:
@@ -411,6 +479,7 @@ class TaskRunner:
         self.progress(f"Paused: {reason}")
 
     def _step(self, task_id: str, text: str) -> None:
+        self._check_cancel()
         self.tasks.update(task_id, current_step=text)
         self.tasks.event(task_id, "step", text)
         self.progress(text)

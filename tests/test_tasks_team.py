@@ -93,6 +93,8 @@ def _runner(env, plan, roles=None, budget=None, **kw):
         "writer": roles.get("writer") or RoleFake("writer"),
         "checker": roles.get("checker") or RoleFake("checker"),
         "main_chat": RoleFake("main_chat"),
+        "operator": roles.get("operator") or FakeProvider(),
+        "coder": roles.get("coder") or FakeProvider(),
     }
     config = load_config()
     if budget:
@@ -208,3 +210,46 @@ def test_state_machine(env):
     ts.set_state(t.id, "CANCELLED")
     with pytest.raises(TransitionError):
         ts.set_state(t.id, "RUNNING")
+
+
+def test_cancel_while_running_stops_at_next_step(env):
+    home, _ = env
+
+    class CancellingResearcher(RoleFake):
+        def generate(self, req):
+            # Sachin cancels from another window while the researcher works.
+            from jarvis.tasks.store import TaskStore
+            store = Store(home / "data" / "jarvis.db")
+            ts2 = TaskStore(store, home / "data" / "tasks")
+            if ts2.get("t-001").state != "CANCELLED":  # two researchers run in parallel; cancel once
+                try:
+                    ts2.set_state("t-001", "CANCELLED", "user cancelled")
+                except Exception:  # the other researcher won the race
+                    pass
+            store.close()
+            return super().generate(req)
+
+    runner, ts, providers = _runner(env, PLAN_TEAM, roles={"researcher": CancellingResearcher("researcher")})
+    t = ts.create("Compare laptops")
+    done = runner.run(t.id)
+    assert done.state == "CANCELLED"
+    assert providers["writer"].requests == []  # nothing after the cancel
+    assert (home / "data" / "tasks" / t.id / "receipt.md").read_text(encoding="utf-8").startswith("CANCELLED")
+    assert runner.run(t.id).state == "CANCELLED"  # a cancelled task never restarts
+
+
+def test_operate_mode_runs_operator_and_checker(env):
+    plan = {**PLAN_SOLO, "mode": "operate", "deliverable": {"filename": "done.md", "outline": "what was done"}}
+    runner, ts, providers = _runner(env, plan, roles={"operator": FakeProvider(script=["Opened notepad and checked it runs."])})
+    t = ts.create("Open notepad for me")
+    done = runner.run(t.id)
+    assert done.state == "COMPLETED", done.last_error
+    assert "Opened notepad" in (env[0] / "data" / "tasks" / t.id / "done.md").read_text(encoding="utf-8")
+
+
+def test_code_mode_fails_without_passing_tests(env):
+    plan = {**PLAN_SOLO, "mode": "code", "deliverable": {"filename": "code.md", "outline": "summary"}}
+    runner, ts, _ = _runner(env, plan, roles={"coder": FakeProvider(script=["Wrote the function."])})
+    t = ts.create("Write a hello function")
+    done = runner.run(t.id)
+    assert done.state == "FAILED" and "tests were not run" in done.last_error
