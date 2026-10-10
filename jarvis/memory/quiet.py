@@ -86,6 +86,14 @@ def mark_extracted(conn: sqlite3.Connection, session_id: str, results: list[Any]
                source=excluded.source, failures=0""",
         (session_id, when, json.dumps([list(r) for r in (results or [])], ensure_ascii=False), upto, source))
     conn.commit()
+    # Fact-augmented session search: index the saved facts next to this session's chat text.
+    # An index failure must never undo or block the extraction record above.
+    from jarvis.memory.session_facts import index_session
+
+    try:
+        index_session(conn, session_id, results or [])
+    except (sqlite3.Error, OSError, ValueError):
+        pass
 
 
 def _mark_failed(conn: sqlite3.Connection, session_id: str) -> int:

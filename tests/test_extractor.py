@@ -105,3 +105,24 @@ def test_extract_invalid_schema_saves_nothing(env):
     ex, mem = _ex(env, [{"json": {"candidates": [{"name": "x"}]}}])
     assert ex.extract_session(["my bike needs servicing every 3000 km"]) == []
     assert mem.list() == []
+
+
+def test_keywords_get_both_scripts(env):
+    ex, mem = _ex(env, [{"json": {"name": "Sister city", "type": "fact", "subject": "sister",
+                                   "summary_en": "The user's sister lives in Pune.", "keywords": "sister pune bahin",
+                                   "when_to_use": "family", "sensitivity": "normal"}}])
+    m = ex.remember("माझी बहीण पुण्यात राहते")
+    words = m.keywords.split()
+    assert {"sister", "bahin", "बहिन"} <= set(words)          # romanized keyword -> Devanagari guess
+    assert {"बहीण", "punyat"} <= set(words)                   # the note's own Devanagari words + their romanized keys
+    assert not any(w.startswith("सिस") for w in words)        # English words stay English
+    # no model at all: the note's Devanagari words still get romanized keys
+    plain = Extractor(mem, None, None, AuditLog(mem.root.parent / "data" / "audit2.jsonl")).remember("माझा भाऊ नाशिकला")
+    assert {"bhau", "nashikla"} <= set(plain.keywords.split())
+
+
+def test_extracted_candidates_get_both_scripts(env):
+    ex, mem = _ex(env, [{"json": {"candidates": [_cand(keywords="bike service gaadi")]}}])
+    assert ex.extract_session(["my bike needs servicing every 3000 km"])[0][0] == "ADD"
+    saved = mem.list()[0]
+    assert "गादि" in saved.keywords.split() and "bike" in saved.keywords.split()

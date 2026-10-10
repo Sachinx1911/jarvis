@@ -22,6 +22,6 @@ For each candidate:
 - name, subject, summary_en, keywords, when_to_use, sensitivity: as defined below.
   - name: 2 to 6 English words. subject: one or two lowercase words.
   - summary_en: one English sentence, even when the user wrote Marathi.
-  - keywords: 5 to 12 search words, English plus the original Marathi words.
+  - keywords: 5 to 12 search words: English, plus each key Marathi word in BOTH scripts, Devanagari and romanized (e.g. "लग्न lagna"), whichever script the user wrote.
   - sensitivity: "sensitive" only for health or medical details, money (bank, salary, debts, payments), contents or numbers of identity documents, and other people's phone numbers, email addresses or home addresses. Everything else is "normal", including family members' names, where the user keeps things, schedules, preferences, work and projects.
 - body: the details to keep, short.

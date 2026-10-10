@@ -1,0 +1,465 @@
+# Memory retrieval eval (synthetic only: every person, place and number here is made up).
+#
+# Categories follow LongMemEval: single-fact, preference, knowledge-update (supersede),
+# multi-session, temporal, unanswerable. Most queries are in a different script from the
+# memory or chat line they need (Devanagari <-> romanized Marathi <-> English).
+#
+# Memory keywords are written the way the OLD extraction prompt asked for them (English
+# plus the user's own words in the script they used), so the offline numbers measure what
+# the deterministic code adds, not what a better model prompt might add.
+#
+# evidence: a list of groups; a group is satisfied when ANY of its ids (memory id or
+#   session id) is in the top 5 retrieved. Recall@5 = satisfied groups / groups.
+# stale: ids holding an outdated answer (knowledge-update). Offline: counted when a stale
+#   session ranks above every gold session. Live: `stale_values` in the answer.
+# answer: checks for the opt-in live run (contains_any / not_contains); unanswerable
+#   questions pass only when the answer declines.
+
+today: "2026-10-10"          # a Saturday; "last week" = 2026-09-28 .. 2026-10-04
+
+memories:
+  - id: m-0001
+    name: sister lives in Pune
+    type: fact
+    subject: sister
+    summary_en: The user's sister Meera lives in Pune.
+    keywords: sister meera pune बहीण पुणे
+    body: माझी बहीण मीरा पुण्यात राहते.
+    evidence: माझी बहीण मीरा पुण्यात राहते
+    valid_from: "2026-06-02"
+    session: a1b2c3d40001
+  - id: m-0002
+    name: tea without sugar
+    type: preference
+    subject: user
+    summary_en: The user likes tea without sugar.
+    keywords: tea sugar chaha sakhar
+    body: mala chaha bina sakhar avadto
+    evidence: mala chaha bina sakhar avadto
+    valid_from: "2026-07-15"
+    session: a1b2c3d40002
+  - id: m-0003
+    name: short bullet answers
+    type: preference
+    subject: user
+    summary_en: The user wants answers in short bullet points.
+    keywords: answers short bullet points format
+    body: Keep answers to the user in short bullet points.
+    evidence: Please keep your answers to me in short bullet points.
+    valid_from: "2026-05-20"
+    session: a1b2c3d40003
+  - id: m-0004
+    name: office in Hinjewadi
+    type: fact
+    subject: office
+    status: superseded
+    superseded_by: m-0005
+    summary_en: The user's office is in Hinjewadi.
+    keywords: office hinjewadi commute
+    body: maza office Hinjewadi la ahe
+    evidence: maza office Hinjewadi la ahe
+    valid_from: "2026-03-01"
+    valid_until: "2026-09-20"
+    session: a1b2c3d40004
+  - id: m-0005
+    name: office moved to Baner
+    type: fact
+    subject: office
+    summary_en: The user's office moved to Baner.
+    keywords: office baner moved shift
+    body: office ata Baner la shift zala
+    evidence: office ata Baner la shift zala
+    valid_from: "2026-09-20"
+    session: a1b2c3d40005
+  - id: m-0006
+    name: white Swift car
+    type: fact
+    subject: car
+    summary_en: The user's car is a white Swift.
+    keywords: car white swift gaadi pandhri
+    body: mazi gaadi pandhri Swift ahe
+    evidence: mazi gaadi pandhri Swift ahe
+    valid_from: "2026-04-10"
+    session: a1b2c3d40006
+  - id: m-0007
+    name: Rohan birthday
+    type: fact
+    subject: rohan
+    summary_en: The user's friend Rohan's birthday is on 14 November.
+    keywords: rohan birthday november रोहन वाढदिवस
+    body: रोहनचा वाढदिवस १४ नोव्हेंबरला असतो
+    evidence: रोहनचा वाढदिवस १४ नोव्हेंबरला असतो
+    valid_from: "2026-08-01"
+    session: a1b2c3d40007
+  - id: m-0008
+    name: likes varan bhaat
+    type: preference
+    subject: food
+    summary_en: The user likes varan bhaat (dal and rice) in meals.
+    keywords: food dal rice meal वरण भात जेवण
+    body: मला जेवणात वरण भात आवडतो
+    evidence: मला जेवणात वरण भात आवडतो
+    valid_from: "2026-06-20"
+    session: a1b2c3d40008
+  - id: m-0009
+    name: brother's wedding
+    type: fact
+    subject: brother
+    summary_en: The user's brother's wedding is in December in Nashik.
+    keywords: brother wedding december nashik bhau lagna
+    body: mazya bhavacha lagna December madhe ahe, Nashik la
+    evidence: mazya bhavacha lagna December madhe ahe, Nashik la
+    valid_from: "2026-08-05"
+    session: a1b2c3d40009
+  - id: m-0010
+    name: morning gym
+    type: procedure
+    subject: gym
+    summary_en: The user goes to the gym every day at 6 am.
+    keywords: gym morning exercise routine
+    body: roj sakali 6 la gym la jato
+    evidence: roj sakali 6 la gym la jato
+    valid_from: "2026-05-01"
+    session: a1b2c3d40016
+  - id: m-0011
+    name: daughter's school
+    type: fact
+    subject: daughter
+    summary_en: The user's daughter studies at Saraswati Vidyalaya.
+    keywords: daughter school मुलगी शाळा
+    body: मुलीची शाळा सरस्वती विद्यालय आहे
+    evidence: मुलीची शाळा सरस्वती विद्यालय आहे
+    valid_from: "2026-06-10"
+    session: a1b2c3d40010
+  - id: m-0012
+    name: phone plan 299
+    type: fact
+    subject: phone
+    status: superseded
+    superseded_by: m-0013
+    summary_en: The user's mobile plan costs 299 rupees.
+    keywords: phone mobile plan recharge 299
+    body: maza phone cha plan 299 rupayancha ahe
+    evidence: maza phone cha plan 299 rupayancha ahe
+    valid_from: "2026-02-01"
+    valid_until: "2026-09-25"
+    session: a1b2c3d40011
+  - id: m-0013
+    name: phone plan 399
+    type: fact
+    subject: phone
+    summary_en: The user switched to a 399 rupee mobile plan.
+    keywords: phone mobile plan recharge 399 data
+    body: ata mi 399 cha plan ghetla, data jasta milto
+    evidence: ata mi 399 cha plan ghetla, data jasta milto
+    valid_from: "2026-09-25"
+    session: a1b2c3d40012
+  - id: m-0014
+    name: laptop bag in cupboard
+    type: fact
+    subject: laptop-bag
+    summary_en: The user kept the laptop bag in the cupboard.
+    keywords: laptop bag cupboard kapat
+    body: laptop bag kapatat thevli ahe
+    evidence: laptop bag kapatat thevli ahe
+    valid_from: "2026-10-02"
+    session: a1b2c3d40013
+
+sessions:   # time is local; messages are [role, text]
+  - id: a1b2c3d40001
+    time: "2026-06-02 10:00"
+    messages:
+      - [user, "माझी बहीण मीरा पुण्यात राहते, तिच्याकडे दिवाळीला जायचं आहे"]
+      - [assistant, "Noted, sir."]
+  - id: a1b2c3d40002
+    time: "2026-07-15 08:30"
+    messages:
+      - [user, "mala chaha bina sakhar avadto, lakshat theva"]
+      - [assistant, "Noted, sir."]
+  - id: a1b2c3d40003
+    time: "2026-05-20 21:00"
+    messages:
+      - [user, "Please keep your answers to me in short bullet points."]
+      - [assistant, "Understood, sir."]
+  - id: a1b2c3d40004
+    time: "2026-03-01 09:00"
+    messages:
+      - [user, "maza office Hinjewadi la ahe, roj ek taas lagto"]
+      - [assistant, "That is a long commute, sir."]
+  - id: a1b2c3d40005
+    time: "2026-09-20 19:00"
+    messages:
+      - [user, "office ata Baner la shift zala, jawal padta"]
+      - [assistant, "Good news, sir."]
+  - id: a1b2c3d40006
+    time: "2026-04-10 18:00"
+    messages:
+      - [user, "mazi gaadi pandhri Swift ahe"]
+  - id: a1b2c3d40007
+    time: "2026-08-01 12:00"
+    messages:
+      - [user, "रोहनचा वाढदिवस १४ नोव्हेंबरला असतो"]
+  - id: a1b2c3d40008
+    time: "2026-06-20 13:30"
+    messages:
+      - [user, "मला जेवणात वरण भात आवडतो"]
+  - id: a1b2c3d40009
+    time: "2026-08-05 20:00"
+    messages:
+      - [user, "mazya bhavacha lagna December madhe ahe, Nashik la"]
+      - [assistant, "Congratulations to your brother, sir."]
+  - id: a1b2c3d40010
+    time: "2026-06-10 07:45"
+    messages:
+      - [user, "मुलीची शाळा सरस्वती विद्यालय आहे"]
+  - id: a1b2c3d40011
+    time: "2026-02-01 11:00"
+    messages:
+      - [user, "maza phone cha plan 299 rupayancha ahe"]
+  - id: a1b2c3d40012
+    time: "2026-09-25 17:00"
+    messages:
+      - [user, "ata mi 399 cha plan ghetla, data jasta milto"]
+  - id: a1b2c3d40013
+    time: "2026-10-02 22:00"
+    messages:
+      - [user, "laptop bag kapatat thevli ahe"]
+  - id: a1b2c3d40014
+    time: "2026-09-12 16:00"
+    messages:
+      - [user, "aaj 3 pustaka ghetli Akshar book stall madhun"]
+      - [assistant, "Happy reading, sir."]
+  - id: a1b2c3d40015
+    time: "2026-09-27 16:00"
+    messages:
+      - [user, "आज २ पुस्तकं घेतली, एक कादंबरी आणि एक कवितासंग्रह"]
+  - id: a1b2c3d40016
+    time: "2026-05-01 06:30"
+    messages:
+      - [user, "roj sakali 6 la gym la jato"]
+  - id: a1b2c3d40017
+    time: "2026-06-15 07:30"
+    messages:
+      - [user, "gym madhe aaj leg day hota, khup thaklo"]
+  - id: a1b2c3d40018
+    time: "2026-07-20 07:30"
+    messages:
+      - [user, "gym cha trainer badalla, navin trainer Sagar ahe"]
+  - id: a1b2c3d40019
+    time: "2026-08-18 07:30"
+    messages:
+      - [user, "gym la 3 divas gelo nahi, paus hota"]
+  - id: a1b2c3d40020
+    time: "2026-09-08 07:30"
+    messages:
+      - [user, "gym madhe aaj deadlift 80 kilo kela"]
+  - id: a1b2c3d40021
+    time: "2026-10-01 07:30"
+    messages:
+      - [user, "gym madhe aaj pahilyanda 100 kilo deadlift kela"]
+  - id: a1b2c3d40022
+    time: "2026-10-09 08:00"
+    messages:
+      - [user, "आज जिमला गेलो नाही, सकाळी उशिरा उठलो"]
+  - id: a1b2c3d40023
+    time: "2026-08-25 07:30"
+    messages:
+      - [user, "gym chi fee 1500 rupaye mahina ahe"]
+  - id: a1b2c3d40024
+    time: "2026-09-02 07:30"
+    messages:
+      - [user, "gym madhe navin treadmill ala"]
+
+questions:
+  # ---- single-fact ----
+  - id: sf-1
+    category: single-fact
+    script: roman
+    query: majhi bahin kuthe rahate?
+    evidence: [[m-0001, a1b2c3d40001]]
+    answer: {contains_any: [Pune, पुण, pune]}
+  - id: sf-2
+    category: single-fact
+    script: en
+    query: Where does my sister live?
+    evidence: [[m-0001, a1b2c3d40001]]
+    answer: {contains_any: [Pune, पुण]}
+  - id: sf-3
+    category: single-fact
+    script: dev
+    query: माझी गाडी कोणती आहे?
+    evidence: [[m-0006, a1b2c3d40006]]
+    answer: {contains_any: [Swift, स्विफ्ट]}
+  - id: sf-4
+    category: single-fact
+    script: roman
+    query: rohan cha vadhdivas kadhi asto?
+    evidence: [[m-0007, a1b2c3d40007]]
+    answer: {contains_any: ["14", "१४"]}
+  - id: sf-5
+    category: single-fact
+    script: roman
+    query: mulichi shala konti?
+    evidence: [[m-0011, a1b2c3d40010]]
+    answer: {contains_any: [Saraswati, सरस्वती]}
+  - id: sf-6
+    category: single-fact
+    script: en
+    query: When is my brother's wedding?
+    evidence: [[m-0009, a1b2c3d40009]]
+    answer: {contains_any: [December, डिसेंबर]}
+  - id: sf-7
+    category: single-fact
+    script: dev
+    query: भावाचं लग्न कुठे आहे?
+    evidence: [[m-0009, a1b2c3d40009]]
+    answer: {contains_any: [Nashik, नाशिक]}
+
+  # ---- preference ----
+  - id: pr-1
+    category: preference
+    script: dev
+    query: मला चहा कसा आवडतो?
+    evidence: [[m-0002, a1b2c3d40002]]
+    answer: {contains_any: [sugar, साखर, sakhar]}
+  - id: pr-2
+    category: preference
+    script: en
+    query: How do I take my tea?
+    evidence: [[m-0002, a1b2c3d40002]]
+    answer: {contains_any: [sugar, साखर, sakhar]}
+  - id: pr-3
+    category: preference
+    script: roman
+    query: mala jevanat kay avadta?
+    evidence: [[m-0008, a1b2c3d40008]]
+    answer: {contains_any: [varan, वरण, dal]}
+  - id: pr-4
+    category: preference
+    script: en
+    query: How should you format your answers for me?
+    evidence: [[m-0003, a1b2c3d40003]]
+    answer: {contains_any: [bullet, short, point]}
+  - id: pr-5
+    category: preference
+    script: dev
+    query: मला उत्तरं कशी हवी असतात?
+    evidence: [[m-0003, a1b2c3d40003]]
+    note: cross-language (Marathi question, English memory); lexical search is not expected to find it
+    answer: {contains_any: [bullet, short, point, मुद्द]}
+
+  # ---- knowledge update (supersede) ----
+  - id: ku-1
+    category: knowledge-update
+    script: roman
+    query: majha office kuthe ahe?
+    evidence: [[m-0005, a1b2c3d40005]]
+    stale: [m-0004, a1b2c3d40004]
+    answer: {contains_any: [Baner, बाणेर], not_contains: [Hinjewadi, हिंजवडी]}
+    stale_values: [Hinjewadi, हिंजवडी]
+  - id: ku-2
+    category: knowledge-update
+    script: dev
+    query: माझं ऑफिस आता कुठे आहे?
+    evidence: [[m-0005, a1b2c3d40005]]
+    stale: [m-0004, a1b2c3d40004]
+    answer: {contains_any: [Baner, बाणेर], not_contains: [Hinjewadi, हिंजवडी]}
+    stale_values: [Hinjewadi, हिंजवडी]
+  - id: ku-3
+    category: knowledge-update
+    script: dev
+    query: माझा फोन प्लॅन किती रुपयांचा आहे?
+    evidence: [[m-0013, a1b2c3d40012]]
+    stale: [m-0012, a1b2c3d40011]
+    answer: {contains_any: ["399", "३९९"], not_contains: ["299"]}
+    stale_values: ["299", "२९९"]
+  - id: ku-4
+    category: knowledge-update
+    script: en
+    query: Which mobile plan am I on now?
+    evidence: [[m-0013, a1b2c3d40012]]
+    stale: [m-0012, a1b2c3d40011]
+    answer: {contains_any: ["399", "३९९"], not_contains: ["299"]}
+    stale_values: ["299", "२९९"]
+
+  # ---- multi-session ----
+  - id: ms-1
+    category: multi-session
+    script: roman
+    query: mi ekun kiti pustaka ghetli?
+    evidence: [[a1b2c3d40014], [a1b2c3d40015]]
+    answer: {contains_any: ["5", "५", five, pach]}
+  - id: ms-2
+    category: multi-session
+    script: en
+    query: When is Rohan's birthday and where does my sister live?
+    evidence: [[m-0007, a1b2c3d40007], [m-0001, a1b2c3d40001]]
+    answer: {contains_any: [Pune, पुण]}
+  - id: ms-3
+    category: multi-session
+    script: dev
+    query: माझी गाडी कोणती आणि ऑफिस कुठे आहे?
+    evidence: [[m-0006, a1b2c3d40006], [m-0005, a1b2c3d40005]]
+    stale: [m-0004, a1b2c3d40004]
+    answer: {contains_any: [Baner, बाणेर], not_contains: [Hinjewadi, हिंजवडी]}
+    stale_values: [Hinjewadi, हिंजवडी]
+
+  # ---- temporal ----
+  - id: tm-1
+    category: temporal
+    script: roman
+    query: gelya athavdyat gym madhe kiti deadlift kela?
+    evidence: [[a1b2c3d40021]]
+    answer: {contains_any: ["100", "१००"], not_contains: ["80 kilo"]}
+  - id: tm-2
+    category: temporal
+    script: en
+    query: What did I tell you about the gym last month?
+    evidence: [[a1b2c3d40020, a1b2c3d40024]]
+    answer: {contains_any: ["80", treadmill]}
+  - id: tm-3
+    category: temporal
+    script: roman
+    query: kal mi gym baddal kay sangitla?
+    evidence: [[a1b2c3d40022]]
+    answer: {contains_any: [late, उशिरा, ushira, not go, didn't go, गेलो नाही]}
+  - id: tm-4
+    category: temporal
+    script: dev
+    query: मागच्या महिन्यात मी किती पुस्तकं घेतली?
+    evidence: [[a1b2c3d40014], [a1b2c3d40015]]
+    answer: {contains_any: ["5", "५", five, pach]}
+  - id: tm-5
+    category: temporal
+    script: en
+    query: Where did I keep my laptop bag last week?
+    evidence: [[m-0014, a1b2c3d40013]]
+    answer: {contains_any: [cupboard, kapat, कपाट]}
+  - id: tm-6
+    category: temporal
+    script: roman
+    query: gelya mahinyat gym chi kahi navin goshta?
+    evidence: [[a1b2c3d40024, a1b2c3d40020]]
+    answer: {contains_any: [treadmill, "80"]}
+
+  # ---- unanswerable (abstention) ----
+  - id: un-1
+    category: unanswerable
+    script: en
+    query: What is my sister's phone number?
+    evidence: []
+  - id: un-2
+    category: unanswerable
+    script: roman
+    query: mazya aai che vay kiti ahe?
+    evidence: []
+  - id: un-3
+    category: unanswerable
+    script: dev
+    query: मी मागच्या वर्षी कुठे फिरायला गेलो होतो?
+    evidence: []
+  - id: un-4
+    category: unanswerable
+    script: en
+    query: What colour is my bicycle?
+    evidence: []

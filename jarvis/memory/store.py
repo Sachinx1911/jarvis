@@ -4,32 +4,47 @@ Search (PLAN.md 6.4): FTS5 unicode61 (whole words, Devanagari too) + FTS5 trigra
 (misspellings), merged with reciprocal rank fusion, active memories only, a minimum
 match gate (0 to k results, not always k) and a small recency boost.
 Vector search is deferred (decided 2026-10-10).
+
+Retrieval improvements (research 2026-10-10, topic 4), each switchable for the memory eval:
+- script_forms: the index also holds a canonical romanized key of every word, and the query
+  is expanded the same way, so Devanagari and romanized Marathi match each other
+  (jarvis.memory.translit). It also fixes Devanagari word search: FTS5 unicode61 splits
+  Devanagari words at every vowel sign, the romanized key is one whole word.
+- time_aware: a date range in the question (jarvis.memory.timefilter) adds a ranked list of
+  the matching memories saved in that range to the rank fusion; the time words themselves
+  are not used as search words.
 """
 
 from __future__ import annotations
 
 import json
 import math
-import re
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
 from jarvis.db import Store
 from jarvis.memory.model import TYPE_DIRS, Memory, slugify
+from jarvis.memory.timefilter import DateRange, extract_range
+from jarvis.memory.translit import canonical_roman, expand_words, index_variants, words as _tokens
 from jarvis.privacy import find_p3
 
 RRF_K = 60
 MIN_TRIGRAM_COVERAGE = 0.5   # fuzzy-only hits must share half of a query word's trigrams
 MEMORY_INDEX_MAX_LINES = 200
+AUTO = "auto"
 
 # Very common words that carry no meaning for search (English + romanized Marathi).
-STOPWORDS = {
+_STOP_RAW = {
     "the", "a", "an", "is", "are", "was", "to", "of", "and", "or", "in", "on", "for", "my", "me", "i",
     "you", "it", "what", "how", "do", "does", "please", "jarvis", "sir",
     "ahe", "aahe", "ahes", "kay", "ka", "mi", "maza", "majha", "mazi", "tu", "la", "na", "ani", "pan",
     "he", "te", "ha", "ti", "kasa", "kashi", "sang", "sanga",
+    # question and reporting words that every memory question carries
+    "did", "tell", "told", "say", "said", "about", "which", "when", "where", "who", "your",
+    "madhe", "madhye", "kuthe", "kevha", "kadhi", "sangitla", "sangitle", "sangitli", "hota", "hoti", "hote",
 }
+STOPWORDS = _STOP_RAW | {canonical_roman(w) for w in _STOP_RAW}
 
 
 class MemoryRejected(ValueError):
@@ -43,7 +58,8 @@ class SearchHit:
 
 
 def _words(text: str) -> list[str]:
-    return [w for w in re.findall(r"\w+", text.lower(), re.UNICODE) if w not in STOPWORDS]
+    """Search words: Devanagari words kept whole (not split at vowel signs), stopwords out."""
+    return [w for w in _tokens(text) if w not in STOPWORDS]
 
 
 def _trigrams(word: str) -> set[str]:
@@ -55,10 +71,12 @@ def _quote(term: str) -> str:
 
 
 class MemoryStore:
-    def __init__(self, home: Path, store: Store):
+    def __init__(self, home: Path, store: Store, script_forms: bool = True, time_aware: bool = True):
         self.root = home / "memory"
         self.store = store
         self.db = store.conn
+        self.script_forms = script_forms   # romanized keys in the index and the query (translit)
+        self.time_aware = time_aware       # date ranges in questions boost memories saved then
         for sub in TYPE_DIRS.values():
             (self.root / sub).mkdir(parents=True, exist_ok=True)
 
@@ -100,6 +118,9 @@ class MemoryStore:
             (mem.id, str(path), mem.type, mem.status, mem.name, mem.subject, mem.scope, mem.sensitivity, mem.valid_from),
         )
         text = mem.search_text().lower()
+        if self.script_forms:
+            extra = index_variants(text)
+            text = f"{text}\n{extra}" if extra else text
         self.db.execute("INSERT INTO memory_words (id, text) VALUES (?, ?)", (mem.id, text))
         self.db.execute("INSERT INTO memory_trigrams (id, text) VALUES (?, ?)", (mem.id, text))
         self.db.commit()
@@ -199,11 +220,28 @@ class MemoryStore:
 
     # ---- search ----
 
-    def search(self, query: str, k: int = 5, include_sensitive: bool = True, scope: str | None = None) -> list[SearchHit]:
-        """scope (e.g. "project:laptop"): memories in that scope rank first (PLAN.md 7)."""
+    def query_words(self, query: str, time_range: DateRange | None = None) -> list[str]:
+        """The search words of a query: stopwords and time words out, other-script keys in."""
         words = _words(query)
+        if time_range is not None:
+            words = [w for w in words if w not in time_range.words]
+        if self.script_forms:
+            words = expand_words(words, STOPWORDS)
+        return words
+
+    def resolve_range(self, query: str, time_range: DateRange | str | None, today: date | None = None) -> DateRange | None:
+        if time_range == AUTO:
+            return extract_range(query, today or date.today()) if self.time_aware else None
+        return time_range if self.time_aware else None  # type: ignore[return-value]
+
+    def search(self, query: str, k: int = 5, include_sensitive: bool = True, scope: str | None = None,
+               time_range: DateRange | str | None = AUTO, today: date | None = None) -> list[SearchHit]:
+        """scope (e.g. "project:laptop"): memories in that scope rank first (PLAN.md 7).
+        time_range: AUTO reads it from the query; a DateRange is used as given; None turns it off."""
+        rng = self.resolve_range(query, time_range, today)
+        words = self.query_words(query, rng)
         if not words:
-            return []
+            return self._in_range(rng, k, include_sensitive) if rng else []
         ranked: dict[str, float] = {}
 
         word_rows = self.db.execute(
@@ -229,6 +267,17 @@ class MemoryStore:
                 ranked[mid] = ranked.get(mid, 0.0) + 1.0 / (RRF_K + rank + 1)
                 rank += 1
 
+        if rng and ranked:
+            # Time-aware list: the matches saved inside the asked period, in their current order,
+            # fused like the other lists (a boost, not a filter).
+            marks = ",".join("?" * len(ranked))
+            dates = dict(self.db.execute(f"SELECT id, valid_from FROM memory_index WHERE id IN ({marks})",
+                                         list(ranked)).fetchall())
+            in_range = [mid for mid in sorted(ranked, key=ranked.get, reverse=True)  # type: ignore[arg-type]
+                        if rng.contains_iso(dates.get(mid) or "")]
+            for rank, mid in enumerate(in_range):
+                ranked[mid] += 1.0 / (RRF_K + rank + 1)
+
         hits: list[SearchHit] = []
         for mid, score in ranked.items():
             mem = self.get(mid)
@@ -238,6 +287,23 @@ class MemoryStore:
             hits.append(SearchHit(mem, score * self._recency(mem) * boost))
         hits.sort(key=lambda h: h.score, reverse=True)
         return hits[:k]
+
+    def _in_range(self, rng: DateRange, k: int, include_sensitive: bool) -> list[SearchHit]:
+        """A question that names only a time ("what did I tell you last week"): the active
+        memories saved in that period, newest first."""
+        rows = self.db.execute(
+            "SELECT id, valid_from FROM memory_index WHERE status='active' ORDER BY valid_from DESC, id DESC").fetchall()
+        hits: list[SearchHit] = []
+        for mid, valid_from in rows:
+            if not rng.contains_iso(valid_from or ""):
+                continue
+            mem = self.get(mid)
+            if not mem or (not include_sensitive and mem.sensitivity in ("sensitive", "secret")):
+                continue
+            hits.append(SearchHit(mem, 1.0 / (RRF_K + len(hits) + 1)))
+            if len(hits) >= k:
+                break
+        return hits
 
     @staticmethod
     def _fuzzy_match(words: list[str], text: str) -> bool:
