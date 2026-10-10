@@ -11,10 +11,10 @@ from jarvis.paths import CONFIG_DIR
 
 DEFAULTS: dict[str, Any] = {
     "stt": {"engine": "faster_whisper", "model": "small", "device": "cpu", "compute_type": "int8",
-            "language": "auto", "min_confidence": 0.45, "marathi_engine": "none"},
+            "language": "auto", "min_confidence": 0.45, "marathi_engine": "indicconformer"},
     "tts": {"engine": "auto", "voice": "", "rate": 0,
-            "marathi": {"cloud_enabled": False, "engine": "edge_tts", "voice": "mr-IN-ManoharNeural",
-                        "max_privacy": "P1"}},
+            "marathi": {"offline_engine": "mms_tts", "cloud_enabled": False, "engine": "edge_tts",
+                        "voice": "mr-IN-ManoharNeural", "max_privacy": "P1"}},
     "recorder": {"sample_rate": 16000, "device": None, "max_seconds": 30},
     "barge_in": "key",
     "vad": {"threshold_rms": 900, "min_speech_ms": 240, "end_silence_ms": 900},

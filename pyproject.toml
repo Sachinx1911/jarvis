@@ -26,7 +26,9 @@ dependencies = [
 dev = ["pytest>=8", "httpx>=0.28"]  # httpx: FastAPI TestClient
 # Voice (Phase 6). sounddevice: push-to-talk recording, ships PortAudio, no numpy needed.
 # faster-whisper: local speech-to-text (CTranslate2, no torch); its model is downloaded by `jarvis voice setup`.
-voice = ["sounddevice>=0.5.6", "faster-whisper>=1.2.1"]
+# onnx-asr (4 MB, MIT): runs the Marathi IndicConformer model on numpy + onnxruntime (both come with
+# faster-whisper). The offline Marathi voice also runs on onnxruntime: no extra package.
+voice = ["sounddevice>=0.5.6", "faster-whisper>=1.2.1", "onnx-asr>=0.12.0"]
 voice-cloud = ["edge-tts>=7.2.8"]   # optional Marathi cloud voice, off by default
 wakeword = ["openwakeword==0.6.0"]  # optional "hey jarvis", off by default
 # Google Calendar + Gmail connectors (Phase 5): official API client and installed-app OAuth.

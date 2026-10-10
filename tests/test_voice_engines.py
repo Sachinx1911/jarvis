@@ -15,7 +15,7 @@ from jarvis.voice import stt as stt_mod
 from jarvis.voice.base import Audio, Transcript, VoiceUnavailable, rms
 from jarvis.voice.config import DEFAULTS, load_voice_config
 from jarvis.voice.recorder import FakeRecorder, FakeSoundDevice, SoundDeviceRecorder, list_devices
-from jarvis.voice.stt import FakeSTT, FasterWhisperSTT, IndicSTT, language_hint, make_stt, transcript_from_segments
+from jarvis.voice.stt import FakeSTT, FasterWhisperSTT, language_hint, make_stt, transcript_from_segments
 from jarvis.voice.tts import (
     EdgeTTS,
     FakePlayback,
@@ -97,8 +97,6 @@ def test_stt_selection_and_hints(tmp_path):
         make_stt({"stt": {"engine": "nope"}}, tmp_path)
     assert language_hint({"stt": {"language": "auto"}}) is None
     assert language_hint({"stt": {"language": "mr"}}) == "mr"
-    with pytest.raises(VoiceUnavailable, match="Marathi"):
-        IndicSTT().transcribe(Audio(b""))
 
 
 def test_default_config_is_safe():
