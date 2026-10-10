@@ -401,9 +401,10 @@ def test_usage_agents_settings_schedules(client):
     assert a["by_route"][0]["route"] == "main_chat"
     s = client.get("/api/settings", headers=H).json()
     assert s["stop"]["engaged"] is False and "main_chat" in [r["route"] for r in s["routes"]]
-    assert s["cloud"]["switch"]["installed"] is False
+    sw = s["cloud"]["switch"]  # wired to jarvis/web/hooks.py since all phases are merged
+    assert sw["installed"] is True and sw["wired"] is True and sw["source"] == "config"
     sch = client.get("/api/schedules", headers=H).json()
-    assert sch["installed"] is False and "not installed" in sch["detail"]
+    assert sch["installed"] is True and sch["wired"] is True and sch["items"] == []
 
 
 def test_root_without_build_explains(client):

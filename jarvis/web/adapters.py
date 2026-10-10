@@ -14,13 +14,14 @@ import importlib.util
 from typing import Any, Callable
 
 # Dashboard tab -> (module, hook function inside that module)
+# All phases are merged; their dashboard data lives in jarvis/web/hooks.py.
 HOOKS: dict[str, tuple[str, str]] = {
-    "schedules": ("jarvis.proactive", "dashboard_schedules"),
-    "telegram": ("jarvis.telegram", "dashboard_status"),
-    "connectors": ("jarvis.connectors", "dashboard_connectors"),
-    "documents": ("jarvis.docs", "dashboard_documents"),
-    "voice": ("jarvis.voice", "dashboard_status"),
-    "cloud": ("jarvis.control.cloud", "dashboard_cloud"),
+    "schedules": ("jarvis.web.hooks", "schedules"),
+    "telegram": ("jarvis.web.hooks", "telegram"),
+    "connectors": ("jarvis.web.hooks", "connectors"),
+    "documents": ("jarvis.web.hooks", "documents"),
+    "voice": ("jarvis.web.hooks", "voice"),
+    "cloud": ("jarvis.web.hooks", "cloud"),
 }
 
 
