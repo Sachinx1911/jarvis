@@ -12,7 +12,7 @@ Ending a session: update this file and commit.
 - **Half-done work (handoff 2026-10-10, office laptop -> home):**
   - On `main` and tested (902 pass): everything through Phases 0–8, research fixes (prompt-injection hardening, price tiers, memory retrieval), one-click app, event triggers, approval previews + grouped and standing approvals + memory sources/trash + "why" panel.
   - Stopped mid-work, saved on branches (pushed, NOT merged, not tested): `wip/india-features` (AMFI NAV, IMD/Sachet feeds, bills tracker, document wallet, UPI link; tests partly written) and `wip/verify-repeat` (verify-after-act, `/repeat`). Resume each: check out the branch, run the whole suite, finish the brief in this file's "Next step", then merge.
-  - Not started yet: global daily cap for unattended work, nightly review into `memory/episodes/`, backups (from the Hermes masterclass review).
+  - Done later on the Mac (2026-10-10): global daily cap, nightly review, backups, India features, verify/repeat, dashboard India tab and triggers.
 - **Last update:** 2026-10-10, home MacBook (Apple M4, macOS 26.5, Python 3.13): pulled, set up `.venv`, full offline suite 902 passed after 3 Mac-portability fixes.
 - **GitHub:** `main` pushed on 2026-10-10 from the home MacBook (all Mac merges, fixes and Fable results) with Sachin's OK. The old branches `wip/india-features` and `wip/verify-repeat` on GitHub are merged and can be deleted.
 
@@ -48,6 +48,27 @@ Ending a session: update this file and commit.
 - Live suites with `JARVIS_TEST_MODEL=claude-fable-5-1`: greeting PASS, memory test 10/10, tools 10/10 with injection blocked and 0 T4 runs, demo -> skill PASS (API-key test skipped: no key, by decision).
 - Eval suite: 12/12 (Marathi/English, memory, structured output, tool calling).
 - Laptop compare team task on Fable: FAILED twice (first $5 budget hit; then 3 rounds, 62 calls, $11.65 notional): no price could be confirmed on an Indian retailer page. Research shows Amazon/Flipkart terms forbid automated price collection, so the verifier needs source tiers (see Next step).
+
+## Not built yet (as of 2026-10-10)
+
+Can be built now (no decision or download needed):
+- Office files: create Word (.docx) and Excel (.xlsx) reports, simple data analysis and charts (skills #6, #13). Needs openpyxl (and a chart library) as new dependencies.
+- Missed-run alerts: a notification when a schedule run is missed or skipped (today it is only recorded).
+- Dashboard: `/repeat` drafts, creating/deleting triggers (draft then confirm), adding a UPI payee with an explicit "I checked this ID" step (decision).
+- Apple Notes connector (AppleScript), Mac only.
+
+Need Sachin's OK for a download or a decision first:
+- Marathi speech-to-text (IndicConformer or IndicWhisper, local; today only a placeholder) and the English Whisper model download.
+- Backup encryption (new dependency or an external tool) and the final backup location (#10).
+- Signed Mac `.app` started by a LaunchAgent (stable macOS permissions).
+- Stage B: local model runtime + local adapter + migration evals on this Mac.
+
+Blocked by the "no P2 to the cloud" rule until a category is enabled or a local model is ready:
+- Screen understanding on request (screenshots are P2).
+- Telegram photo/receipt input, OCR of scanned PDFs, magic search across photos/files.
+- Meeting/lecture notes (recording, transcript, summary).
+
+Only if devices exist: smart home control.
 
 ## Waiting for Sachin
 
