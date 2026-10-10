@@ -2,14 +2,14 @@
 # Machine-specific changes go in config/local.yaml under tasks_file.
 
 budget:                 # per task, all agents together
-  max_model_calls: 60
+  max_model_calls: 90
   max_tokens: 6000000   # input (including cached prompt reads) + output; notional USD is the real cost cap
-  max_notional_usd: 3.0 # what the calls would cost at API prices (subscription is not billed per call)
+  max_notional_usd: 5.0 # what the calls would cost at API prices (subscription is not billed per call)
   max_steps_per_agent: 12  # researchers need room to open store pages and look up missing specs
 
 team:
   max_parallel_researchers: 3
-  max_revisions: 1      # one fix round: a follow-up researcher finds missing facts, then the writer revises
+  max_revisions: 2      # fix rounds: a follow-up researcher finds missing facts, then the writer revises (live runs: round 2 fixed 3 of 4 failing criteria)
 
 # Worker model profiles. "Sachin's decision, test both" (PLAN.md 16): run a task with
 # --workers opus or --workers sonnet and compare. The default is used when no flag is given.
