@@ -1003,12 +1003,12 @@ routes:
 | Memory | Markdown + SQLite (FTS5 + numpy vectors) | No server, editable, no extensions |
 | Embeddings | multilingual-e5-small | Small, MIT, swap after testing |
 | Skills | SKILL.md standard | Open standard |
-| Scheduler | APScheduler | Heartbeat, brief, schedules |
+| Scheduler | APScheduler 3.x (`jarvis daemon`) | Heartbeat, brief, schedules |
 | Phone | python-telegram-bot | Long-polling |
 | Mac control | pyobjc, osascript, screencapture | Native |
 | Secrets | keyring: Keychain on macOS, Credential Manager on Windows | Safer than .env |
-| Voice | openWakeWord, Whisper, say, edge-tts | See Voice |
-| Dashboard | FastAPI + Next.js | Node installed |
+| Voice | faster-whisper (local STT), System.Speech (Windows) / say (macOS), edge-tts optional and off, openWakeWord optional and off | Chosen 2026-10-10; see PROGRESS.md decisions |
+| Dashboard | FastAPI + Next.js static export, 127.0.0.1 + token | Node installed |
 | Browser automation | Playwright Chromium, isolated profiles | Phase 8 |
 
 **Dropped:** PostgreSQL, pgvector, Redis, n8n, users/roles/login, Zapier, Higgsfield, WhatsApp, 15 separate agents, 14 tabs, the Claude Agent SDK as the core loop (possible later as an isolated extra).
@@ -1032,6 +1032,8 @@ routes:
 | **8. Extras** | Coder/Operator agents, magic search, meeting notes, Playwright with isolated profiles, browser step recording, OCR, smart home, signed .app | As needed |
 
 Stages C (local-first) and D (fully local) start only after Stage B results and Sachin's approval. See "Migration roadmap".
+
+**Build status (2026-10-10):** Phases 0–8 are built and merged; live checks and items waiting for Sachin are tracked in PROGRESS.md. Stage B (local models) has not started.
 
 ---
 
