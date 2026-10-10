@@ -29,6 +29,7 @@ Ending a session: update this file and commit.
 | 2026-10-10 | Code repo: https://github.com/Sachinx1911/jarvis (public) |
 | 2026-10-10 | Work spans several laptops and Claude accounts; the repo is the source of truth |
 | 2026-10-10 | Files are written in English; Claude talks to Sachin in Marathi in chat |
+| 2026-10-10 | Research Sachin brings from ChatGPT is verified and checked for usefulness before anything is added. Claude reports blockers instead of guessing |
 
 ## Open decisions
 

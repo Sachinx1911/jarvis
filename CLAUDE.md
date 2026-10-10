@@ -26,7 +26,8 @@ Work runs over many days. It stops and resumes, sometimes on this MacBook, somet
 ## Working rules
 - Plan before build. Work one phase at a time, and start a phase only after he says "Start Phase X".
 - After each phase: run the tests, report what changed and what failed, then stop.
-- Treat docs, videos or blueprints he shares as reference material to verify, not as the spec.
+- Sachin often brings research from ChatGPT, as well as docs, videos or blueprints. Treat it as input to verify, never as the spec. Check each claim against official docs, live sources or his machine, check that it is useful for Jarvis, and add only what passes. Never add something just because it was suggested. Tell him what was taken, what was dropped, and why.
+- If something blocks you or is unclear, tell Sachin instead of guessing.
 - Explain the reason before adding any new dependency.
 - Permissions, approvals, logs and tests are core features, not polish.
 - Never hide a failing test. Give the cause and the options.
