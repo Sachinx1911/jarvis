@@ -9,14 +9,13 @@ Ending a session: update this file and commit.
 - **Code:** None yet.
 - **Half-done work:** None.
 - **Last update:** 2026-10-10, MacBook (Apple M4)
-- **GitHub:** First commits exist locally. Not pushed yet; waiting for Sachin's OK because the repo is public.
+- **GitHub:** Pushed to `main` on 2026-10-10 with Sachin's OK.
 
 ## Next step
 
-1. **Sachin:** OK pushing to GitHub.
-2. **Sachin:** Get a Claude API key (Anthropic Console) and decide the monthly API budget.
-3. **Sachin:** Say "Start Phase 0".
-4. **Claude:** Show a short Phase 0 plan (see "Phases" in PLAN.md), then build.
+1. **Sachin:** Get a Claude API key (Anthropic Console) and decide the monthly API budget.
+2. **Sachin:** Say "Start Phase 0".
+3. **Claude:** Show a short Phase 0 plan (see "Phases" in PLAN.md), then build.
 
 ## Decisions made by Sachin
 
@@ -43,4 +42,4 @@ See "Open decisions" in PLAN.md. Most important:
 | Date | Machine | What happened |
 |---|---|---|
 | 2026-10-09 | MacBook M4 | Online research, YouTube video, 2 blueprints, Mac check, 5 research agents, PLAN v1 to v3 |
-| 2026-10-10 | MacBook M4 | Vetted 8 suggestions (PLAN v3.1). Connected the repo. Created CLAUDE.md, PROGRESS.md, .gitignore. Switched all files to English (PLAN v3.2) |
+| 2026-10-10 | MacBook M4 | Vetted 8 suggestions (PLAN v3.1). Connected the repo. Created CLAUDE.md, PROGRESS.md, .gitignore. Switched all files to English (PLAN v3.2). Pushed to GitHub |
