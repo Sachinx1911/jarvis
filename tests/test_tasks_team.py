@@ -13,9 +13,12 @@ from jarvis.providers.base import LLMResponse, ToolCall, Usage
 from jarvis.providers.fake import FakeProvider
 from jarvis.secrets import set_secret
 from jarvis.tasks.store import TaskStore, TransitionError
-from jarvis.tools.web import WebClient
+from jarvis.tools.web import TAVILY_EXTRACT_URL, WebClient
 
-SRC = "https://shop.example/laptop-a"
+SRC = "https://www.smartprix.com/laptops/example-laptop-a"  # aggregator: estimate
+AMZ = "https://www.amazon.in/dp/B0EXAMPLE1"  # check yourself
+STORE = "https://www.croma.com/example-laptop-b/p/100002"  # official store page
+ROW_A = f"| Laptop A | Rs 75,000 | estimate (aggregator) | {SRC} | check yourself: {AMZ} |"
 
 
 class RoleFake(FakeProvider):
@@ -24,7 +27,7 @@ class RoleFake(FakeProvider):
     def __init__(self, role, report_text=None, verdicts=None):
         super().__init__()
         self.role = role
-        self.report_text = report_text or [f"# Compare\n| Laptop A | Rs 75,000 | {SRC} |\nRecommendation: Laptop A."]
+        self.report_text = report_text or [f"# Compare\n{ROW_A}\nRecommendation: Laptop A."]
         self.verdicts = verdicts or [{"passed": True, "checks": [{"criterion": "3 laptops", "passed": True}], "problems": []}]
         self.writes = 0
         self.checks = 0
@@ -36,7 +39,8 @@ class RoleFake(FakeProvider):
         calls, text = [], ""
         if self.role == "researcher":
             if after_tool:
-                text = f"FINDINGS:\n- Laptop A costs Rs 75,000\nSOURCES:\n- Shop - {SRC}\nGAPS: none"
+                text = (f"FINDINGS:\n- Laptop A Rs 75,000 estimate (aggregator)\nSOURCES:\n- Smartprix - {SRC}\n"
+                        f"- Amazon - {AMZ}\nGAPS: none")
             else:
                 calls = [ToolCall("c1", "web_search", {"query": "laptop under 80000"})]
         elif self.role == "writer":
@@ -68,8 +72,16 @@ PLAN_TEAM = {"title": "Laptop compare", "use_team": True,
 PLAN_SOLO = {**PLAN_TEAM, "use_team": False, "research": [], "solo_instructions": "Answer directly"}
 
 
+STORE_PAGE = "# Laptop B 14\nMenu Filters\nLaptop B 14 (i5, 16GB)\nOffer price: \u20b972,490\n"
+
+
 def _transport(method, url, headers, body):
-    return 200, json.dumps({"results": [{"title": "Shop", "url": SRC, "content": "Laptop A Rs 75,000"}]}).encode()
+    if url == TAVILY_EXTRACT_URL:
+        target = json.loads(body)["urls"][0]
+        return 200, json.dumps({"results": [{"url": target, "raw_content": STORE_PAGE}], "failed_results": []}).encode()
+    return 200, json.dumps({"results": [{"title": "Smartprix", "url": SRC, "content": "Laptop A Rs 75,000"},
+                                        {"title": "Amazon", "url": AMZ, "content": "Laptop A"},
+                                        {"title": "Croma", "url": STORE, "content": "Laptop B 14"}]}).encode()
 
 
 @pytest.fixture
@@ -130,7 +142,7 @@ def test_team_task_completes_with_receipt_and_project_output(env):
 def test_ungrounded_link_triggers_one_revision(env):
     writer = RoleFake("writer", report_text=[
         "# Compare\nLaptop A Rs 75,000 https://made-up.example/x\nRecommendation: A.",
-        f"# Compare\nLaptop A Rs 75,000 {SRC}\nRecommendation: A."])
+        f"# Compare\n{ROW_A}\nRecommendation: A."])
     runner, ts, _ = _runner(env, PLAN_TEAM, roles={"writer": writer})
     t = ts.create("Compare laptops")
     assert runner.run(t.id).state == "COMPLETED"
@@ -169,7 +181,7 @@ def test_emergency_stop_pauses_and_resume_skips_finished_stages(env):
     StopSwitch(home / "data").release()
     # Simulate a crash after research: checkpoint has research, state RUNNING.
     ts.set_state(t.id, "PLANNED")
-    ts.update(t.id, plan=PLAN_TEAM, checkpoint={"research": [f"FINDINGS: A {SRC}"]})
+    ts.update(t.id, plan=PLAN_TEAM, checkpoint={"research": [f"FINDINGS: A {SRC} {AMZ}"]})
     runner2, _, providers2 = _runner(env, PLAN_TEAM)
     assert runner2.run(t.id).state == "COMPLETED"
     assert providers2["researcher"].requests == []  # research was not repeated
@@ -253,3 +265,87 @@ def test_code_mode_fails_without_passing_tests(env):
     t = ts.create("Write a hello function")
     done = runner.run(t.id)
     assert done.state == "FAILED" and "tests were not run" in done.last_error
+
+
+# ---- source tiers for prices (confirmed store page / labelled estimate / check yourself) ----
+
+class PriceResearcher(RoleFake):
+    """Searches, reads the Croma page with web_extract, then reports both laptops."""
+
+    def generate(self, req):
+        self.requests.append(req)
+        tools_done = sum(1 for m in req.messages if m.role == "tool")
+        if tools_done == 0:
+            calls = [ToolCall("s1", "web_search", {"query": "laptops under 80000"})]
+        elif tools_done == 1:
+            calls = [ToolCall("e1", "web_extract", {"url": STORE, "question": "price?", "product": "Laptop B 14"})]
+        else:
+            calls = []
+        text = "" if calls else (f"FINDINGS:\n- Laptop A estimate (aggregator) Rs 75,000 {SRC}; check yourself {AMZ}\n"
+                                 f"- Laptop B confirmed (store page) Rs 72,490 {STORE}\nGAPS: none")
+        return LLMResponse(text, calls, "tool_use" if calls else "end", Usage(1000, 200), "fake", req.model, 0,
+                           cost_usd=None, adapter_state={"notional_usd": 0.01})
+
+
+@pytest.fixture
+def with_extract(monkeypatch):
+    """Register web_extract next to the catalog tools (the lead wires it into the catalog)."""
+    from jarvis.tools import catalog
+    from jarvis.tools.extract_tool import make_web_extract_tool
+
+    def build(reg, deps):
+        catalog.build_registry(reg, deps)
+        reg.register(make_web_extract_tool(deps))
+        return reg
+
+    monkeypatch.setattr("jarvis.agents.team.build_registry", build)
+
+
+def _price_report(b_label):
+    from jarvis.agents.sources import today
+    return (f"# Compare\n| Laptop | Price | Price status | Links |\n|---|---|---|---|\n{ROW_A}\n"
+            f"| Laptop B | Rs 72,490 | {b_label.format(day=today())} | {STORE} |\nRecommendation: Laptop B.")
+
+
+def test_price_task_passes_with_confirmed_and_labelled_estimate(env, with_extract):
+    writer = RoleFake("writer", report_text=[_price_report("confirmed (store page, {day})")])
+    runner, ts, providers = _runner(env, PLAN_TEAM, roles={"researcher": PriceResearcher("researcher"),
+                                                            "writer": writer})
+    t = ts.create("Compare 3 laptops under Rs 80,000 with a source link for every price")
+    done = runner.run(t.id)
+    assert done.state == "COMPLETED", done.last_error
+    verify = [e["detail"] for e in ts.events(t.id) if e["kind"] == "verify"][0]
+    tier = [c for c in verify["checks"] if c["check"].startswith("every price row")][0]
+    assert tier["passed"] and tier["note"].startswith("2 price rows")
+    # Researchers, writer and checker were all told the price rules.
+    assert "PRICE RULES" in providers["researcher"].requests[0].messages[0].text_content()
+    assert "PRICE RULES" in providers["writer"].requests[0].messages[0].text_content()
+    checker_order = providers["checker"].requests[0].messages[0].text_content()
+    assert "PRICE RULES" in checker_order and "price-label check on 2 rows: passed" in checker_order
+
+
+def test_price_task_fails_when_estimate_is_presented_as_confirmed(env, with_extract):
+    from jarvis.agents.sources import today
+    fake_confirmed = ROW_A.replace("estimate (aggregator)", f"confirmed (store page, {today()})")
+    writer = RoleFake("writer", report_text=[f"# Compare\n{fake_confirmed}\nRecommendation: Laptop A."])
+    runner, ts, _ = _runner(env, PLAN_TEAM, roles={"researcher": PriceResearcher("researcher"), "writer": writer})
+    t = ts.create("Compare 3 laptops under Rs 80,000 with a source link for every price")
+    done = runner.run(t.id)
+    assert done.state == "FAILED"
+    assert "says confirmed but has no official store-page link" in done.last_error
+
+
+def test_store_price_without_evidence_cannot_be_confirmed(env):
+    # No web_extract in this run: the Croma link came only from search results.
+    writer = RoleFake("writer", report_text=[_price_report("confirmed (store page, {day})")])
+    runner, ts, _ = _runner(env, PLAN_TEAM, roles={"writer": writer})
+    t = ts.create("Compare 3 laptops under Rs 80,000")
+    done = runner.run(t.id)
+    assert done.state == "FAILED" and "never found a Rs price" in done.last_error
+
+
+def test_price_check_off_for_non_price_plan(env):
+    writer = RoleFake("writer", report_text=[f"# Compare\n| Laptop A | Rs 75,000 | {SRC} |\nRecommendation: A."])
+    runner, ts, _ = _runner(env, {**PLAN_TEAM, "price_check": False}, roles={"writer": writer})
+    t = ts.create("Compare 3 laptops under Rs 80,000")
+    assert runner.run(t.id).state == "COMPLETED"

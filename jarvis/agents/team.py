@@ -39,7 +39,7 @@ class AgentSpec:
 
 
 RESEARCHER = AgentSpec("researcher", "researcher", "researcher.md",
-                       frozenset({"web_search", "web_fetch", "memory_search", "doc_search"}))
+                       frozenset({"web_search", "web_fetch", "web_extract", "memory_search", "doc_search"}))
 WRITER = AgentSpec("writer", "writer", "writer.md", frozenset({"write_file", "read_file", "list_folder"}), "task")
 CHECKER = AgentSpec("checker", "checker", "checker.md", frozenset({"read_file", "list_folder", "web_fetch"}), "task")
 
