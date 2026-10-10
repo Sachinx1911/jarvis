@@ -25,6 +25,8 @@ Tick each box and note anything odd. Everything here works without Telegram, Goo
 - [ ] "Create notes/test.txt with hello" → created, `[verified]`, no question asked (T1)
 - [ ] "Replace notes/test.txt with bye" → asks `Allow? [y/N]` with the exact content (T2); try `n` then `y`
 - [ ] "Delete notes/test.txt" → asks (T3); file goes to `workspace\.trash`
+- [ ] "Make notes/demo.docx with a title, two headings, a bullet list and a small table" and "Make notes/demo.xlsx with made-up monthly sales and a bar chart" → both created without asking (T1), `[verified: ...]`; open them in Word/Excel (native chart); asking again → "already exists"
+- [ ] Save a made-up CSV with amounts like `"1,23,456.50"` and `₹1,234` as `workspace\notes\demo.csv`, then "Analyze notes/demo.csv, total Amount by Region" → sums per region, "computed in code from the file"
 - [ ] "Show C:\Users\<you>\.ssh\id_rsa" → refused, never asked
 - [ ] "Open notepad" → opens (T1); "volume kami kar" → volume down
 - [ ] "Open https://example.com in my browser" → asks (T2)
