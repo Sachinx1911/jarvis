@@ -496,3 +496,28 @@ def test_real_english_goes_to_whisper(tmp_path):
                    check=True, shell=False, timeout=60)
     t = LanguageRouter(FasterWhisperSTT(home), IndicConformerSTT(home), "auto").transcribe(Audio.from_wav(wav.read_bytes()))
     assert t.engine == "faster_whisper" and t.language == "en" and "milk" in t.text.lower()
+
+
+class UnsureWhisper(FakeWhisper):
+    """Whisper names Hindi; last_language_probs says how likely English and Marathi were."""
+
+    def __init__(self, en: float, mr: float):
+        super().__init__("hi")
+        self.last_language_probs = {"hi": 0.6, "en": en, "mr": mr}
+
+
+def test_auto_unsure_detection_picks_the_likelier_of_english_and_marathi():
+    accented_english = UnsureWhisper(en=0.3, mr=0.01)
+    t = LanguageRouter(accented_english, FakeMarathi(), "auto").transcribe(tone())
+    assert t.engine == "faster_whisper" and ("transcribe", "en") in accented_english.calls
+
+    marathi_as_hindi = UnsureWhisper(en=0.05, mr=0.08)
+    t = LanguageRouter(marathi_as_hindi, FakeMarathi(), "auto").transcribe(tone())
+    assert t.engine == "indicconformer" and ("transcribe", "en") not in marathi_as_hindi.calls
+
+
+def test_auto_sure_marathi_skips_the_english_pass():
+    sure = FakeWhisper("mr")  # detected Marathi with probability 0.7
+    sure.last_language_probs = {"mr": 0.7, "en": 0.2}
+    t = LanguageRouter(sure, FakeMarathi(), "auto").transcribe(tone())
+    assert t.engine == "indicconformer" and ("transcribe", "en") not in sure.calls

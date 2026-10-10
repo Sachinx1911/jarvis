@@ -72,6 +72,7 @@ class FasterWhisperSTT:
         self.device = device
         self.compute_type = compute_type
         self._whisper: Any = None
+        self.last_language_probs: dict[str, float] = {}
 
     def check(self) -> None:
         if not faster_whisper_installed():
@@ -94,7 +95,10 @@ class FasterWhisperSTT:
             raise ValueError(f"expected {SAMPLE_RATE} Hz audio, got {audio.sample_rate}")
         whisper = self._load()
         samples = pcm_to_float(audio)
-        return whisper.transcribe(samples, language=language, beam_size=5, vad_filter=True)
+        segments, info = whisper.transcribe(samples, language=language, beam_size=5, vad_filter=True)
+        # Every language's probability from the detection step (None when a language was given).
+        self.last_language_probs = dict(getattr(info, "all_language_probs", None) or [])
+        return segments, info
 
     def transcribe(self, audio: Audio, language_hint: str | None = None) -> Transcript:
         segments, info = self._segments(audio, language_hint)
@@ -212,14 +216,19 @@ def make_marathi_stt(cfg: dict[str, Any], home: Path):
 
 # ---- language routing ----
 
+# Whisper's language guess at or above this goes straight to the Marathi engine.
+SURE_MARATHI = 0.5
+
+
 class LanguageRouter:
     """One speech-to-text front for English and Marathi (config `stt.language`):
 
     en   = Whisper, English only.
     mr   = the Marathi engine only.
-    auto = Whisper detects the language (cheap: segments are never decoded for non-English);
-           English stays with Whisper, anything else goes to the Marathi engine. Jarvis expects
-           English or Marathi, and Whisper often labels Marathi speech as Hindi or another language.
+    auto = Whisper detects the language (cheap: segments are never decoded for non-English).
+           English stays with Whisper. A sure Marathi guess goes to the Marathi engine. Anything
+           else (Whisper often labels Marathi as Hindi, and accented English as Hindi or Urdu)
+           goes to whichever of English and Marathi Whisper rated more likely.
     A per-call language hint ("en" / "mr") overrides the mode.
     """
 
@@ -255,9 +264,18 @@ class LanguageRouter:
             return replace(self.english.transcribe(audio, "en"), engine=self.english.name)
         if mode == "mr":
             return replace(self.marathi.transcribe(audio, "mr"), engine=self.marathi.name)
-        t, _, _ = self.english.transcribe_if_english(audio)
+        t, lang, prob = self.english.transcribe_if_english(audio)
         if t is not None:
             return replace(t, engine=self.english.name)
+        if not (lang == "mr" and prob >= SURE_MARATHI):
+            # Whisper named another language (often Hindi or Urdu, both for Marathi speech and for
+            # short English phrases in an Indian accent; seen 2026-10-11: "how are you" went to the
+            # Marathi engine). Jarvis expects only English or Marathi, so compare just those two
+            # guesses. Comparing transcript confidences does not work: IndicConformer writes English
+            # speech in Devanagari letters with high confidence.
+            probs = getattr(self.english, "last_language_probs", None) or {}
+            if probs.get("en", 0.0) > probs.get("mr", 0.0):
+                return replace(self.english.transcribe(audio, "en"), engine=self.english.name)
         return replace(self.marathi.transcribe(audio, "mr"), engine=self.marathi.name)
 
 
