@@ -299,6 +299,13 @@ class PendingApprovals:
     def count_for_run(self, run_id: int) -> int:
         return self.db.execute("SELECT COUNT(*) FROM sched_pending_approvals WHERE run_id=?", (run_id,)).fetchone()[0]
 
+    def for_run(self, run_id: int) -> list[dict[str, Any]]:
+        """Id, tool and tier of each action a run wanted but was refused (no arguments: this goes
+        into the run receipt and over Telegram)."""
+        rows = self.db.execute("SELECT id, tool, tier FROM sched_pending_approvals WHERE run_id=? ORDER BY id",
+                               (run_id,)).fetchall()
+        return [{"id": r[0], "tool": r[1], "tier": r[2]} for r in rows]
+
     def dismiss(self, pid: int) -> bool:
         cur = self.db.execute("UPDATE sched_pending_approvals SET status='dismissed' WHERE id=? AND status='pending'",
                               (pid,))
@@ -471,8 +478,13 @@ class ScheduleRunner:
 
         waiting = pending.count_for_run(run_id)
         if waiting:
+            # The run receipt (sched_runs.detail, the output file, Telegram) lists every refused action.
+            held = pending.for_run(run_id)
             text += (f"\n\n{waiting} action(s) need your approval and did not run. "
-                     f"See /approvals on Telegram or `jarvis schedule approvals`.")
+                     f"See /approvals on Telegram or `jarvis schedule approvals`.\n"
+                     + "\n".join(f"- #{a['id']} {a['tool']} ({a['tier']}): refused unattended, waiting for approval"
+                                 for a in held[:10])
+                     + (f"\n- ... and {waiting - 10} more" if waiting > 10 else ""))
         done = self.clock()
         output_path = None
         if status != "quiet" and s.output in ("file", "both"):
