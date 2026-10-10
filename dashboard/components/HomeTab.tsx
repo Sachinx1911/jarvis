@@ -22,8 +22,8 @@ import {
   taskStages,
   toDate,
 } from "./system";
-import { useHandsFree, useStt, notReadyText } from "./voice";
-import { ModeSelect, PauseReason, VoiceSettings, voiceState, VoiceStage } from "./VoiceUI";
+import { notReadyText, useStt, useVoice, VoicePrefs } from "./voice";
+import { VoiceSettings, VoiceStage } from "./VoiceUI";
 
 const NAME_KEY = "jarvis_display_name"; // kept in this browser only, never sent to the server
 
@@ -64,8 +64,10 @@ export default function HomeTab({
   health,
   healthError,
   pendingApprovals,
-  voice,
-  onVoice,
+  prefs,
+  onPrefs,
+  handsFree,
+  onHandsFree,
   stopEngaged,
   onChoose,
   onAsk,
@@ -80,8 +82,10 @@ export default function HomeTab({
   health: Health | null;
   healthError: string;
   pendingApprovals: number;
-  voice: VoiceSettings;
-  onVoice: (v: VoiceSettings) => void;
+  prefs: VoicePrefs;
+  onPrefs: (p: VoicePrefs) => void;
+  handsFree: boolean;
+  onHandsFree: (on: boolean) => void;
   stopEngaged: boolean;
   onChoose: (t: Tab) => void;
   onAsk: (text: string) => void;
@@ -123,22 +127,21 @@ export default function HomeTab({
     }
   }
 
-  // Hands-free on the Command Center: what is heard goes to Chat, like typing in the ask box.
-  const pause: PauseReason = pendingApprovals > 0 ? "approval" : null;
-  const handsFree = useHandsFree({
-    enabled: voice.on && !stopEngaged,
-    mode: voice.mode,
-    paused: pause !== null,
-    onUtterance: (t) => onAsk(t),
+  // Voice on the Command Center: what is heard goes to Chat, like typing in the ask box.
+  const [vsOpen, setVsOpen] = useState(false);
+  const sttMissing = stt !== null && !stt.ready;
+  const voice = useVoice({
+    prefs,
+    handsFree,
+    blocked: stopEngaged ? "stop" : pendingApprovals > 0 ? "approval" : null,
+    stt,
+    onSend: async (t) => {
+      onAsk(t);
+      return { handoff: true };
+    },
     onDraft: (t) => setText(t),
     onNote: (t) => setNote(t),
-    onError: (t) => {
-      setNote(t);
-      onVoice({ ...voice, on: false });
-    },
   });
-  const state = voiceState(handsFree.phase, pause);
-  const sttMissing = stt !== null && !stt.ready;
 
   function ask() {
     const t = text.trim();
@@ -256,24 +259,28 @@ export default function HomeTab({
         </div>
 
         <VoiceStage
-          on={voice.on && !stopEngaged}
-          state={state}
-          hint={voice.mode === "wake" ? "Tap the mic, then start with “Jarvis…”" : "Tap the mic and just talk"}
-          armed={handsFree.armed}
-          analyserRef={handsFree.analyserRef}
-          live={pause === null}
-          onStart={() => {
-            setNote("");
-            onVoice({ ...voice, on: true });
-          }}
-          onStop={() => onVoice({ ...voice, on: false })}
+          phase={voice.phase}
+          mode={prefs.mode}
+          heard={voice.heard}
           note={note}
+          analyserRef={voice.analyserRef}
+          onTap={() => {
+            setNote("");
+            void voice.tap();
+          }}
+          handsFree={handsFree}
+          onHandsFree={(on) => {
+            setNote("");
+            onHandsFree(on);
+          }}
           disabled={stopEngaged || sttMissing}
           disabledWhy={stopEngaged ? "Emergency stop is on" : stt && sttMissing ? notReadyText(stt) : ""}
         />
-        <div className="voice-foot" style={{ marginBottom: 12 }}>
-          <ModeSelect mode={voice.mode} onMode={(m) => onVoice({ ...voice, mode: m })} />
-          <span className="small faint">Voice never approves actions.</span>
+        <div className="voice-foot" style={{ marginBottom: 12, position: "relative" }}>
+          <button className="ghost sm" onClick={() => setVsOpen((o) => !o)} aria-expanded={vsOpen}>
+            <Icon name="sliders" size={14} /> Voice settings
+          </button>
+          {vsOpen && <VoiceSettings prefs={prefs} onChange={onPrefs} onClose={() => setVsOpen(false)} />}
         </div>
 
         <div className="ask">

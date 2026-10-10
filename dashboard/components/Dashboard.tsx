@@ -24,11 +24,10 @@ import { Icon } from "./icons";
 import { isTab, pageOf, Tab } from "./nav";
 import { getTheme, nextTheme, setTheme, ThemeMode } from "./theme";
 import { aiMode, FINAL_STATES, Health, SchedulesLite, SettingsLite, TasksLite } from "./system";
-import { VoiceSettings } from "./VoiceUI";
+import { DEFAULT_PREFS, loadPrefs, savePrefs, VoicePrefs } from "./voice";
 
 const PAGE_KEY = "jarvis_page";
 const RAIL_KEY = "jarvis_sidebar";
-const HF_MODE_KEY = "jarvis_handsfree_mode";
 
 export default function Dashboard() {
   const [ready, setReady] = useState(false);
@@ -117,7 +116,8 @@ function Main() {
   const [navOpen, setNavOpen] = useState(false);
   const [theme, setThemeState] = useState<ThemeMode>("dark");
   const [palette, setPalette] = useState(false);
-  const [voice, setVoiceState] = useState<VoiceSettings>({ on: false, mode: "wake" });
+  const [prefs, setPrefs] = useState<VoicePrefs>(DEFAULT_PREFS);
+  const [handsFree, setHandsFree] = useState(false);
   const pending = approvals.data?.pending ?? [];
 
   useEffect(() => {
@@ -125,8 +125,7 @@ function Main() {
       const saved = localStorage.getItem(PAGE_KEY);
       if (isTab(saved)) setTab(saved);
       setCollapsed(localStorage.getItem(RAIL_KEY) === "rail");
-      const m = localStorage.getItem(HF_MODE_KEY);
-      if (m === "wake" || m === "conversation") setVoiceState((v) => ({ ...v, mode: m }));
+      setPrefs(loadPrefs());
     } catch {
       /* ignore */
     }
@@ -145,20 +144,17 @@ function Main() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  function setVoice(v: VoiceSettings) {
-    setVoiceState(v);
-    try {
-      localStorage.setItem(HF_MODE_KEY, v.mode);
-    } catch {
-      /* ignore */
-    }
+  function updatePrefs(p: VoicePrefs) {
+    setPrefs(p);
+    savePrefs(p);
+    if (p.mode === "ptt") setHandsFree(false);
   }
 
   function choose(t: Tab) {
     setTab(t);
     setNavOpen(false);
     // Hands-free lives on Command Center and Chat only; any other page releases the microphone.
-    if (t !== "home" && t !== "chat") setVoiceState((v) => ({ ...v, on: false }));
+    if (t !== "home" && t !== "chat") setHandsFree(false);
     try {
       localStorage.setItem(PAGE_KEY, t);
     } catch {
@@ -190,7 +186,7 @@ function Main() {
 
   // The emergency stop also switches hands-free off (and so releases the microphone).
   useEffect(() => {
-    if (engaged) setVoiceState((v) => (v.on ? { ...v, on: false } : v));
+    if (engaged) setHandsFree(false);
   }, [engaged]);
 
   const mode = aiMode(settings.data);
@@ -313,8 +309,10 @@ function Main() {
               health={health.data}
               healthError={health.error}
               pendingApprovals={pending.length}
-              voice={voice}
-              onVoice={setVoice}
+              prefs={prefs}
+              onPrefs={updatePrefs}
+              handsFree={handsFree}
+              onHandsFree={setHandsFree}
               stopEngaged={engaged}
               onChoose={choose}
               onAsk={(text) => {
@@ -332,8 +330,10 @@ function Main() {
             <ChatTab
               inject={inject}
               onInjected={() => setInject(null)}
-              voice={voice}
-              onVoice={setVoice}
+              prefs={prefs}
+              onPrefs={updatePrefs}
+              handsFree={handsFree}
+              onHandsFree={setHandsFree}
               pendingApprovals={pending.length}
               stopEngaged={engaged}
             />

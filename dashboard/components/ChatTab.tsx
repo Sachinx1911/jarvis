@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, api, post } from "@/lib/api";
 import { errText } from "@/lib/hooks";
 import { Icon } from "./icons";
-import { useHandsFree, usePushToTalk, useStt, notReadyText } from "./voice";
-import { ModeSelect, PauseReason, speakingMs, VoiceSettings, voiceState, Waveform } from "./VoiceUI";
+import { notReadyText, SendResult, useStt, useVoice, VoicePrefs } from "./voice";
+import { VoiceDock } from "./VoiceUI";
 
 type Line = { who: "user" | "jarvis" | "system"; text: string; turn_id?: number | null };
 type Session = { id: string; provider: string; model: string; project?: string | null };
@@ -30,8 +30,6 @@ type TurnContext = {
 export type Inject = { type: "message"; text: string } | { type: "project"; name: string };
 
 const KEY = "jarvis_chat";
-const SPEAK_KEY = "jarvis_speak";
-const AUTOSEND_KEY = "jarvis_autosend";
 export { NOT_INSTALLED } from "./voice";
 
 const COMMANDS = ["/remember", "/remember-private", "/memory", "/project", "/repeat", "/why", "/note", "/help"];
@@ -47,35 +45,22 @@ function loadSaved(): { session: Session | null; lines: Line[]; project: string 
   return { session: null, lines: [], project: "" };
 }
 
-function flag(key: string, fallback: boolean): boolean {
-  try {
-    const v = localStorage.getItem(key);
-    return v === null ? fallback : v === "1";
-  } catch {
-    return fallback;
-  }
-}
-
-function saveFlag(key: string, on: boolean) {
-  try {
-    localStorage.setItem(key, on ? "1" : "0");
-  } catch {
-    /* ignore */
-  }
-}
-
 export default function ChatTab({
   inject,
   onInjected,
-  voice,
-  onVoice,
+  prefs,
+  onPrefs,
+  handsFree,
+  onHandsFree,
   pendingApprovals = 0,
   stopEngaged = false,
 }: {
   inject?: Inject | null;
   onInjected?: () => void;
-  voice?: VoiceSettings;
-  onVoice?: (v: VoiceSettings) => void;
+  prefs: VoicePrefs;
+  onPrefs: (p: VoicePrefs) => void;
+  handsFree: boolean;
+  onHandsFree: (on: boolean) => void;
   pendingApprovals?: number;
   stopEngaged?: boolean;
 }) {
@@ -87,27 +72,22 @@ export default function ChatTab({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
-  const [speak, setSpeak] = useState(false);
-  const [autoSend, setAutoSend] = useState(true);
-  const [voiceNote, setVoiceNote] = useState("");
-  const [speakingUntil, setSpeakingUntil] = useState(0);
+  const [note, setNote] = useState("");
+  const [menu, setMenu] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<Session | null>(null);
   sessionRef.current = session;
-  const busyRef = useRef(false);
-  busyRef.current = busy;
+  const prefsRef = useRef(prefs);
+  prefsRef.current = prefs;
   const stt = useStt();
-
-  const hf: VoiceSettings = voice ?? { on: false, mode: "wake" };
-  const setHf = (v: VoiceSettings) => onVoice?.(v);
+  const sttMissing = stt !== null && !stt.ready;
+  const voiceRef = useRef<{ submit: (t: string) => Promise<void> } | null>(null);
 
   useEffect(() => {
     const saved = loadSaved();
     setSession(saved.session);
     setLines(saved.lines);
     setProject(saved.project || saved.session?.project || "");
-    setSpeak(flag(SPEAK_KEY, false));
-    setAutoSend(flag(AUTOSEND_KEY, true));
     setLoaded(true);
     api<{ items: { name: string }[] }>("/api/projects")
       .then((r) => setProjects(r.items.map((p) => p.name)))
@@ -124,60 +104,28 @@ export default function ChatTab({
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [session, lines, project, loaded, busy]);
 
-  // Requests from other tabs (run a skill, use a project) once the saved chat is loaded.
+  // Requests from other tabs (run a skill, use a project, a voice request from the Command
+  // Center) once the saved chat is loaded.
   useEffect(() => {
     if (!loaded || !inject) return;
     const req = inject;
     onInjected?.();
     if (req.type === "project") chooseProject(req.name);
-    else sendText(req.text);
+    else if (voiceRef.current) void voiceRef.current.submit(req.text);
+    else void sendText(req.text);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, inject]);
 
-  // While Jarvis is speaking on the Mac speakers, hands-free waits (it would hear itself).
-  const [, tick] = useState(0);
-  useEffect(() => {
-    if (speakingUntil <= Date.now()) return;
-    const t = window.setTimeout(() => tick((n) => n + 1), speakingUntil - Date.now() + 50);
-    return () => window.clearTimeout(t);
-  }, [speakingUntil]);
-  const speaking = speakingUntil > Date.now();
-
-  const pauseReason: PauseReason = pendingApprovals > 0 ? "approval" : busy ? "thinking" : speaking ? "speaking" : null;
-
-  const handsFree = useHandsFree({
-    enabled: hf.on && !stopEngaged,
-    mode: hf.mode,
-    paused: pauseReason !== null,
-    onUtterance: (t) => {
-      if (!busyRef.current) void sendText(t);
-    },
+  const voice = useVoice({
+    prefs,
+    handsFree,
+    blocked: stopEngaged ? "stop" : pendingApprovals > 0 ? "approval" : null,
+    stt,
+    onSend: (t) => sendText(t),
     onDraft: (t) => setText(t),
-    onNote: (t) => setVoiceNote(t),
-    onError: (t) => {
-      setVoiceNote(t);
-      setHf({ ...hf, on: false });
-    },
+    onNote: (t) => setNote(t),
   });
-
-  const ptt = usePushToTalk(stt, (heard, clear) => {
-    if (clear && autoSend && !heard.trim().startsWith("/")) {
-      void sendText(heard);
-      return;
-    }
-    setText((t) => (t ? `${t} ${heard}` : heard));
-    if (clear) ptt.setNote("Check the text, then press Send.");
-  });
-
-  function toggleSpeak(on: boolean) {
-    setSpeak(on);
-    saveFlag(SPEAK_KEY, on);
-  }
-
-  function toggleAutoSend(on: boolean) {
-    setAutoSend(on);
-    saveFlag(AUTOSEND_KEY, on);
-  }
+  voiceRef.current = voice;
 
   async function start(): Promise<Session> {
     const s = await post<Session>("/api/chat/sessions", { project: project || null });
@@ -204,11 +152,13 @@ export default function ChatTab({
     }
   }
 
-  async function sendText(msg: string) {
+  async function sendText(msg: string): Promise<SendResult> {
     msg = msg.trim();
-    if (!msg) return;
+    if (!msg) return {};
     setBusy(true);
     setError("");
+    setNote("");
+    const speak = prefsRef.current.speak;
     try {
       let s = sessionRef.current ?? (await start());
       setLines((l) => [...l, { who: "user", text: msg }]);
@@ -229,12 +179,12 @@ export default function ChatTab({
         setProject(res.project ?? "");
         setSession({ ...s, project: res.project });
       }
-      if (res.voice?.spoken) setSpeakingUntil(Date.now() + speakingMs(res.reply.length));
-      if (res.voice && !res.voice.spoken && res.voice.detail) setVoiceNote(`Not spoken: ${res.voice.detail}`);
-      else setVoiceNote("");
+      if (res.voice && !res.voice.spoken && res.voice.detail) setNote(`Not spoken: ${res.voice.detail}`);
+      return { spoken: !!res.voice?.spoken, chars: res.reply.length };
     } catch (e) {
       setError(errText(e));
       setText(msg); // keep the message so it can be sent again
+      return {};
     } finally {
       setBusy(false);
     }
@@ -275,14 +225,7 @@ export default function ChatTab({
     }
   }
 
-  const sttMissing = stt !== null && !stt.ready;
-  const micTitle = sttMissing
-    ? notReadyText(stt!)
-    : ptt.recording
-      ? "Stop recording and read it"
-      : "Push to talk (speech-to-text on this computer)";
-  const state = voiceState(handsFree.phase, pauseReason);
-  const note = ptt.note || voiceNote;
+  const disabledWhy = stopEngaged ? "Emergency stop is on" : sttMissing && stt ? notReadyText(stt) : "";
 
   return (
     <section className="panel chat">
@@ -298,24 +241,23 @@ export default function ChatTab({
             ))}
           </select>
         </label>
-        <label className="switch field-inline" title="Speak replies on this computer's speakers">
-          <input type="checkbox" checked={speak} onChange={(e) => toggleSpeak(e.target.checked)} />
-          <span className="track" aria-hidden />
-          Speak replies
-        </label>
-        <label className="switch field-inline" title="Send what you said as soon as it is understood">
-          <input type="checkbox" checked={autoSend} onChange={(e) => toggleAutoSend(e.target.checked)} />
-          <span className="track" aria-hidden />
-          Auto-send voice
-        </label>
         <span className="grow" />
         <span className="pill outline small">{session ? `${session.provider} · ${session.model}` : "no chat yet"}</span>
-        <button className="ghost sm" onClick={() => setLines([])} disabled={busy}>
-          Clear
-        </button>
-        <button className="sm" onClick={end} disabled={!session || busy} title="End the chat; Jarvis saves what it learned">
-          End chat
-        </button>
+        <span style={{ position: "relative" }}>
+          <button className="icon-btn sm ghost" onClick={() => setMenu((m) => !m)} aria-expanded={menu} aria-label="More" title="More">
+            <Icon name="menu" size={16} />
+          </button>
+          {menu && (
+            <div className="popover" style={{ right: 0, top: "calc(100% + 6px)", minWidth: 200 }}>
+              <button className="popover-item" onClick={() => { setLines([]); setMenu(false); }} disabled={busy}>
+                <Icon name="refresh" size={15} /> Clear screen
+              </button>
+              <button className="popover-item" onClick={() => { void end(); setMenu(false); }} disabled={!session || busy} title="End the chat; Jarvis saves what it learned">
+                <Icon name="check" size={15} /> End chat (save memories)
+              </button>
+            </div>
+          )}
+        </span>
       </div>
 
       <div className="chat-log" ref={logRef} aria-live="polite">
@@ -417,53 +359,29 @@ export default function ChatTab({
                 </button>
               ))}
             </div>
-            <button
-              className={`icon-btn mic-btn${ptt.recording ? " recording" : ""}`}
-              onClick={ptt.toggle}
-              disabled={busy || hf.on}
-              title={hf.on ? "Hands-free is listening" : micTitle}
-              aria-label={micTitle}
-            >
-              <Icon name={ptt.recording ? "stop" : "mic"} size={18} />
-            </button>
             <button className="primary" onClick={send} disabled={busy || !text.trim()} aria-label="Send">
               <Icon name="send" size={16} /> Send
             </button>
           </div>
         </div>
-        <div className="voice-row">
-          <label className="switch field-inline" title="Keep the microphone open and talk without clicking">
-            <input
-              type="checkbox"
-              checked={hf.on}
-              disabled={stopEngaged || sttMissing}
-              onChange={(e) => {
-                setVoiceNote("");
-                setHf({ ...hf, on: e.target.checked });
-              }}
-            />
-            <span className="track" aria-hidden />
-            Hands-free
-          </label>
-          <ModeSelect mode={hf.mode} onMode={(m) => setHf({ ...hf, mode: m })} />
-          {hf.on && (
-            <>
-              <span className={`hf-state ${state.tone}`}>
-                <span className={`dot ${state.tone === "listening" ? "ok pulse" : state.tone === "paused" ? "warn" : "accent"}`} />
-                {state.word}
-                {handsFree.armed ? " · say your request" : ""}
-              </span>
-              <span style={{ width: 140 }}>
-                <Waveform analyserRef={handsFree.analyserRef} live={pauseReason === null} height={26} />
-              </span>
-              <button className="ghost sm" onClick={() => setHf({ ...hf, on: false })}>
-                Stop
-              </button>
-            </>
-          )}
-          {sttMissing && <span className="small muted">Microphone: speech-to-text is not set up (Setup tab).</span>}
-          {!hf.on && !sttMissing && <span className="small faint">Voice never approves actions: approvals stay click-only.</span>}
-        </div>
+        <VoiceDock
+          phase={voice.phase}
+          mode={prefs.mode}
+          prefs={prefs}
+          onPrefs={onPrefs}
+          analyserRef={voice.analyserRef}
+          onTap={() => {
+            setNote("");
+            void voice.tap();
+          }}
+          handsFree={handsFree}
+          onHandsFree={(on) => {
+            setNote("");
+            onHandsFree(on);
+          }}
+          disabled={stopEngaged || sttMissing}
+          disabledWhy={disabledWhy}
+        />
       </div>
     </section>
   );

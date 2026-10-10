@@ -1,84 +1,87 @@
-// Microphone recording for push-to-talk in Chat.
-// MediaRecorder gives compressed audio (webm/opus or mp4); the Web Audio API decodes it and
-// resamples to 16 kHz mono, and we send a plain 16-bit WAV. So the server needs no audio
-// decoder: the existing speech-to-text engine reads the WAV directly.
+// Microphone capture for the dashboard and the Mac app.
+//
+// One path for everything (push-to-talk and hands-free): raw samples from the microphone at its
+// own rate, cut into utterances by a small energy detector, and sent as plain 16-bit mono WAV.
+// The server resamples to 16 kHz and evens out the level (jarvis/voice/audio_tools.py), so
+// Chrome and the Mac app's WebKit view behave the same. No MediaRecorder, no compression.
+//
+// The microphone is opened without the browser's call processing: echo cancellation makes macOS
+// turn every other sound down while the microphone is open ("ducking"), which made Jarvis's
+// spoken replies waver. Jarvis speaks through the Mac's speakers, not the page, so it could not
+// help anyway.
 
-export type Recording = { stop: () => Promise<ArrayBuffer>; cancel: () => void };
-
-export function micSupported(): boolean {
-  return typeof window !== "undefined" && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== "undefined";
-}
-
-// The microphone without the browser's call processing. Echo cancellation makes macOS turn
-// down every other sound while the microphone is open ("ducking"), so Jarvis's spoken replies
-// got quieter and louder. Jarvis speaks through the Mac's speakers, not the page, so echo
-// cancellation could not help anyway. The level is evened out in toWav16k instead.
 export const RAW_MIC: MediaTrackConstraints = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
 
-export async function startRecording(): Promise<Recording> {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: RAW_MIC });
-  const rec = new MediaRecorder(stream);
-  const chunks: Blob[] = [];
-  rec.ondataavailable = (e) => {
-    if (e.data.size > 0) chunks.push(e.data);
-  };
-  const done = new Promise<Blob>((resolve) => {
-    rec.onstop = () => {
-      stream.getTracks().forEach((t) => t.stop());
-      resolve(new Blob(chunks, { type: rec.mimeType }));
+export function micSupported(): boolean {
+  return typeof window !== "undefined" && !!navigator.mediaDevices?.getUserMedia && typeof AudioContext !== "undefined";
+}
+
+export type MicFrame = { samples: Float32Array; rms: number };
+
+/** An open microphone delivering ~43 ms frames (2048 samples at 48 kHz) until closed. */
+export class MicCapture {
+  private stream: MediaStream | null = null;
+  private ctx: AudioContext | null = null;
+  private source: MediaStreamAudioSourceNode | null = null;
+  private proc: ScriptProcessorNode | null = null; // deprecated but supported everywhere, including WKWebView
+  private mute: GainNode | null = null;
+  readonly analyser: AnalyserNode;
+  readonly rate: number;
+  onFrame: ((f: MicFrame) => void) | null = null;
+
+  private constructor(stream: MediaStream, ctx: AudioContext) {
+    this.stream = stream;
+    this.ctx = ctx;
+    this.rate = ctx.sampleRate;
+    this.source = ctx.createMediaStreamSource(stream);
+    this.analyser = ctx.createAnalyser();
+    this.analyser.fftSize = 1024;
+    this.source.connect(this.analyser);
+    this.proc = ctx.createScriptProcessor(2048, 1, 1);
+    this.mute = ctx.createGain();
+    this.mute.gain.value = 0; // the processor only runs when it reaches the output; nothing is played
+    this.source.connect(this.proc);
+    this.proc.connect(this.mute);
+    this.mute.connect(ctx.destination);
+    this.proc.onaudioprocess = (ev) => {
+      const data = new Float32Array(ev.inputBuffer.getChannelData(0));
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+      this.onFrame?.({ samples: data, rms: Math.sqrt(sum / data.length) });
     };
-  });
-  rec.start();
-  return {
-    stop: async () => {
-      if (rec.state !== "inactive") rec.stop();
-      return toWav16k(await done);
-    },
-    cancel: () => {
-      if (rec.state !== "inactive") rec.stop();
-      stream.getTracks().forEach((t) => t.stop());
-    },
-  };
-}
-
-const RATE = 16000;
-
-export async function toWav16k(blob: Blob): Promise<ArrayBuffer> {
-  const ctx = new AudioContext();
-  let decoded: AudioBuffer;
-  try {
-    decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
-  } finally {
-    ctx.close();
   }
-  const frames = Math.max(1, Math.ceil(decoded.duration * RATE));
-  const offline = new OfflineAudioContext(1, frames, RATE); // 1 channel: the browser mixes down
-  const src = offline.createBufferSource();
-  src.buffer = decoded;
-  src.connect(offline.destination);
-  src.start();
-  const rendered = await offline.startRendering();
-  return encodeWav(normalize(rendered.getChannelData(0)), RATE);
+
+  static async open(): Promise<MicCapture> {
+    if (!micSupported()) throw new Error("This browser cannot record audio.");
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: RAW_MIC });
+    const ctx = new AudioContext();
+    await ctx.resume().catch(() => undefined);
+    return new MicCapture(stream, ctx);
+  }
+
+  close(): void {
+    if (this.proc) this.proc.onaudioprocess = null;
+    this.onFrame = null;
+    this.proc?.disconnect();
+    this.source?.disconnect();
+    this.analyser.disconnect();
+    this.mute?.disconnect();
+    this.ctx?.close().catch(() => undefined);
+    this.stream?.getTracks().forEach((t) => t.stop()); // releases the microphone (the indicator goes off)
+    this.proc = this.source = this.mute = null;
+    this.ctx = null;
+    this.stream = null;
+  }
 }
 
-// Brings quiet speech up to a steady level (peak about 0.9) so speech-to-text hears it well.
-// Near-silence is left alone so background noise is not blown up.
-function normalize(samples: Float32Array): Float32Array {
-  let peak = 0;
-  for (let i = 0; i < samples.length; i++) peak = Math.max(peak, Math.abs(samples[i]));
-  if (peak < 0.01 || peak >= 0.9) return samples;
-  const gain = Math.min(0.9 / peak, 12);
-  const out = new Float32Array(samples.length);
-  for (let i = 0; i < samples.length; i++) out[i] = samples[i] * gain;
-  return out;
-}
-
-function encodeWav(samples: Float32Array, rate: number): ArrayBuffer {
-  const buf = new ArrayBuffer(44 + samples.length * 2);
+/** Float samples at `rate` -> 16-bit mono WAV bytes at the same rate (the server resamples). */
+export function encodeWav(chunks: Float32Array[], rate: number): ArrayBuffer {
+  const n = chunks.reduce((a, c) => a + c.length, 0);
+  const buf = new ArrayBuffer(44 + n * 2);
   const v = new DataView(buf);
   const str = (o: number, s: string) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
   str(0, "RIFF");
-  v.setUint32(4, 36 + samples.length * 2, true);
+  v.setUint32(4, 36 + n * 2, true);
   str(8, "WAVE");
   str(12, "fmt ");
   v.setUint32(16, 16, true);
@@ -89,10 +92,39 @@ function encodeWav(samples: Float32Array, rate: number): ArrayBuffer {
   v.setUint16(32, 2, true);
   v.setUint16(34, 16, true);
   str(36, "data");
-  v.setUint32(40, samples.length * 2, true);
-  for (let i = 0; i < samples.length; i++) {
-    const s = Math.max(-1, Math.min(1, samples[i]));
-    v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  v.setUint32(40, n * 2, true);
+  let o = 44;
+  for (const c of chunks) {
+    for (let i = 0; i < c.length; i++, o += 2) {
+      const s = Math.max(-1, Math.min(1, c[i]));
+      v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    }
   }
   return buf;
+}
+
+// Two short earcons (Google's guidance: few, consistent, brief). Rising = listening started,
+// falling = heard you / done. Played through Web Audio; no sound files.
+export function earcon(kind: "start" | "end"): void {
+  try {
+    const ctx = new AudioContext();
+    const notes = kind === "start" ? [660, 880] : [880, 587];
+    notes.forEach((hz, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = hz;
+      gain.gain.value = 0.0001;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      const t0 = ctx.currentTime + i * 0.09;
+      gain.gain.exponentialRampToValueAtTime(0.12, t0 + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.085);
+      osc.start(t0);
+      osc.stop(t0 + 0.09);
+    });
+    window.setTimeout(() => ctx.close().catch(() => undefined), 400);
+  } catch {
+    /* no audio output: silent is fine */
+  }
 }
