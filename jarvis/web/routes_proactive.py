@@ -1,9 +1,11 @@
 """Schedules, event triggers, reminders, unattended approvals and the morning brief in the dashboard.
 
 Uses the public Proactive object (jarvis/proactive/service.py) and its stores; nothing in
-jarvis/proactive is changed. A schedule is saved only after an explicit confirm: the
-parsed draft is kept on the server under a random id, shown to Sachin, and only the
-confirm call with that id saves exactly what was shown.
+jarvis/proactive is changed. A schedule or a trigger is saved only after an explicit
+confirm: the parsed draft is kept on the server under a random id, shown to Sachin, and
+only the confirm call with that id saves exactly what was shown. Deleting a trigger needs
+its id sent back as the confirmation. An email trigger's sender and subject are P2 until
+decision #19, so they are never sent back to the browser (not in drafts, the list or runs).
 """
 
 from __future__ import annotations
@@ -39,6 +41,19 @@ class ConfirmBody(BaseModel):
     draft_id: str = Field(min_length=8, max_length=64)
 
 
+class TriggerDraftBody(BaseModel):
+    text: str = Field(default="", max_length=1000)
+    kind: Literal["notify", "prompt", "skill", "agent"] | None = None   # default: read from the sentence
+    target: str = Field(default="", max_length=80)
+    output: Literal["telegram", "file", "both"] | None = None
+    every_minutes: float | None = Field(default=None, ge=1, le=7 * 24 * 60)
+    cooldown_minutes: float | None = Field(default=None, ge=0, le=7 * 24 * 60)
+
+
+class TriggerDeleteBody(BaseModel):
+    confirm: str = Field(min_length=1, max_length=20)   # the trigger id, sent back from the confirm step
+
+
 class ReminderBody(BaseModel):
     text: str = Field(min_length=1, max_length=500)
 
@@ -55,20 +70,51 @@ def _schedule_json(s, runs: list | None = None) -> dict[str, Any]:
     return d
 
 
+HIDDEN = "[hidden: P2]"
+
+
+def _private_bits(d) -> list[str]:
+    """The parts of a trigger draft that must not go back to the browser: an email rule's
+    sender and subject (P2 until decision #19)."""
+    if d.source != "email_from":
+        return []
+    return [str(v) for v in (d.condition.get("sender"), d.condition.get("subject")) if v]
+
+
+def _hide(text: str, bits: list[str]) -> str:
+    for b in sorted(bits, key=len, reverse=True):
+        text = re.sub(re.escape(b), HIDDEN, text, flags=re.IGNORECASE)
+    return text
+
+
+def _trigger_draft_json(d) -> dict[str, Any]:
+    bits = _private_bits(d)
+    condition = {k: (HIDDEN if v and k in ("sender", "subject") and bits else v) for k, v in d.condition.items()}
+    return {"source": d.source, "description": _hide(d.description, bits), "condition": condition,
+            "action": d.action, "target": d.target, "input": _hide(d.input, bits), "output": d.output,
+            "every_s": d.every_s, "cooldown_s": d.cooldown_s, "read_by": d.read_by, "private_hidden": bool(bits)}
+
+
+def _not_saved(e: Exception) -> str:
+    text = str(e)
+    return text if text.lower().startswith("not saved") else f"Not saved: {text}"
+
+
 def build_router(ctx: WebContext) -> APIRouter:
     r = APIRouter()
-    drafts: dict[str, tuple[float, Any]] = {}
+    drafts: dict[str, tuple[float, Any]] = {}            # schedule drafts
+    trigger_drafts: dict[str, tuple[float, Any]] = {}    # trigger drafts (never confirmable as a schedule)
     lock = threading.Lock()
 
-    def keep_draft(draft) -> str:
+    def keep_draft(draft, store: dict[str, tuple[float, Any]] = drafts) -> str:
         now = time.time()
         with lock:
-            for k in [k for k, (t, _) in drafts.items() if now - t > DRAFT_TTL_S]:
-                drafts.pop(k, None)
-            while len(drafts) >= MAX_DRAFTS:
-                drafts.pop(min(drafts, key=lambda k: drafts[k][0]))
+            for k in [k for k, (t, _) in store.items() if now - t > DRAFT_TTL_S]:
+                store.pop(k, None)
+            while len(store) >= MAX_DRAFTS:
+                store.pop(min(store, key=lambda k: store[k][0]))
             did = secrets.token_hex(12)
-            drafts[did] = (now, draft)
+            store[did] = (now, draft)
         return did
 
     def schedule_store(rt):
@@ -177,6 +223,74 @@ def build_router(ctx: WebContext) -> APIRouter:
         if t is None:
             raise HTTPException(404, "no such trigger")
         return t
+
+    @r.post("/triggers/draft")
+    def trigger_draft(body: TriggerDraftBody) -> dict[str, Any]:
+        """Read a sentence into a trigger draft (rules only, no model). Nothing is saved here.
+        A question comes back as {"question"}; a refusal (Amazon/Flipkart, a folder outside the
+        allowed roots, ...) as a 400 error with the reason."""
+        from jarvis.proactive.trigger_parse import TriggerInvalid, TriggerParseError
+
+        text = body.text.strip()
+        if not text:
+            raise HTTPException(400, "say what to watch and what to do, e.g. 'when a new file arrives in "
+                                     "workspace/inbox tell me'")
+        p = ctx.proactive()
+        defaults: dict[str, Any] = {"output": body.output or p.default_output, "target": body.target.strip()}
+        if body.kind:
+            defaults["action"] = body.kind
+        if body.every_minutes:
+            defaults["every_s"] = int(body.every_minutes * 60)
+        if body.cooldown_minutes is not None:
+            defaults["cooldown_s"] = int(body.cooldown_minutes * 60)
+        try:
+            draft = p.draft_trigger(text, defaults)
+        except TriggerParseError as e:
+            return {"draft_id": None, "question": e.question}
+        except TriggerInvalid as e:
+            ctx.audit.write("trigger_draft_refused", source="dashboard")
+            raise HTTPException(400, _not_saved(e))
+        did = keep_draft(draft, trigger_drafts)
+        ctx.audit.write("trigger_drafted", source="dashboard", source_kind=draft.source, action=draft.action)
+        return {"draft_id": did, "draft": _trigger_draft_json(draft),
+                "show": _hide(draft.show(), _private_bits(draft))}
+
+    @r.post("/triggers/confirm")
+    def trigger_confirm(body: ConfirmBody) -> dict[str, Any]:
+        """Save exactly the draft shown under this id (checked again: folders and store lists may change)."""
+        from jarvis.proactive.trigger_parse import TriggerInvalid
+
+        with lock:
+            item = trigger_drafts.pop(body.draft_id, None)
+        if item is None or time.time() - item[0] > DRAFT_TTL_S:
+            raise HTTPException(404, "this draft expired or was already answered; read the sentence again")
+        p = ctx.proactive()
+        try:
+            t = p.save_trigger(item[1], "dashboard")   # writes the trigger_added audit event (ids only)
+        except TriggerInvalid as e:
+            raise HTTPException(400, _not_saved(e))
+        return {"saved": {"id": t.id, "name": t.safe_name, "source": t.source, "action": t.action,
+                          "enabled": t.enabled},
+                "running_here": bool(ctx.extra.get("scheduler_running"))}
+
+    @r.post("/triggers/discard")
+    def trigger_discard(body: ConfirmBody) -> dict[str, Any]:
+        with lock:
+            item = trigger_drafts.pop(body.draft_id, None)
+        if item is not None:
+            ctx.audit.write("trigger_draft_discarded", source="dashboard")
+        return {"discarded": item is not None}
+
+    @r.post("/triggers/{tid}/delete")
+    def trigger_delete(tid: str, body: TriggerDeleteBody) -> dict[str, Any]:
+        """Same as `jarvis trigger delete`. The confirm step sends the trigger id back."""
+        with ctx.runtime() as rt:
+            need_trigger(rt, tid)
+            if body.confirm != tid:
+                raise HTTPException(409, f"to delete {tid}, confirm with its id")
+            trigger_store(rt).delete(tid)
+            rt.audit.write("trigger_delete", trigger_id=tid, source="dashboard")
+        return {"id": tid, "deleted": True}
 
     @r.post("/triggers/{tid}/{action}")
     def trigger_action(tid: str, action: Literal["pause", "resume"]) -> dict[str, Any]:
