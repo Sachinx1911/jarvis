@@ -1,0 +1,52 @@
+# Voice settings (PLAN.md 14). Machine-specific changes go in config/local.yaml under voice_file.
+
+stt:
+  # faster_whisper: local Whisper (CTranslate2). Weights are downloaded only by `jarvis voice setup`.
+  engine: faster_whisper
+  # base (148 MB), small (486 MB), small.en (486 MB), medium (1531 MB), large-v3-turbo (1622 MB).
+  model: small
+  device: cpu
+  compute_type: int8       # int8 is the fastest CPU setting in the faster-whisper benchmark
+  language: auto           # auto | en | mr
+  min_confidence: 0.45     # below this Jarvis asks you to repeat instead of acting
+  # Marathi speech needs an Indic model (IndicConformer / IndicWhisper). Not built yet: evaluation later.
+  marathi_engine: none
+
+tts:
+  engine: auto             # auto (windows_sapi on Windows, mac_say on macOS) | windows_sapi | mac_say
+  voice: ""                # "" = system default. Windows e.g. "Microsoft Zira Desktop"; macOS e.g. "Rishi"
+  rate: 0                  # Windows: -10..10. macOS: words per minute (0 = default)
+  marathi:
+    # edge-tts sends the text to Microsoft's online speech service (CLOUD). Off by default.
+    # Even when on: P3 text is never sent, and nothing above max_privacy is sent.
+    cloud_enabled: false
+    engine: edge_tts
+    voice: mr-IN-ManoharNeural
+    max_privacy: P1        # cannot be raised above P1
+
+recorder:
+  sample_rate: 16000
+  device: null             # null = system default input; see `jarvis voice devices`
+  max_seconds: 30
+
+# How to interrupt Jarvis while it speaks:
+#   key   = press Enter (default; always works)
+#   voice = also stop when the microphone hears speech (use headphones, or the speakers trigger it)
+#   off   = never interrupt
+barge_in: key
+
+vad:
+  threshold_rms: 900       # 16-bit level that counts as speech
+  min_speech_ms: 240
+  end_silence_ms: 900      # wake-word mode: this much silence ends an utterance
+
+wake_word:
+  # openWakeWord "hey_jarvis". Off: the package's last release is 0.6.0 (Feb 2024) and is
+  # unverified on macOS and Python 3.12+. Its pre-trained models are CC BY-NC-SA 4.0 (personal use).
+  enabled: false
+  engine: openwakeword
+  model: hey_jarvis        # a pre-trained model name or a path to an .onnx file
+  threshold: 0.5
+
+# Keep recordings? Default no: audio is transcribed in memory and dropped.
+store_audio: false
