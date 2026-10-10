@@ -136,6 +136,9 @@ def test_ungrounded_link_triggers_one_revision(env):
     assert [v["passed"] for v in verifies] == [False, True]
     assert "made-up.example" in verifies[0]["problems"][0]
     assert ts.get(t.id).checkpoint["report"] == "laptop-compare-v2.md"
+    # Before the rewrite, a follow-up researcher looked up what the checker found missing.
+    assert (env[0] / "data" / "tasks" / t.id / "research-fix-1.md").exists()
+    assert len(ts.get(t.id).checkpoint["research"]) == 3
 
 
 def test_checker_rejects_twice_fails(env):

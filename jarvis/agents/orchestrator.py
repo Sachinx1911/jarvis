@@ -265,6 +265,17 @@ class TaskRunner:
             cp["needs_revision"] = True
             self.tasks.update(task_id, checkpoint=cp)
             self.tasks.set_state(task_id, "RUNNING", "revision after checker")
+            # The writer cannot invent facts: a follow-up researcher looks up what the checker found missing.
+            self._step(task_id, "follow-up research on the checker's findings")
+            order = WorkOrder(
+                objective="Find the missing or wrong facts listed below, with a source link for each.",
+                context=f"Overall task: {task.goal}\n\nWhat the checker found:\n- " + "\n- ".join(problems) + project,
+                output_format="FINDINGS, SOURCES (title - URL), GAPS",
+                stop_condition="every listed problem has an answer with a source, or no source exists")
+            follow = run_agent(RESEARCHER, f"researcher-fix-{cp['version']}", order, env)
+            cp["research"] = cp["research"] + [follow.text]
+            (self.task_dir / f"research-fix-{cp['version']}.md").write_text(follow.text, encoding="utf-8")
+            self.tasks.update(task_id, checkpoint=cp)
 
     # ---- solo ----
 

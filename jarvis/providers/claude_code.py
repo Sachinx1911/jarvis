@@ -185,7 +185,9 @@ class ClaudeCodeProvider:
                   text: str, calls: list[ToolCall]) -> LLMResponse:
         u = data.get("usage") or {}
         usage = Usage(
-            input_tokens=u.get("input_tokens", 0) or 0,
+            # The CLI caches the prompt: count fresh, cache-written and cache-read input alike.
+            input_tokens=(u.get("input_tokens", 0) or 0) + (u.get("cache_creation_input_tokens", 0) or 0)
+            + (u.get("cache_read_input_tokens", 0) or 0),
             output_tokens=u.get("output_tokens", 0) or 0,
             cached_tokens=u.get("cache_read_input_tokens", 0) or 0,
         )
