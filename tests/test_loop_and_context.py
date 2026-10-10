@@ -118,3 +118,53 @@ def test_session_search_finds_past_conversation(env):
     s2, provider = _session(env, [{"tool": "session_search", "arguments": {"query": "bike"}}, "ok"])
     s2.send("what colour?")
     assert "the demo bike is red" in provider.requests[1].messages[-1].parts[0].content
+
+
+# ---- past-chat excerpts and notes-before-answer (research 2026-10-10, topic 4) ----
+
+def test_past_chat_excerpts_next_to_memories(env):
+    s1, _ = _session(env)
+    s1.send("mazi gaadi pandhri Swift ahe")
+    s2, provider = _session(env)
+    s2.send("माझी गाडी कोणती आहे?")
+    system = provider.requests[0].system
+    assert "## Past chat excerpts (raw words from earlier chats; may be outdated)" in system
+    assert "mazi gaadi pandhri Swift ahe" in system
+    assert "माझी गाडी कोणती आहे?" not in system.split("## Past chat excerpts")[1]  # never the message being answered
+    assert s2.context.build("x", datetime(2026, 10, 10, 19, 30)).excerpt_ids == []
+
+
+def test_excerpts_respect_budget_privacy_and_switch(env):
+    _, _, mem = env
+    mem.save(Memory(name="medicine", summary_en="Takes a bp tablet.", keywords="tablet",
+                    body="bp tablet roj", evidence="mi roj bp tablet ghetla", sensitivity="sensitive"))
+    s1, _ = _session(env)
+    s1.send("mi roj bp tablet ghetla")
+    for i in range(6):
+        s1.send(f"tablet note {i} " + "x" * 400)
+    s2, provider = _session(env)
+    s2.send("tablet")
+    system = provider.requests[0].system
+    block = system.split("## Past chat excerpts")[1] if "## Past chat excerpts" in system else ""
+    assert "bp tablet" not in system                      # quotes a memory this route may not see
+    assert len(block) < 1200 and block.count("\n- [") <= 3  # 1-3 excerpts within the size budget
+    s2.context.options.excerpts = False
+    assert "## Past chat excerpts" not in s2.context.build("tablet", datetime(2026, 10, 10, 19, 30)).system
+
+
+def test_memory_lines_carry_their_date(env):
+    _, _, mem = env
+    mem.save(Memory(name="office", summary_en="The office moved to Baner.", keywords="office baner",
+                    body="Baner", evidence="office Baner la", valid_from="2026-09-20"))
+    s, provider = _session(env)
+    s.send("office kuthe ahe?")
+    assert "saved 2026-09-20" in provider.requests[0].system
+
+
+def test_system_prompt_asks_for_silent_notes_and_abstention(env):
+    s, provider = _session(env)
+    s.send("hello")
+    system = provider.requests[0].system
+    assert "first work out silently which memories and past-chat excerpts" in system
+    assert "Do not show these notes to the user." in system
+    assert "say plainly that you don't know" in system
