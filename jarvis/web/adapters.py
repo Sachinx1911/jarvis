@@ -1,5 +1,5 @@
 """Adapters for parts of Jarvis built in other phases (proactive/Telegram, connectors and
-document library, voice, cloud switch).
+document library, voice, cloud switch, event triggers).
 
 Each adapter imports its module lazily and returns {"installed": False, ...} when the module
 is missing, so the dashboard tab says "not installed" instead of failing. To wire a module,
@@ -14,7 +14,8 @@ import importlib.util
 from typing import Any, Callable
 
 # Dashboard tab -> (module, hook function inside that module)
-# All phases are merged; their dashboard data lives in jarvis/web/hooks.py.
+# All phases are merged; their dashboard data lives in jarvis/web/hooks.py, except event
+# triggers, whose read-only hook ships with the trigger engine itself.
 HOOKS: dict[str, tuple[str, str]] = {
     "schedules": ("jarvis.web.hooks", "schedules"),
     "telegram": ("jarvis.web.hooks", "telegram"),
@@ -22,6 +23,7 @@ HOOKS: dict[str, tuple[str, str]] = {
     "documents": ("jarvis.web.hooks", "documents"),
     "voice": ("jarvis.web.hooks", "voice"),
     "cloud": ("jarvis.web.hooks", "cloud"),
+    "triggers": ("jarvis.proactive.triggers", "dashboard_triggers"),
 }
 
 
@@ -77,3 +79,10 @@ def voice(home=None) -> dict[str, Any]:
 def cloud(home=None) -> dict[str, Any]:
     """Expected hook result: {"cloud_allowed": bool, "source": "file|config"}. Read-only here."""
     return call_hook("cloud", home)
+
+
+def triggers(home=None) -> dict[str, Any]:
+    """Expected hook result: {"items": [{"id", "what", "source", "action", "enabled", "every_minutes",
+    "cooldown_minutes", "last_check", "next_check", "last_status", "last_detail", "last_fired", "failures"}]}.
+    Email rules come without the sender (P2 until decision #19)."""
+    return call_hook("triggers", home)

@@ -495,6 +495,13 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
     def schedules() -> dict[str, Any]:
         return adapters.schedules(default_paths().home)
 
+    @api.get("/triggers")
+    def triggers() -> dict[str, Any]:
+        # Read-only list; pause/resume and runs are in routes_proactive.py.
+        out = adapters.triggers(default_paths().home)
+        out["running_here"] = bool(ctx.extra.get("scheduler_running"))
+        return out
+
     # ---- settings and usage ----
 
     @api.get("/settings")
