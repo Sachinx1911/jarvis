@@ -14,7 +14,7 @@ Ending a session: update this file and commit.
   - Stopped mid-work, saved on branches (pushed, NOT merged, not tested): `wip/india-features` (AMFI NAV, IMD/Sachet feeds, bills tracker, document wallet, UPI link; tests partly written) and `wip/verify-repeat` (verify-after-act, `/repeat`). Resume each: check out the branch, run the whole suite, finish the brief in this file's "Next step", then merge.
   - Not started yet: global daily cap for unattended work, nightly review into `memory/episodes/`, backups (from the Hermes masterclass review).
 - **Last update:** 2026-10-10, home MacBook (Apple M4, macOS 26.5, Python 3.13): pulled, set up `.venv`, full offline suite 902 passed after 3 Mac-portability fixes.
-- **GitHub:** Pushed to `main` on 2026-10-10 up to commit b38853f (Phases 0–8, research fixes, app, triggers) with Sachin's OK.
+- **GitHub:** `main` pushed on 2026-10-10 from the home MacBook (all Mac merges, fixes and Fable results) with Sachin's OK. The old branches `wip/india-features` and `wip/verify-repeat` on GitHub are merged and can be deleted.
 
 ### What each phase delivered
 
