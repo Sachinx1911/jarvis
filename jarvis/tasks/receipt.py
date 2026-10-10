@@ -85,6 +85,14 @@ def build_receipt(runner: "TaskRunner", task_id: str, summary: str | None = None
             for p in v.get("problems", []):
                 lines.append(f"  - problem: {p}")
 
+    lines += claims_section(events)
+    from jarvis.browser.session import read_checks
+
+    post = read_checks(tasks.folder(task_id))
+    if post:
+        lines += ["", "Browser post-checks:"]
+        lines += [f"- [{'x' if p.get('ok') else '!'}] {p.get('step')}: {p.get('how', '')}" for p in post]
+
     lines += ["", "Approvals:"]
     if approvals:
         for action, decision in approvals:
@@ -101,7 +109,33 @@ def build_receipt(runner: "TaskRunner", task_id: str, summary: str | None = None
         lines += ["", f"Error: {task.last_error}"]
     lines += ["", "Remaining: " + ("nothing" if task.state == "COMPLETED" else
                                    "resume with: jarvis task run " + task.id if task.state == "PAUSED" else "see error above")]
+    if task.state == "COMPLETED":
+        try:
+            from jarvis.tasks.repeat import repetition_hint
+
+            hint = repetition_hint(tasks, task)
+        except Exception:  # the receipt must never fail
+            hint = None
+        if hint:
+            lines += ["", hint]
     return "\n".join(lines) + "\n"
+
+
+def claims_section(events: list[dict]) -> list[str]:
+    """What the agent said it did, next to the tool run (or file hash) that proves it."""
+    claims = [e["detail"] for e in events if e["kind"] == "claims" and isinstance(e["detail"], dict)]
+    if not claims:
+        return []
+    c = claims[-1]
+    marks = {"supported": "x", "unsupported": "!", "unchecked": "-"}
+    out = ["", f"Claims vs evidence ({c.get('agent', 'agent')}): {'PASS' if c.get('passed') else 'FAIL'}"]
+    for cl in c.get("claims", []):
+        out.append(f"- [{marks.get(cl.get('status'), '?')}] {cl.get('text', '')[:120]} -> {cl.get('evidence', '')}")
+    for u in c.get("unreported", []):
+        out.append(f"- [?] not in the report: {u}")
+    if not c.get("claims") and not c.get("unreported"):
+        out.append("- the report claims no actions")
+    return out
 
 
 def _summary(runner: "TaskRunner", task_id: str, facts: str) -> str | None:

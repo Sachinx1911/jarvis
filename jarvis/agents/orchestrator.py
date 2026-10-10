@@ -38,6 +38,7 @@ from jarvis.skills.loader import SkillLibrary
 from jarvis.tasks.budget import Budget, BudgetTracker
 from jarvis.tasks.receipt import write_receipt
 from jarvis.tasks.store import Task, TaskStore
+from jarvis.tasks.verify import check_claims, check_coder, folder_hashes, tool_runs
 from jarvis.tools.catalog import ToolDeps, apply_registry, build_registry, registry_path
 from jarvis.tools.quarantine import Quarantine
 from jarvis.tools.registry import ToolRegistry
@@ -113,6 +114,8 @@ class TaskRunner:
     provider_override: str | None = None  # e.g. "fake" in tests
     web: WebClient | None = None
     progress: Callable[[str], None] = lambda msg: None
+    coder_config: dict | None = None    # config/coder.yaml when None
+    coder_runner: Any = None            # jarvis.tools.code.ProcessRunner; real subprocesses when None
 
     # ---- routing ----
 
@@ -345,10 +348,19 @@ class TaskRunner:
         from jarvis.agents.extra import CODER, OPERATOR, open_browser_session, run_extra_agent
         from jarvis.browser import domains_from_text
 
+        from jarvis.tools.code import SKIP_DIRS, load_coder_config, project_root
+
         task = self.tasks.get(task_id)
         assert task
         plan, cp = task.plan, dict(task.checkpoint)
         filename = plan["deliverable"]["filename"]
+        project = re.sub(r"[^a-z0-9_-]+", "-", (task.project or task.title).lower()).strip("-")[:40] or "code"
+        coder_cfg = self.coder_config if self.coder_config is not None else load_coder_config()
+        code_root = project_root(self.home, project, coder_cfg) if role == "coder" else None
+        if code_root is not None and "coder_before" not in cp:
+            # Hash the Coder's folder before it starts: its report must match what really changed.
+            cp["coder_before"] = folder_hashes(code_root, SKIP_DIRS)
+            self.tasks.update(task_id, checkpoint=cp)
         if "report" not in cp:
             self._step(task_id, f"{role} working")
             order = WorkOrder(objective=task.goal,
@@ -367,23 +379,37 @@ class TaskRunner:
                     if browser is not None:
                         browser.close()
             else:
-                project = re.sub(r"[^a-z0-9_-]+", "-", (task.project or task.title).lower()).strip("-")[:40] or "code"
-                result = run_extra_agent(CODER, "coder", order, env, coder_project=project)
+                result = run_extra_agent(CODER, "coder", order, env, coder_project=project,
+                                         process_runner=self.coder_runner, coder_config=coder_cfg)
             (self.task_dir / filename).write_text(result.text, encoding="utf-8")
             cp.update(report=filename, version=1)
             self.tasks.update(task_id, checkpoint=cp)
-        passed, problems = self._verify(task_id, cp["report"], plan, [])
-        if role == "coder":
-            last = self.store.conn.execute(
-                "SELECT ok FROM tool_runs WHERE task_id=? AND tool='run_tests' ORDER BY id DESC LIMIT 1",
-                (task_id,)).fetchone()
-            if not last or not last[0]:
-                passed = False
-                problems.append("the tests were not run, or the last test run failed")
+        claims = self._check_claims(task_id, role, cp, code_root)
+        passed, problems = self._verify(task_id, cp["report"], plan, [], pre_checks=[claims])
         if passed:
             self._complete(task_id, cp["report"])
         else:
             self._fail(task_id, "verification failed: " + "; ".join(problems)[:500])
+
+    def _check_claims(self, task_id: str, role: str, cp: dict, code_root: Path | None) -> tuple[dict, list[str]]:
+        """Verify-after-act: what the agent reports vs what its tools did (jarvis/tasks/verify.py).
+        Recorded as a "claims" event; the receipt shows it as "Claims vs evidence"."""
+        path = self.task_dir / cp["report"]
+        report = path.read_text(encoding="utf-8") if path.is_file() else ""
+        runs = tool_runs(self.store.conn, task_id, agent=role)
+        if role == "coder" and code_root is not None:
+            from jarvis.tools.code import SKIP_DIRS
+
+            result = check_coder(report, cp.get("coder_before") or {}, folder_hashes(code_root, SKIP_DIRS), runs)
+            label = "the files the Coder reports match the files that changed, and its last test run passed"
+        else:
+            result = check_claims(report, runs)
+            label = "every effect the Operator reports is backed by a successful, verified tool run"
+        self.tasks.event(task_id, "claims", {"agent": role, **result.as_dict()})
+        bad = sum(1 for c in result.claims if c.status == "unsupported")
+        note = f"{len(result.claims)} claims, {bad} not backed" + (
+            f"; {len(result.unreported)} unreported effects" if result.unreported else "")
+        return {"check": label, "passed": result.passed, "note": note}, list(result.problems)
 
     def _approver(self, task_id: str) -> Approver | None:
         if not self.approver:
@@ -401,12 +427,16 @@ class TaskRunner:
     # ---- verification ----
 
     def _verify(self, task_id: str, filename: str, plan: dict, research: list[str],
-                use_checker: bool = True) -> tuple[bool, list[str]]:
+                use_checker: bool = True,
+                pre_checks: list[tuple[dict, list[str]]] | None = None) -> tuple[bool, list[str]]:
         self.tasks.set_state(task_id, "VERIFYING")
         self._step(task_id, "checking the work")
         path = self.task_dir / filename
         problems: list[str] = []
         checks: list[dict[str, Any]] = []
+        for check, found in pre_checks or []:  # deterministic checks computed by the caller
+            checks.append(check)
+            problems.extend(found)
 
         exists = path.is_file() and bool(path.read_text(encoding="utf-8").strip())
         checks.append({"check": "report file exists and is not empty", "passed": exists})

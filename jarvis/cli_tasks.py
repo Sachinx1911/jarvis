@@ -15,8 +15,9 @@ PROVIDERS = ["claude_code", "anthropic", "fake"]
 
 def register(sub) -> dict[str, Callable]:
     task = sub.add_parser("task", help="add, run, show, cancel or resume tasks")
-    task.add_argument("action", choices=["add", "run", "show", "cancel", "resume"])
-    task.add_argument("text", nargs="*", help="goal text, or a task id")
+    task.add_argument("action", choices=["add", "run", "show", "cancel", "resume", "repeat"])
+    task.add_argument("text", nargs="*", help="goal text, or a task id (repeat: <task-id> \"<when>\")")
+    task.add_argument("--yes", action="store_true", help="repeat: save without asking")
     task.add_argument("--project")
     task.add_argument("--priority", choices=["high", "normal", "low"], default="normal")
     task.add_argument("--deadline")
@@ -103,6 +104,8 @@ def cmd_task(args: argparse.Namespace, out: TextIO, inp: TextIO, approver_factor
         if not task:
             print("Give a task id (see: jarvis tasks).", file=out)
             return 1
+        if action == "repeat":
+            return cmd_repeat(rt, task.id, " ".join(args.text[1:]), out, inp, args.provider, args.yes)
         if action == "show":
             print(f"{task.id} [{task.state}] {task.title}\nGoal: {task.goal}\nProject: {task.project or '-'}\n"
                   f"Step: {task.current_step or '-'}\nError: {task.last_error or '-'}\nUsage: {ts.usage(task.id)}", file=out)
@@ -199,6 +202,144 @@ def cmd_skill(args: argparse.Namespace, out: TextIO, inp: TextIO, approver_facto
         rt.close()
 
 
+# ---- "do this every time": /repeat and jarvis task repeat (jarvis/tasks/repeat.py) ----
+
+def known_tool_tiers(rt: Runtime, tools: list | None = None) -> dict[str, str]:
+    """Tool name -> tier from Jarvis's own registries (chat tools plus browser and Coder tools),
+    so a drafted skill shows real tiers, never a model's guess."""
+    from jarvis.browser import BrowserSession, browser_tools
+    from jarvis.tools.code import CodeTools, coder_tools
+
+    tools = list(tools) if tools is not None else make_chat(rt, "fake").tools.all()
+    try:
+        scratch = rt.paths.data / "repeat"
+        tools += browser_tools(BrowserSession(rt.paths.home, scratch, [], config={}), None)
+        tools += coder_tools(CodeTools(scratch, {}))
+    except Exception:  # tiers of the extra tools are optional context for the draft
+        pass
+    return {t.spec.name: t.tier for t in tools}
+
+
+def _proactive(provider: str | None):
+    from jarvis.proactive.service import Proactive
+
+    return Proactive(provider_override=provider)
+
+
+def propose_repeat(rt: Runtime, when: str, *, task_id: str | None = None, session_id: str | None = None,
+                   provider: str | None = None, tools: list | None = None):
+    """Build (not save) a skill + schedule proposal from a completed task or the last chat
+    action, and keep it as pending. Raises RepeatError with a message for the user."""
+    from jarvis.routing.policy import decide
+    from jarvis.tasks.repeat import RepeatError, RepeatStore, build_proposal, chat_evidence, task_evidence
+
+    ts = task_store(rt)
+    if task_id:
+        task = ts.get(task_id)
+        if not task:
+            raise RepeatError(f"No task {task_id}.")
+        if task.state != "COMPLETED":
+            raise RepeatError(f"Only a task that completed can be made automatic ({task.id} is {task.state}).")
+        evidence, goal, source = task_evidence(rt.store.conn, ts, task), task.goal, f"task {task.id}"
+    elif session_id:
+        action = chat_evidence(rt.store.conn, session_id)
+        evidence, goal, source = action.evidence, action.goal, f"chat {session_id}"
+    else:
+        raise RepeatError("Nothing to repeat.")
+    p = _proactive(provider)
+    d = decide(rt.config, "skill_draft", provider)
+    proposal = build_proposal(
+        evidence, goal, source, when, provider=make_provider(d.provider, rt.config), decision=d,
+        tool_tiers=known_tool_tiers(rt, tools), parser=p.parser(rt, use_model=True),
+        defaults={"output": p.default_output, "budget": p.default_budget}, session_id=session_id or "")
+    RepeatStore(rt.paths.data).put(proposal)
+    rt.audit.write("automation_proposed", proposal=proposal.id, source=source, cron=proposal.schedule["cron"])
+    return proposal, p
+
+
+def _save(rt: Runtime, proposal, p, out: TextIO) -> int:
+    from jarvis.tasks.repeat import RepeatStore, save_proposal
+
+    try:
+        path, schedule = save_proposal(proposal, RepeatStore(rt.paths.data), rt.paths.home / "skills",
+                                       rt.store.conn, p.now(), p.grace_s, rt.audit)
+    except ValueError as e:
+        print(f"Not saved: {e}", file=out)
+        return 1
+    print(f"Saved skill {proposal.skill}: {path}\nSaved schedule {schedule.id}: {schedule.line()}\n"
+          "It runs while `jarvis daemon` is running.", file=out)
+    return 0
+
+
+def cmd_repeat(rt: Runtime, task_id: str, when: str, out: TextIO, inp: TextIO, provider: str | None,
+               yes: bool = False) -> int:
+    from jarvis.tasks.repeat import RepeatError, RepeatStore
+
+    try:
+        proposal, p = propose_repeat(rt, when, task_id=task_id, provider=provider)
+    except RepeatError as e:
+        print(str(e), file=out)
+        return 1
+    print(proposal.show(p.now(), rt.paths.home / "skills"), file=out)
+    if not yes:
+        out.write("Save this skill and schedule? [y/N] ")
+        out.flush()
+        if inp.readline().strip().lower() not in ("y", "yes", "ho", "हो"):
+            RepeatStore(rt.paths.data).drop(proposal.id)
+            print("Not saved.", file=out)
+            return 0
+    return _save(rt, proposal, p, out)
+
+
+def chat_repeat(session, rt: Runtime, rest: str, out: TextIO) -> None:
+    """/repeat <when> shows a draft; /repeat yes saves it; /repeat no drops it."""
+    from jarvis.tasks.repeat import EXAMPLE_WHEN, RepeatError, RepeatStore
+
+    store = RepeatStore(rt.paths.data)
+    word = rest.strip().lower()
+    if word in ("yes", "y", "save", "ho", "हो", "no", "n", "cancel", "nako", "नको"):
+        pending = store.latest(session.session_id)
+        if pending is None:
+            print(f"Nothing is waiting. Use /repeat {EXAMPLE_WHEN} first.", file=out)
+        elif word in ("no", "n", "cancel", "nako", "नको"):
+            store.drop(pending.id)
+            print("Dropped; nothing was saved.", file=out)
+        else:
+            _save(rt, pending, _proactive(_chat_provider(session)), out)
+        return
+    if not word:
+        print(f"Usage: /repeat <when>, e.g. /repeat {EXAMPLE_WHEN}. Then /repeat yes to save or /repeat no.",
+              file=out)
+        return
+    task_id = _recent_task(session, rt)
+    try:
+        proposal, p = propose_repeat(rt, rest, task_id=task_id, session_id=None if task_id else session.session_id,
+                                     provider=_chat_provider(session), tools=session.tools.all())
+    except RepeatError as e:
+        print(str(e), file=out)
+        return
+    if task_id:  # /repeat yes in this chat finds it
+        proposal.session_id = session.session_id
+        store.put(proposal)
+    print(proposal.show(p.now(), rt.paths.home / "skills"), file=out)
+    print("Save both? Reply /repeat yes to save, or /repeat no.", file=out)
+
+
+def _chat_provider(session) -> str | None:
+    return "fake" if getattr(session.decision, "provider", None) == "fake" else None
+
+
+def _recent_task(session, rt: Runtime) -> str | None:
+    """The task run with /task in this chat, if it is newer than the last chat message."""
+    tid = getattr(session, "last_task_id", None)
+    task = task_store(rt).get(tid) if tid else None
+    if not task:
+        return None
+    row = rt.store.conn.execute("SELECT MAX(ts) FROM messages WHERE session_id=? AND role='user'",
+                                (session.session_id,)).fetchone()
+    return task.id if not row or not row[0] or task.updated_at >= row[0] else None
+
+
 def chat_command(session, rt: Runtime, cmd: str, rest: str, out: TextIO) -> bool:
     """Chat commands: /task, /record, /note, /project. Returns False if not one of them."""
     if cmd == "/project":
@@ -217,7 +358,12 @@ def chat_command(session, rt: Runtime, cmd: str, rest: str, out: TextIO) -> bool
         if not rest:
             print("Usage: /task <goal>", file=out)
         else:
-            run_task(rt, create_task(rt, rest, session.context.project), out, session.approver_for_tasks)
+            tid = create_task(rt, rest, session.context.project)
+            session.last_task_id = tid  # /repeat after /task automates the task
+            run_task(rt, tid, out, session.approver_for_tasks)
+        return True
+    if cmd == "/repeat":
+        chat_repeat(session, rt, rest, out)
         return True
     if cmd in ("/record", "/note"):
         rec = recorder(rt)
