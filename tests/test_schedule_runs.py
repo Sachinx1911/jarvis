@@ -303,11 +303,13 @@ def test_brief_schedule_runs_without_a_model():
 def test_default_schedules_created_once_and_deletion_is_respected():
     p = proactive(at(2026, 10, 10, 15, 0))
     added = p.ensure_default_schedules()
-    assert len(added) == 2
+    assert len(added) == 4
     rt, store = _store()
     kinds = {s.kind: s for s in store.list()}
     assert kinds["brief"].cron == "0 8 * * *" and kinds["heartbeat"].cron == "*/30 * * * *"
     assert kinds["heartbeat"].misfire_grace_s == 300
+    assert kinds["memory_extract"].cron == "*/10 * * * *" and kinds["memory_extract"].output == "file"
+    assert kinds["memory_cleanup"].cron == "0 21 * * sun"
     store.delete(kinds["heartbeat"].id)
     rt.close()
     assert p.ensure_default_schedules() == []          # Sachin deleted it: stays deleted

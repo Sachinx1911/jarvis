@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import json
 import threading
 from typing import Callable, TextIO
 
@@ -32,7 +33,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     sch = sub.add_parser("schedule", help="skill, agent and prompt schedules")
     sch.add_argument("action", choices=["add", "list", "pause", "resume", "run-now", "delete", "runs", "approvals"])
     sch.add_argument("text", nargs="*", help="add: what and when, e.g. 'every Monday at 9 project summary'; "
-                                             "others: schedule id")
+                                             "approvals: 'approve <id>' or 'deny <id>'; others: schedule id")
     sch.add_argument("--kind", choices=KINDS, default="prompt")
     sch.add_argument("--target", default="", help="skill or agent name (for --kind skill/agent)")
     sch.add_argument("--output", choices=OUTPUTS, default=None)
@@ -78,7 +79,8 @@ def _ask(out: TextIO, inp: TextIO, question: str) -> bool:
 
 
 def cmd_schedule(args: argparse.Namespace, out: TextIO, inp: TextIO) -> int:
-    p = _proactive(args, out, notify=args.action == "run-now")
+    approving = args.action == "approvals" and args.text[:1] == ["approve"]
+    p = _proactive(args, out, notify=args.action == "run-now" or approving)  # replay results go to the notifier
     text = " ".join(args.text).strip()
     rt = p.open_rt()
     try:
@@ -92,6 +94,28 @@ def cmd_schedule(args: argparse.Namespace, out: TextIO, inp: TextIO) -> int:
             return 0
         if args.action == "approvals":
             pending = PendingApprovals(rt.store.conn)
+            verb, _, rest = text.partition(" ")
+            if verb in ("approve", "deny"):
+                pid = rest.strip().lstrip("#")
+                if not pid.isdigit():
+                    print(f"Usage: jarvis schedule approvals {verb} <id>", file=out)
+                    return 2
+                item = pending.get(int(pid))
+                if item is None or item["status"] != "pending":
+                    print(f"No pending approval #{pid}." if item is None else f"#{pid} is already {item['status']}.",
+                          file=out)
+                    return 1
+                if verb == "approve" and not args.yes:
+                    print(f"#{pid} from {item['schedule_id']} ({item['created_at'][:16]}): {item['tool']} "
+                          f"[{item['tier']}]\n{json.dumps(item['arguments'], ensure_ascii=False, indent=2)}", file=out)
+                    if not _ask(out, inp, "Run this exact call once now?"):
+                        print("Not run; still pending.", file=out)
+                        return 0
+                rt.close()
+                rt = None
+                r = p.deny_pending(int(pid), "cli") if verb == "deny" else p.approve_pending(int(pid), "cli")
+                print(r.message, file=out)
+                return 0 if r.status in ("executed", "denied") else 1
             if args.dismiss is not None:
                 print("Dismissed." if pending.dismiss(args.dismiss) else "No such pending item.", file=out)
                 return 0

@@ -1,0 +1,23 @@
+# Memory upkeep (PLAN.md 6.3 rule 8 and 6.6). Machine-specific overrides go in
+# config/local.yaml under `memory_file:` (git-ignored).
+
+# Extraction after a quiet session: a chat whose last message is older than
+# `quiet_minutes` and that was not extracted yet (at /exit or by an earlier run).
+quiet_extract:
+  enabled: true
+  every_minutes: 10           # built-in schedule "Memory extraction"
+  quiet_minutes: 20           # with a 10-minute check, extraction happens 20-30 minutes after the last message
+  max_age_hours: 24           # older sessions are left alone (no backfill of old history)
+  max_sessions_per_run: 5     # bounds model calls per run
+  max_failures: 3             # after this many failed extractions of one session, give up on it
+  output: file                # telegram | file | both (only runs that saved something produce output)
+
+# Weekly cleanup: duplicates, relative dates, archiving, MEMORY.md size.
+cleanup:
+  enabled: true
+  cron: "0 21 * * sun"        # Sunday 21:00 in the proactive timezone
+  output: telegram
+  duplicate_similarity: 0.9   # trigram Jaccard at or above this = duplicate (the newest is kept)
+  borderline_similarity: 0.75 # between this and duplicate_similarity = listed in the report only
+  archive_after_days: 90      # not used (or created, if never used) for this long = archived
+  keep_types: [constraint, preference]   # never archived for age

@@ -30,6 +30,14 @@ from jarvis.routing.policy import RoutingError
 
 HEARTBEAT_NAME = "Heartbeat"
 BRIEF_NAME = "Daily brief"
+EXTRACT_NAME = "Memory extraction"
+CLEANUP_NAME = "Memory cleanup"
+
+
+def _memory_settings() -> dict[str, Any]:
+    from jarvis.memory.upkeep_settings import load_memory_settings
+
+    return load_memory_settings()
 
 
 @dataclass
@@ -41,6 +49,8 @@ class Proactive:
     clock: Clock | None = None
     chat_factory: Callable[[Runtime, Approver], Any] | None = None
     extras: dict[str, Any] = field(default_factory=dict)   # e.g. {"web": WebClient(...)} for the brief
+    memory_settings: dict[str, Any] = field(default_factory=_memory_settings)   # config/memory.yaml
+    extractor_factory: Callable[[Runtime], Any] | None = None   # tests inject one on the fake provider
 
     def __post_init__(self):
         if self.clock is None:
@@ -138,7 +148,62 @@ class Proactive:
 
         chat = chat_executor(self.chat)
         from jarvis.proactive.integration import agent_task_executor
-        return {"prompt": chat, "skill": chat, "agent": agent_task_executor, "brief": brief, "heartbeat": beat}
+        return {"prompt": chat, "skill": chat, "agent": agent_task_executor, "brief": brief, "heartbeat": beat,
+                "memory_extract": self._memory_extract, "memory_cleanup": self._memory_cleanup}
+
+    # ---- memory upkeep (PLAN.md 6.3 rule 8, 6.6) ----
+
+    def extractor(self, rt: Runtime):
+        if self.extractor_factory is not None:
+            return self.extractor_factory(rt)
+        from jarvis.core.runtime import make_extractor
+
+        return make_extractor(rt, self.provider_override)
+
+    def _memory_extract(self, ctx: RunContext) -> str | None:
+        from jarvis.memory.quiet import extract_quiet_sessions
+
+        q = dict(self.memory_settings.get("quiet_extract") or {})
+        run = extract_quiet_sessions(
+            ctx.rt.store.conn, self.extractor(ctx.rt), ctx.now, quiet_minutes=float(q.get("quiet_minutes", 20)),
+            max_age_hours=float(q.get("max_age_hours", 24)), max_sessions=int(q.get("max_sessions_per_run", 5)),
+            max_failures=int(q.get("max_failures", 3)), audit=ctx.rt.audit)
+        if run.skipped_reason or not run.outcomes:
+            return None  # nothing to say: the run is recorded as "quiet"
+        return run.summary()
+
+    def _memory_cleanup(self, ctx: RunContext) -> str | None:
+        from jarvis.memory.maintenance import MemoryCleanup
+
+        settings = dict(self.memory_settings.get("cleanup") or {})
+        report = MemoryCleanup(ctx.rt.memory, ctx.rt.paths.home, ctx.now.date(), ctx.rt.audit, settings).run()
+        return report.summary() + (f"\nReport: {report.path}" if report.path else "")
+
+    # ---- approvals queued by unattended runs ----
+
+    def replay_registry(self, rt: Runtime, approver: Approver):
+        """A fresh tool registry: the same tools a scheduled chat turn gets, with this approver."""
+        return self.chat(rt, approver).tools
+
+    def approve_pending(self, pid: int, source: str = "cli"):
+        from jarvis.proactive.replay import approve_pending
+
+        hours = float(self.settings.section("approvals").get("replay_max_age_hours", 24))
+        rt = self.open_rt()
+        try:
+            return approve_pending(rt, pid, self.now(), self.replay_registry, self.notifier,
+                                   timedelta(hours=hours), source, self.clock)
+        finally:
+            rt.close()
+
+    def deny_pending(self, pid: int, source: str = "cli"):
+        from jarvis.proactive.replay import deny_pending
+
+        rt = self.open_rt()
+        try:
+            return deny_pending(rt, pid, self.now(), self.notifier, source)
+        finally:
+            rt.close()
 
     def runner(self) -> ScheduleRunner:
         stale = timedelta(hours=float(self.settings.section("schedules").get("stale_lock_hours", 6)))
@@ -153,11 +218,19 @@ class Proactive:
             store = ScheduleStore(rt.store.conn)
             now = self.now()
             b, h = self.settings.section("brief"), self.settings.section("heartbeat")
+            q = dict(self.memory_settings.get("quiet_extract") or {})
+            c = dict(self.memory_settings.get("cleanup") or {})
+            every_q = int(q.get("every_minutes", 10))
             defaults = [
                 (BRIEF_NAME, "brief", str(b.get("cron") or "0 8 * * *"), str(b.get("output") or self.default_output),
                  "every day at the brief time", b.get("enabled", True), self.grace_s),
                 (HEARTBEAT_NAME, "heartbeat", f"*/{int(h.get('every_minutes', 30))} * * * *", "telegram",
                  f"every {int(h.get('every_minutes', 30))} minutes", h.get("enabled", True), 300),
+                (EXTRACT_NAME, "memory_extract", f"*/{every_q} * * * *", str(q.get("output") or "file"),
+                 f"every {every_q} minutes", q.get("enabled", True), 300),
+                (CLEANUP_NAME, "memory_cleanup", str(c.get("cron") or "0 21 * * sun"),
+                 str(c.get("output") or self.default_output), "every week (Sunday evening)", c.get("enabled", True),
+                 self.grace_s),
             ]
             marker = rt.paths.data / "proactive_defaults_created"
             created_before = set(marker.read_text(encoding="utf-8").split()) if marker.exists() else set()

@@ -52,3 +52,8 @@ routes:
     needs: [structured_output]
     max_privacy: P1
     cloud_fallback: never
+
+# Actions that unattended runs queued for approval (`/approvals` on Telegram,
+# `jarvis schedule approvals`). Approving replays the exact queued call once.
+approvals:
+  replay_max_age_hours: 24    # older items can no longer be approved (stale)

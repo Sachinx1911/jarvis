@@ -70,7 +70,8 @@ class JarvisBot:
     def register(self, app: Application) -> None:
         app.add_handler(TypeHandler(Update, self.gate), group=-1)
         for name in ("start", "help", "stop", "resume", "tasks", "task", "pause", "cancel", "schedules", "schedule",
-                     "schedule_pause", "schedule_resume", "schedule_run", "schedule_delete", "approvals", "dismiss",
+                     "schedule_pause", "schedule_resume", "schedule_run", "schedule_delete", "approvals", "approve",
+                     "deny", "dismiss",
                      "remind", "reminders", "brief", "cloud", "new"):
             app.add_handler(CommandHandler(name, self.on_command))
         app.add_handler(CallbackQueryHandler(self.on_callback))
@@ -130,6 +131,8 @@ class JarvisBot:
             "schedule_run": lambda: c.cmd_schedule_action("run", arg),
             "schedule_delete": lambda: c.cmd_schedule_action("delete", arg),
             "approvals": lambda: c.cmd_approvals(),
+            "approve": lambda: c.cmd_approve(arg),
+            "deny": lambda: c.cmd_deny(arg),
             "dismiss": lambda: c.cmd_dismiss(arg),
             "remind": lambda: c.cmd_remind(arg),
             "reminders": lambda: c.cmd_reminders(),
@@ -145,6 +148,12 @@ class JarvisBot:
             log.exception("command %s failed", cmd)
             reply = f"Failed: {type(e).__name__}: {e}"
         await self._reply(update, reply)
+        if cmd == "approvals":
+            # One message per waiting item with Approve/Deny buttons. The item id is in the button;
+            # only Sachin's updates pass the gate, and approving re-checks status, age and tier.
+            for pid in await asyncio.to_thread(c.pending_approval_ids):
+                await update.effective_message.reply_text(
+                    f"#{pid}", reply_markup=_buttons("pa", str(pid), "Approve", "Deny"))
 
     async def on_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not self.core.is_allowed(update.effective_user.id if update.effective_user else None):
@@ -175,6 +184,15 @@ class JarvisBot:
                 await query.edit_message_text(f"{verdict}: {req.tool}\n\n{req.describe()}"[:4000])
             else:
                 await query.edit_message_text("This approval is closed (answered, timed out, or stopped).")
+        elif prefix == "pa":
+            await query.answer("Running" if yes else "Denied")
+            fn = self.core.cmd_approve if yes else self.core.cmd_deny
+            try:
+                reply = await asyncio.to_thread(fn, token)
+            except Exception as e:  # noqa: BLE001 - report, keep the bot alive
+                log.exception("approval replay failed")
+                reply = f"Failed: {type(e).__name__}: {e}"
+            await query.edit_message_text(reply[:4000])
         elif prefix == "sc":
             await query.answer()
             await query.edit_message_text(await asyncio.to_thread(self.core.confirm_schedule, token, yes))
