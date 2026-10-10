@@ -9,8 +9,9 @@ Tiers (PLAN.md 11.1 and 13):
 Privacy (PLAN.md 5.9): email bodies are P2. Sender and subject follow
 gmail.header_class (P2 until Sachin decides, open decision #19). Event titles, times
 and places are schedule outlines (P1); descriptions and attendee addresses are P2.
-Anything above the route's limit is withheld and the model is told so. Mail is
-untrusted outside content, so the Gmail read tools taint the session.
+Anything above the route's limit is withheld and the model is told so. Mail and
+calendar events (anyone can send an invite) are untrusted outside content, so the Gmail
+read tools and calendar_list taint the session.
 
 The registry gives a verifier only the call's arguments, so handlers remember the id
 they created per argument set and the verifier reads that id back.
@@ -298,7 +299,7 @@ class GoogleTools:
                           _obj({"text": S}, ["text"])), "T0", self.parse_time),
             Tool(ToolSpec("calendar_list", "List the user's Google Calendar events. range: today, tomorrow, a weekday, "
                           "a date, 'week', 'next N days', or 'YYYY-MM-DD..YYYY-MM-DD'.", _obj({"range": S}, [])),
-                 "T0", self.calendar_list),
+                 "T0", self.calendar_list, taints=True),  # anyone can send an invite: titles are outside text
             Tool(ToolSpec("calendar_create_event", f"Create an event in the user's Google Calendar (no invitations are "
                           f"sent). start/end: {when}. end is optional.",
                           _obj({"title": S, "start": S, "end": S, "location": S, "description": S}, ["title", "start"])),

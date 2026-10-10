@@ -140,6 +140,14 @@ class FileTools:
         shutil.move(str(src), str(dst))
         return f"Moved to {self.policy.show(dst)}."
 
+    def moved_to(self, args: dict) -> Path:
+        """Where move_file put the file (for provenance records)."""
+        raw = args["destination"]
+        dst = self.policy.resolve(raw)
+        if dst.is_dir() or raw.endswith(("/", "\\")):
+            dst = self.policy.resolve(str(dst / Path(args["source"]).name))
+        return dst
+
     def verify_move(self, args: dict, before: tuple[Path, Path] | None = None) -> tuple[bool, str]:
         src, dst = before or self._move_target(args)
         ok = dst.exists() and not src.exists()
