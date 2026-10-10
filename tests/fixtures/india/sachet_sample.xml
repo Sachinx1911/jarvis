@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?xml-stylesheet title="XSL_formatting" type="text/xsl" href="feed.xsl"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Maharashtra: CAP Disaster Alert Feeds</title>
+    <description>CAP Integrated Alert System Warning Updates</description>
+    <language>en</language>
+    <item>
+      <title>पुढील ३ तासात पुणे आणि सातारा जिल्ह्यात मेघगर्जनेसह विजा चमकण्याची शक्यता आहे.</title>
+      <description/>
+      <category>Met</category>
+      <link>https://sachet.example/alert/1</link>
+      <author>alerts@example.org (Example Met Office)</author>
+      <guid isPermaLink="false">1001</guid>
+      <pubDate>Sat, 10 Oct 2026 01:30:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Heavy rain likely in Nagpur district in the next 3 hours.</title>
+      <description/>
+      <category>Met</category>
+      <link>https://sachet.example/alert/2</link>
+      <author>alerts@example.org (Example Met Office)</author>
+      <guid isPermaLink="false">1002</guid>
+      <pubDate>Sat, 10 Oct 2026 00:10:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Old alert for Pune that is a week old.</title>
+      <category>Met</category>
+      <link>https://sachet.example/alert/3</link>
+      <guid isPermaLink="false">1003</guid>
+      <pubDate>Sat, 03 Oct 2026 00:10:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>
