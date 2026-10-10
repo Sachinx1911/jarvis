@@ -256,8 +256,9 @@ def _as_current(value: str, low: str) -> bool:
 def check_answer(q: dict[str, Any], output: str) -> tuple[bool, bool, str]:
     """(passed, stale, detail)."""
     low = output.lower()
-    update = q["category"] == "knowledge-update"
-    present = (lambda v: _as_current(v, low)) if update else (lambda v: v.lower() in low)
+    # Knowledge updates, and questions marked history_ok, may name an old value as history.
+    history_ok = q["category"] == "knowledge-update" or bool(q.get("history_ok"))
+    present = (lambda v: _as_current(v, low)) if history_ok else (lambda v: v.lower() in low)
     stale = any(present(v) for v in q.get("stale_values", []))
     if q["category"] == "unanswerable":
         ok = any(p in low for p in ABSTAIN)

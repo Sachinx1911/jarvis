@@ -74,6 +74,41 @@ def test_check_answer_rules():
     assert not me.check_answer(un, "Your mother is 58, sir.")[0]
 
 
+def _question(qid: str) -> dict:
+    return next(q for q in me.load_cases()["questions"] if q["id"] == qid)
+
+
+def test_baner_accepts_both_devanagari_spellings():
+    for qid in ("ku-1", "ku-2", "ms-3"):          # every question whose answer is Baner
+        q = _question(qid)
+        assert {"Baner", "बाणेर", "बानेर"} <= set(q["answer"]["contains_any"]), qid
+    ku2 = _question("ku-2")
+    for right in ("तुमचं ऑफिस आता बानेरला आहे, सर.", "ऑफिस आता बाणेरमध्ये आहे.", "Office ata Banerla ahe."):
+        assert me.check_answer(ku2, right) == (True, False, "ok"), right
+
+
+def test_baner_spellings_do_not_accept_a_wrong_place():
+    ku2 = _question("ku-2")
+    for wrong in ("तुमचं ऑफिस हिंजवडीला आहे.", "ऑफिस आता बालेवाडीत आहे.", "बानेर नाही, ऑफिस Hinjewadi ला आहे."):
+        assert not me.check_answer(ku2, wrong)[0], wrong
+
+
+def test_tm1_accepts_the_old_lift_named_as_history():
+    tm1 = _question("tm-1")
+    for right in ("Last week you deadlifted 100 kilo (1 October). The previous best was 80 kilo in September.",
+                  "Gelya athavdyat 100 kilo deadlift kela. Tyaadhi 80 kilo hota.",
+                  "1 October: 100 kilo, sir."):
+        assert me.check_answer(tm1, right)[0], right
+
+
+def test_tm1_rejects_the_old_lift_as_last_weeks_answer():
+    tm1 = _question("tm-1")
+    for wrong in ("Last week you deadlifted 80 kilo, sir.",
+                  "You did 100 kilo on 1 October and 80 kilo last week.",
+                  "Gelya athavdyat 80 kilo kela. Pudhcha target 100 kilo."):
+        assert not me.check_answer(tm1, wrong)[0], wrong
+
+
 def test_live_run_uses_the_chat_route_with_a_fake_provider(tmp_path, monkeypatch):
     from jarvis.config import load_config
     from jarvis.providers.fake import FakeProvider
