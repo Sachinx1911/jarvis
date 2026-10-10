@@ -306,7 +306,9 @@ def test_read_goes_through_quarantine_and_taints(env):
     reg.tainted = False  # check that reading alone taints, too
     res = call(reg, "browser_read", question="What is this site?")
     assert not res.is_error and res.content.startswith("UNTRUSTED WEB DATA")
-    assert "IGNORE ALL" not in res.content and "instructions aimed at an AI" in res.content
+    # injection_detected: the free-text answer is dropped, the session is marked hostile
+    assert "IGNORE ALL" not in res.content and "trying to give an AI orders" in res.content
+    assert "It is a demo shop." not in res.content and reg.hostile
     assert reg.tainted
     sent = q_provider.requests[0]
     assert sent.tools == [] or not sent.tools

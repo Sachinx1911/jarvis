@@ -3,7 +3,8 @@
 Call the provider, run tool calls through the tool registry, append results, repeat
 until the model answers or the step limit is hit. The emergency stop is checked before
 every provider call and every tool call. P3 secrets are redacted from every outbound
-payload.
+payload. The final reply never auto-loads images (egress.neutralize_reply): a model steered
+by untrusted text could otherwise leak data through an image URL that the dashboard loads.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from jarvis.control.audit import AuditLog
+from jarvis.control.egress import neutralize_reply
 from jarvis.control.stop import StopSwitch
 from jarvis.db import Store
 from jarvis.privacy import redact_p3
@@ -93,7 +95,11 @@ class AgentLoop:
             if resp.stop_reason == "refusal":
                 return LoopResult("(The model declined this request.)", step, "refusal")
             if not resp.tool_calls:
-                return LoopResult(resp.text, step, resp.stop_reason)
+                text = neutralize_reply(resp.text)
+                if text != resp.text:
+                    self.audit.write("reply_neutralized", session_id=session_id, agent=self.agent,
+                                     tainted=self.tools.tainted)
+                return LoopResult(text, step, resp.stop_reason)
 
             results = []
             for call in resp.tool_calls:

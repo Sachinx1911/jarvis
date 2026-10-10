@@ -3,6 +3,14 @@
 Each agent gets its own system prompt, a fixed work order, a tool allowlist, its own route
 (provider and model from the routing policy) and a step limit. Workers never ask the user:
 they have no approver, so anything above T1 is refused. Agents return short summaries.
+
+Taint travels between agents (prompt-injection defense): an agent whose input is derived from
+web text (the writer gets the researchers' findings, the checker reads the report) starts
+with a tainted registry, so it cannot be steered into T1 actions without approval and its
+links are egress-checked. The orchestrator can also mark any hand-off tainted with
+AgentEnv.tainted_input. Writers still work: write_file into the task folder is "sandboxed"
+(the path policy confines it there) and every file it writes is recorded as tainted
+provenance, so whoever reads it later is tainted too.
 """
 
 from __future__ import annotations
@@ -36,12 +44,25 @@ class AgentSpec:
     prompt_file: str
     tools: frozenset[str]
     files_root: str = "workspace"  # "task" = the task folder only
+    starts_tainted: bool = False   # its input is derived from untrusted (web) text
 
 
 RESEARCHER = AgentSpec("researcher", "researcher", "researcher.md",
                        frozenset({"web_search", "web_fetch", "memory_search", "doc_search"}))
-WRITER = AgentSpec("writer", "writer", "writer.md", frozenset({"write_file", "read_file", "list_folder"}), "task")
-CHECKER = AgentSpec("checker", "checker", "checker.md", frozenset({"read_file", "list_folder", "web_fetch"}), "task")
+WRITER = AgentSpec("writer", "writer", "writer.md", frozenset({"write_file", "read_file", "list_folder"}), "task",
+                   starts_tainted=True)
+CHECKER = AgentSpec("checker", "checker", "checker.md", frozenset({"read_file", "list_folder", "web_fetch"}), "task",
+                    starts_tainted=True)
+SANDBOXED_WRITES = frozenset({"write_file"})  # T1 writes allowed while tainted, task folder only
+
+
+def prepare_taint(registry: ToolRegistry, spec: AgentSpec, order: "WorkOrder", env: "AgentEnv", name: str) -> None:
+    """Start the agent's registry tainted when its input is untrusted; set its trusted words."""
+    registry.trusted_text = lambda: [order.objective, env.goal]
+    if spec.files_root == "task":
+        registry.sandboxed = SANDBOXED_WRITES
+    if spec.starts_tainted or env.tainted_input:
+        registry.taint("agent input derived from untrusted text", agent=name, task_id=env.task_id)
 
 
 @dataclass
@@ -81,6 +102,8 @@ class AgentEnv:
     on_usage: Callable | None = None
     web: WebClient | None = None
     max_steps: int = 8
+    tainted_input: bool = False  # the orchestrator hands this agent untrusted (web-derived) text
+    goal: str = ""               # the user's own task goal (trusted words for the egress policy)
 
 
 def run_agent(spec: AgentSpec, name: str, order: WorkOrder, env: AgentEnv) -> LoopResult:
@@ -98,6 +121,7 @@ def run_agent(spec: AgentSpec, name: str, order: WorkOrder, env: AgentEnv) -> Lo
             tavily_key=lambda: get_secret("tavily_api_key"), system=SystemTools(),
         ))
         registry.restrict(set(spec.tools))
+        prepare_taint(registry, spec, order, env, name)
         for tool in registry.all():  # workers stay at T0/T1 whatever the registry file says
             if tool.tier not in ("T0", "T1"):
                 registry.register(replace(tool, enabled=False))

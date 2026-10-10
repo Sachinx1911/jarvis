@@ -73,6 +73,7 @@ class ChatSession:
             system=system or SystemTools(),
         )
         build_registry(self.tools, self._deps)
+        self.tools.trusted_text = self.user_messages  # links in the user's own words pass egress checks
         self.home = home
         self.browser = None              # opened only for sites the user names (PLAN.md 11.4)
         self.browser_domains: list[str] = []

@@ -14,7 +14,7 @@ import uuid
 from dataclasses import replace
 from pathlib import Path
 
-from jarvis.agents.team import AgentEnv, AgentSpec, WorkOrder
+from jarvis.agents.team import AgentEnv, AgentSpec, WorkOrder, prepare_taint
 from jarvis.browser.recording import active_recording_dir, STEPS_FILE
 from jarvis.browser.session import BrowserSession
 from jarvis.browser.tools import browser_tools
@@ -96,6 +96,7 @@ def run_extra_agent(spec: AgentSpec, name: str, order: WorkOrder, env: AgentEnv,
             registry.register(tool)
         apply_registry(registry, registry_path(env.home), env.audit)  # disable / raise tiers only
         registry.restrict(set(spec.tools))
+        prepare_taint(registry, spec, order, env, name)
         if spec.role != "operator":  # the Coder stays at T0/T1 whatever the registry file says
             for tool in registry.all():
                 if tool.tier not in ("T0", "T1"):
