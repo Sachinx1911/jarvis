@@ -140,9 +140,16 @@ class ModelCapabilities:
     source: Literal["documented", "measured", "unknown"] = "unknown"
 
     @classmethod
-    def from_config(cls, entry: dict[str, Any] | None) -> "ModelCapabilities":
+    def from_config(cls, entry: dict[str, Any] | None, provider: str | None = None) -> "ModelCapabilities":
         if not entry:
             return cls()  # unknown counts as unsupported
+        if provider and provider != entry.get("provider"):
+            # The same model reached through another provider (e.g. the Claude Code CLI)
+            # needs its own declared profile; without one it counts as unknown.
+            via = (entry.get("via") or {}).get(provider)
+            if via is None:
+                return cls()
+            entry = {**entry, **via}
         known = {k: entry[k] for k in cls.__dataclass_fields__ if k in entry}
         if "languages_verified" in known:
             known["languages_verified"] = tuple(known["languages_verified"])

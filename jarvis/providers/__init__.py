@@ -18,4 +18,8 @@ def make_provider(name: str, config: Config) -> ReasoningProvider:
 
         secret_name = config.providers.get("anthropic", {}).get("secret", "anthropic_api_key")
         return ClaudeProvider(get_secret(secret_name), config.models)
+    if name == "claude_code":
+        from jarvis.providers.claude_code import ClaudeCodeProvider
+
+        return ClaudeCodeProvider(config.models)
     raise ValueError(f"unknown provider: {name}")

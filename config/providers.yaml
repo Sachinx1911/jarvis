@@ -4,5 +4,8 @@ providers:
   anthropic:
     kind: cloud
     secret: anthropic_api_key
+  claude_code:
+    kind: cloud       # same Claude models, reached through the local Claude Code CLI
+    auth: subscription  # the user's Claude login (Max); no API key, no per-call billing
   fake:
     kind: test        # deterministic, offline; always allowed, sends nothing anywhere

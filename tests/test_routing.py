@@ -9,9 +9,14 @@ def _config(**routing) -> Config:
     return Config(base.providers, base.models, {**base.routing, **routing})
 
 
-def test_default_main_chat_is_opus():
+def test_default_main_chat_is_opus_via_subscription():
     d = decide(load_config(), "main_chat")
-    assert (d.provider, d.model, d.effort) == ("anthropic", "claude-opus-5-5", "medium")
+    assert (d.provider, d.model, d.effort) == ("claude_code", "claude-opus-5-5", "medium")
+
+
+def test_anthropic_api_not_approved_for_now():
+    with pytest.raises(RoutingError, match="not the requested provider|not approved"):
+        decide(load_config(), "main_chat", "anthropic")
 
 
 def test_fake_override_always_allowed():
@@ -30,8 +35,8 @@ def test_cloud_switch_off_blocks_cloud():
 
 def test_missing_capability_skips_candidate():
     cfg = _config(routes={"r": {"candidates": [
-        {"provider": "anthropic", "model": "unknown-model"},
-        {"provider": "anthropic", "model": "claude-haiku-5-5", "effort": "low"},
+        {"provider": "claude_code", "model": "unknown-model"},
+        {"provider": "claude_code", "model": "claude-haiku-5-5", "effort": "low"},
     ], "needs": ["tools"]}})
     d = decide(cfg, "r")
     assert d.model == "claude-haiku-5-5"

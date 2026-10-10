@@ -2,12 +2,13 @@
 # Machine-specific overrides go in config/local.yaml (git-ignored).
 mode: cloud_primary          # cloud_primary (Stage A) | local_first (Stage C) | local_only (Stage D)
 cloud_allowed: true
-approved_providers: [anthropic]
+# 2026-10-10: Claude API not used for now; Claude runs through the subscription CLI.
+approved_providers: [claude_code]
 
 routes:
   main_chat:
     candidates:
-      - {provider: anthropic, model: claude-opus-5-5, effort: medium}
+      - {provider: claude_code, model: claude-opus-5-5, effort: medium}
     needs: []
     max_privacy: P1
     cloud_fallback: never    # never | ask | allowed (used from Stage C)

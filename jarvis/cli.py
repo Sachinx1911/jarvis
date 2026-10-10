@@ -91,7 +91,7 @@ def cmd_secret(args: argparse.Namespace, out: TextIO) -> int:
 
 def cmd_health(args: argparse.Namespace, out: TextIO) -> int:
     config = load_config()
-    for name in ("anthropic", "fake"):
+    for name in ("claude_code", "anthropic", "fake"):
         h = make_provider(name, config).health()
         print(f"{name}: {'OK' if h.ok else 'NOT OK'} - {h.detail}", file=out)
     return 0
@@ -102,7 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("init", help="create folders, database and audit log")
     chat = sub.add_parser("chat", help="chat with Jarvis")
-    chat.add_argument("--provider", choices=["anthropic", "fake"], default=None)
+    chat.add_argument("--provider", choices=["claude_code", "anthropic", "fake"], default=None)
     chat.add_argument("-m", "--message", help="send one message and exit")
     sec = sub.add_parser("secret", help="manage secrets in the OS secret store")
     sec.add_argument("action", choices=["set", "status"])

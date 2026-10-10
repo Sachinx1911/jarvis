@@ -5,19 +5,19 @@ Ending a session: update this file and commit.
 
 ## Current status
 
-- **Phase:** Phase 0 built. Offline done-when checks pass; the live Claude check waits for an API key.
-- **Code:** `jarvis/` package: provider interface (`providers/base.py`), fake provider, Claude adapter (generate only), routing policy, SQLite store, audit log, keyring secrets, CLI (`init`, `chat`, `secret`, `health`). Config in `config/`, system prompt in `prompts/`, setup scripts in `scripts/`.
-- **Tests:** 26 pass, 1 skipped (live Claude test). Run: `.venv\Scripts\python.exe -m pytest` (Windows) or `.venv/bin/python -m pytest` (Mac).
-- **Half-done work:** Phase 0 done-when item 1 (reply "Good evening, sir." through the Claude adapter) not yet run: no API key.
+- **Phase:** Phase 0 complete. Phase 1 approved by Sachin (vectors deferred); not started yet.
+- **AI provider now:** Claude through Sachin's Claude Max subscription, via the local Claude Code CLI (`claude -p`), adapter `jarvis/providers/claude_code.py`. No API key, no per-call billing; calls count against the plan's usage limits. The Anthropic API adapter (`claude.py`) stays but is not approved in `config/routing.yaml`.
+- **Code:** `jarvis/` package: provider interface (`providers/base.py`), fake provider, Claude Code CLI adapter (main), Claude API adapter (unused), routing policy, SQLite store, audit log, keyring secrets, CLI (`init`, `chat`, `secret`, `health`). Config in `config/`, system prompt in `prompts/`, setup scripts in `scripts/`.
+- **Tests:** 43 pass offline, 2 live tests opt-in. Run: `.venv\Scripts\python.exe -m pytest` (Windows) or `.venv/bin/python -m pytest` (Mac). Live: set `JARVIS_LIVE=1`, then `pytest -m live` (subscription test passed on 2026-10-10; API test skipped, no key).
+- **Needs on each machine:** Claude Code CLI 2.1.280 or newer (for `claude-opus-5-5`), logged in with the Claude subscription. `jarvis health` checks this.
+- **Half-done work:** None.
 - **Last update:** 2026-10-10, office laptop (Windows 11, Python 3.12).
 - **GitHub:** Pushed to `main` on 2026-10-10 with Sachin's OK.
 
 ## Next step
 
-1. **Sachin:** Decide how to continue without the Claude API (see 2026-10-10 decision): build Phase 1 against the fake provider, or bring local-model work forward.
-2. Later, when the API is wanted: store the key with `jarvis secret set anthropic_api_key`, run `JARVIS_LIVE=1 pytest -m live`, and tick the last Phase 0 done-when item.
-
-Phase 1 notes: add Claude `stream()`/`structured()` with adapter contract tests; consider server-side refusal `fallbacks` (Claude-only, logged in receipts).
+1. **Claude:** Build Phase 1 per the plan Sachin approved on 2026-10-10 (memory store as markdown + SQLite FTS5 unicode61/trigram index with RRF, `/remember`, memory commands, context builder, privacy gate v1 with P3 filters, Jarvis-owned agent loop with `memory_search` and `load_skill`, session search, skill loader, SOUL.md template, extractor pipeline, eval scaffold). Vectors deferred.
+2. With the subscription provider available, the extractor, query rewrite and the Phase 1 memory test (10 facts, at least 9 used) can now run for real.
 
 ## Decisions made by Sachin
 
@@ -39,7 +39,9 @@ Phase 1 notes: add Claude `stream()`/`structured()` with adapter contract tests;
 | 2026-10-10 | Build cross-platform (Windows office laptop + Mac). Mac-only features stay in later phases. Secrets via keyring: Keychain on Mac, Credential Manager on Windows |
 | 2026-10-10 | Python 3.12 on the office laptop; code supports 3.12+ (Mac keeps 3.13) |
 | 2026-10-10 | Phase 0 started without an API key, using the fake provider; live Claude check after the key arrives |
-| 2026-10-10 | Do not use the Claude API for now. The live Claude check is deferred; the Claude adapter stays in the code but is not called |
+| 2026-10-10 | Do not use the Claude API for now. The Claude API adapter stays in the code but is not approved |
+| 2026-10-10 | Use Sachin's Claude Max subscription instead, through the Claude Code CLI as a provider adapter (`claude_code`). Claude Code CLI updated to 2.1.296 on the office laptop |
+| 2026-10-10 | Start Phase 1 now, built and tested against the fake provider plus the subscription provider. Vector search deferred (keyword + trigram first) |
 
 ## Open decisions
 
@@ -59,3 +61,4 @@ See "Open decisions" in PLAN.md. Most important:
 | 2026-10-10 | MacBook M4 | Sachin decided: own loop, Tavily, no P2 to cloud at start (PLAN v3.4) |
 | 2026-10-10 | MacBook M4 | PLAN v3.5: migration path for every AI-dependent component, rule for moving a component local. CLAUDE.md rule added |
 | 2026-10-10 | Office laptop (Windows) | Cloned repo. Built Phase 0 cross-platform: provider interface, fake + Claude adapters, routing, SQLite, audit, keyring, CLI, setup scripts, 26 tests passing |
+| 2026-10-10 | Office laptop (Windows) | Added the Claude Code CLI adapter (subscription login, isolated, JSON reply/action mode). Live greeting test passed. Phase 0 complete. Phase 1 plan approved |

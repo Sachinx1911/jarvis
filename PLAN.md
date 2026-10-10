@@ -995,7 +995,7 @@ routes:
 | Part | Choice | Why |
 |---|---|---|
 | Language | Python 3.12+ (3.13 on the Mac, 3.12 on the Windows laptop), project venv | Already installed |
-| Brain | Claude API via the Anthropic Python SDK, behind the provider interface (Stage A) | Best quality now, replaceable later |
+| Brain | Claude behind the provider interface (Stage A). For now through the Claude Code CLI with Sachin's Claude Max login (`claude_code` adapter); the Anthropic SDK adapter is kept for later | Best quality now, no API bill, replaceable later |
 | Agent loop | Jarvis-owned orchestrator with a manual tool loop | Provider-independent, no lock-in |
 | Models | Opus 5.5 main, Haiku 5.5 for simple calls, workers after testing | See "Provider and model routing" |
 | Local AI runtime | Not chosen. Candidates to evaluate in Stage B: Ollama, llama.cpp server, MLX-LM | Decide on measurements from this Mac |

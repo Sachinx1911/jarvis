@@ -14,6 +14,10 @@ models:
     reasoning_control: true
     languages_verified: []
     source: documented
+    via:
+      # Claude Code CLI with the subscription login: tools only through JSON action mode,
+      # no prompt-caching control, no streaming or images through Jarvis yet.
+      claude_code: {tool_calling: single, prompt_caching: false, streaming: false, vision: false}
     price_usd_per_mtok: {input: 4.00, output: 20.00, cache_read: 0.20}
   claude-sonnet-5-5:
     provider: anthropic
@@ -27,6 +31,10 @@ models:
     reasoning_control: true
     languages_verified: []
     source: documented
+    via:
+      # Claude Code CLI with the subscription login: tools only through JSON action mode,
+      # no prompt-caching control, no streaming or images through Jarvis yet.
+      claude_code: {tool_calling: single, prompt_caching: false, streaming: false, vision: false}
     price_usd_per_mtok: {input: 2.00, output: 10.00, cache_read: 0.20}
   claude-haiku-5-5:
     provider: anthropic
@@ -40,6 +48,10 @@ models:
     reasoning_control: true
     languages_verified: []
     source: documented
+    via:
+      # Claude Code CLI with the subscription login: tools only through JSON action mode,
+      # no prompt-caching control, no streaming or images through Jarvis yet.
+      claude_code: {tool_calling: single, prompt_caching: false, streaming: false, vision: false}
     # Price applies to prompts up to 100K tokens.
     price_usd_per_mtok: {input: 0.10, output: 0.50}
   fake-1:

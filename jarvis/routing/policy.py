@@ -53,7 +53,7 @@ def decide(config: Config, route: str, provider_override: str | None = None) -> 
         if kind == "cloud" and not cloud_allowed:
             skipped.append(f"{label}: cloud not allowed")
             continue
-        caps = ModelCapabilities.from_config(config.models.get(model))
+        caps = ModelCapabilities.from_config(config.models.get(model), provider)
         missing = [n for n in needs if not caps.has(n)]
         if missing:
             skipped.append(f"{label}: missing {', '.join(missing)}")

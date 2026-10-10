@@ -45,12 +45,10 @@ def test_chat_is_logged_and_stored(isolated):
     assert conn.execute("SELECT provider, route FROM model_usage").fetchone() == ("fake", "main_chat")
 
 
-def test_anthropic_without_key_fails_cleanly(isolated):
+def test_unapproved_provider_refused(isolated):
     out = io.StringIO()
-    assert main(["chat", "--provider", "anthropic", "-m", "hello"], out=out) == 1
-    assert "Error (auth)" in out.getvalue()
-    log = (isolated / "data/audit.jsonl").read_text(encoding="utf-8")
-    assert "provider_error" in log
+    assert main(["chat", "--provider", "anthropic", "-m", "hello"], out=out) == 2
+    assert "Routing error" in out.getvalue()
 
 
 def test_secret_status_never_prints_values(isolated):
