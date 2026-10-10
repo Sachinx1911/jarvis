@@ -38,9 +38,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         web.setValue(false, forKey: "drawsBackground")   // no white flash before the dark page paints
 
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1440, height: 920),
-                          styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                          styleMask: [.titled, .closable, .miniaturizable, .resizable],
                           backing: .buffered, defer: false)
         window.title = "Jarvis"
+        window.titleVisibility = .hidden          // a slim navy title bar; the page has its own header
         window.titlebarAppearsTransparent = true
         window.backgroundColor = NSColor(red: 0.04, green: 0.067, blue: 0.125, alpha: 1)  // #0a1120
         window.minSize = NSSize(width: 760, height: 560)
@@ -76,7 +77,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             }
             if !isUp(url) { return fail("Jarvis did not start in time.", detail: "See data/app.log in the Jarvis folder.") }
         }
-        DispatchQueue.main.async { self.web.load(URLRequest(url: url)) }
+        DispatchQueue.main.async {
+            self.web.load(URLRequest(url: url))
+            self.startWatchdog()
+        }
+    }
+
+    /// Keeps Jarvis available while the window is open: if the Jarvis this app attached to goes
+    /// away (it was stopped in the terminal), start our own and reload. If our own Jarvis ends
+    /// cleanly (the dashboard's Quit button), quit the app too.
+    var watchdog: Timer?
+    var recovering = false
+    func startWatchdog() {
+        watchdog?.invalidate()
+        watchdog = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            guard let self = self, let url = self.dashboardURL, !self.recovering else { return }
+            if let s = self.server, !s.isRunning, s.terminationStatus == 0 {
+                NSApp.terminate(nil)
+                return
+            }
+            self.recovering = true
+            DispatchQueue.global(qos: .utility).async {
+                defer { self.recovering = false }
+                if self.isUp(url) { return }
+                if self.server == nil || !(self.server!.isRunning) {
+                    self.server = nil
+                    self.startServer()
+                }
+                var waited = 0.0
+                while !self.isUp(url) && waited < 45 { Thread.sleep(forTimeInterval: 0.5); waited += 0.5 }
+                if self.isUp(url) { DispatchQueue.main.async { self.web.load(URLRequest(url: url)) } }
+            }
+        }
     }
 
     func environment() -> [String: String] {
