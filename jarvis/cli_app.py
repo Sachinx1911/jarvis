@@ -1,4 +1,4 @@
-"""CLI: `jarvis app [--port N] [--no-browser] [--install-shortcut] [--autostart on|off]`.
+"""CLI: `jarvis app [--port N] [--no-browser] [--url] [--install-shortcut] [--autostart on|off]`.
 
 Wiring (jarvis/cli.py, build_parser_with_extensions): add cli_app to the modules whose
 register(sub) result is merged into `extra`. Also runs on its own, which is what the
@@ -18,6 +18,8 @@ def register(sub) -> dict[str, Callable]:
     p = sub.add_parser("app", help="start Jarvis in one click: dashboard + scheduler (+ Telegram if set up)")
     p.add_argument("--port", type=int, default=None, help="port (default from config/web.yaml, 8765)")
     p.add_argument("--no-browser", action="store_true", help="do not open the browser")
+    p.add_argument("--url", action="store_true",
+                   help="print the dashboard link (with its access token) and exit; used by the Mac app")
     p.add_argument("--install-shortcut", action="store_true",
                    help="put a 'Jarvis' shortcut on the Desktop (Windows; macOS: Jarvis.command)")
     p.add_argument("--autostart", choices=["on", "off"], default=None,
@@ -42,7 +44,27 @@ def cmd_app(args: argparse.Namespace, out: TextIO | None, inp: TextIO | None, ap
             say(f"Could not change the shortcut: {e}")
             return 1
         return 0
+    if args.url:
+        return print_url(say, args.port)
     return app_launcher.run_app(out, open_browser=not args.no_browser, port=args.port)
+
+
+def print_url(say: Callable[[str], None], port: int | None = None) -> int:
+    """One line: the local dashboard link with its token (the port of a running Jarvis if any)."""
+    from jarvis.app_launcher import InstanceLock
+    from jarvis.cli_web import dashboard_url
+    from jarvis.paths import default_paths
+    from jarvis.web.settings import get_or_create_token, load_web_settings
+
+    settings = load_web_settings()
+    running = InstanceLock(default_paths().data).read_info().get("port")
+    try:
+        token = get_or_create_token()
+    except Exception as e:  # noqa: BLE001 (keyring backends raise many kinds)
+        say(f"Could not read the dashboard token from the OS secret store: {e}")
+        return 1
+    say(dashboard_url(int(port or running or settings.port), token))
+    return 0
 
 
 def _log_stream():
