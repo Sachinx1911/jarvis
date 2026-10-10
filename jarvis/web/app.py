@@ -36,7 +36,8 @@ from jarvis.providers.base import ProviderError
 from jarvis.routing.policy import RoutingError
 from jarvis.secrets import get_secret
 from jarvis.tasks.store import FINAL, PRIORITIES, TransitionError
-from jarvis.web import adapters, data, routes_projects, routes_proactive, routes_setup, routes_teach, routes_voice
+from jarvis.web import (adapters, data, routes_projects, routes_proactive, routes_setup, routes_teach, routes_trust,
+                        routes_voice)
 from jarvis.web.approvals import ApprovalBroker, ApprovalError
 from jarvis.web.context import WebContext
 from jarvis.web.jobs import Jobs
@@ -281,13 +282,20 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
     # ---- memory ----
 
     @api.get("/memory")
-    def memory_list(q: str = "", type: str | None = None, all: bool = False) -> dict[str, Any]:
+    def memory_list(q: str = "", type: str | None = None, all: bool = False,
+                    sensitivity: Literal["all", "sensitive", "normal"] = "all") -> dict[str, Any]:
+        def keep(m) -> bool:
+            if sensitivity == "all":
+                return True
+            return (m.sensitivity in data.SENSITIVE) == (sensitivity == "sensitive")
+
         with runtime() as rt:
             if q.strip():
                 hits = rt.memory.search(q, k=20)
-                return {"items": [{**data.memory_json(h.memory), "score": round(h.score, 4)} for h in hits]}
+                return {"items": [{**data.memory_json(h.memory), "score": round(h.score, 4)} for h in hits
+                                  if keep(h.memory)]}
             mems = rt.memory.list(type=type or None, status=None if all else "active")
-            return {"items": [data.memory_json(m) for m in mems]}
+            return {"items": [data.memory_json(m) for m in mems if keep(m)]}
 
     @api.get("/memory/{memory_id}")
     def memory_show(memory_id: str) -> dict[str, Any]:
@@ -512,7 +520,7 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
             return data.usage_json(rt, days)
 
     # ---- everything else the terminal can do (projects, teach, schedules, setup, voice) ----
-    for module in (routes_projects, routes_teach, routes_proactive, routes_setup, routes_voice):
+    for module in (routes_projects, routes_teach, routes_proactive, routes_setup, routes_voice, routes_trust):
         api.include_router(module.build_router(ctx))
 
     app.include_router(api)

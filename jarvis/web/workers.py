@@ -20,6 +20,7 @@ from jarvis.core.chat import ChatSession
 from jarvis.core.runtime import Runtime, make_chat, make_task_runner, open_runtime
 from jarvis.projects import ProjectStore
 from jarvis.web.approvals import ApprovalBroker
+from jarvis.web.trust import TurnRecorder
 
 ChatFactory = Callable[[Runtime, object], ChatSession]  # (runtime, approver) -> session
 
@@ -35,6 +36,7 @@ class _Chat:
     session: ChatSession | None = None
     last_used: float = field(default_factory=time.time)
     busy: bool = False
+    turns: TurnRecorder | None = None   # "Why did Jarvis say that?" (jarvis/web/trust.py)
 
 
 class ChatManager:
@@ -54,6 +56,7 @@ class ChatManager:
             chat.rt = open_runtime()
             try:
                 chat.session = self.factory(chat.rt, self.broker.approver(f"chat:{cid}"))
+                chat.turns = TurnRecorder(chat.session)
             except Exception:
                 chat.rt.close()
                 raise
@@ -98,7 +101,14 @@ class ChatManager:
                 _slash(chat.session, chat.rt, text, buf)
                 return {"reply": buf.getvalue().strip() or "Done.", "kind": "command",
                         "project": chat.session.context.project}
-            return {"reply": chat.session.send(text), "kind": "chat"}
+            reply = chat.session.send(text)
+            turn_id = None
+            if chat.turns is not None:
+                try:
+                    turn_id = chat.turns.record(chat.rt.store.conn)
+                except Exception:  # the record is an extra; the reply must still arrive
+                    turn_id = None
+            return {"reply": reply, "kind": "chat", "turn_id": turn_id}
 
         chat.busy = True
         try:

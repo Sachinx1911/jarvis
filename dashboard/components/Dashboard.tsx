@@ -14,11 +14,13 @@ import AgentsTab from "./AgentsTab";
 import ConnectorsTab from "./ConnectorsTab";
 import SchedulesTab from "./SchedulesTab";
 import SettingsTab from "./SettingsTab";
+import GrantsTab from "./GrantsTab";
 
 const TABS = [
   ["chat", "Chat"],
   ["memory", "Memory"],
   ["tasks", "Tasks & Approvals"],
+  ["grants", "Standing approvals"],
   ["projects", "Projects & Docs"],
   ["teach", "Teach"],
   ["schedules", "Schedules & Reminders"],
@@ -174,6 +176,7 @@ function Main() {
       {tab === "chat" && <ChatTab inject={inject} onInjected={() => setInject(null)} />}
       {tab === "memory" && <MemoryTab />}
       {tab === "tasks" && <TasksTab approvals={approvals.data} reloadApprovals={approvals.reload} />}
+      {tab === "grants" && <GrantsTab />}
       {tab === "agents" && <AgentsTab />}
       {tab === "connectors" && <ConnectorsTab />}
       {tab === "schedules" && <SchedulesTab />}
