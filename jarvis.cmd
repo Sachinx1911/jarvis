@@ -1,0 +1,3 @@
+@echo off
+rem Run Jarvis from the repo folder without activating the venv: jarvis chat, jarvis tasks, ...
+"%~dp0.venv\Scripts\jarvis.exe" %*

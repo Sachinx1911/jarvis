@@ -36,7 +36,7 @@ Ending a session: update this file and commit.
 
 - Live suites with `JARVIS_TEST_MODEL=claude-fable-5-1`: greeting PASS, memory test 10/10, tools 10/10 with injection blocked and 0 T4 runs, demo -> skill PASS (API-key test skipped: no key, by decision).
 - Eval suite: 12/12 (Marathi/English, memory, structured output, tool calling).
-- Laptop compare team task on Fable with 2 fix rounds: in progress.
+- Laptop compare team task on Fable: FAILED twice (first $5 budget hit; then 3 rounds, 62 calls, $11.65 notional): no price could be confirmed on an Indian retailer page. Research shows Amazon/Flipkart terms forbid automated price collection, so the verifier needs source tiers (see Next step).
 
 ## Waiting for Sachin
 
@@ -56,9 +56,13 @@ Parked items. Work that does not depend on them continues.
 
 ## Next step
 
-1. **Claude:** Record the Phase 3 rerun results; compare opus vs sonnet workers.
-2. **Claude:** Final testing on Claude Fable across all phases (live suites, eval suite, laptop compare), then record results.
-3. **Sachin:** Work through "Waiting for Sachin".
+1. **Sachin + Claude (now):** hands-on testing with [TESTING.md](TESTING.md) on this laptop. A demo project `demo-trip` (synthetic data) is indexed for the document tests. Run commands with `.\jarvis.cmd ...` from the repo folder.
+2. **Claude, after testing:** fix what testing finds, then the research recommendations in [reports/Jarvis next steps research.md](reports/Jarvis%20next%20steps%20research.md), cheapest and most important first:
+   - Prompt injection P0: taint on by default for every tool; taint carried between agents and into files written from tainted input; ask before fetching URLs the user did not give in a tainted session; never auto-render images; confirm the Claude Code CLI runs with no built-in tools.
+   - Prices: verifier source tiers (A retailer/brand page or official API, B aggregator = labelled estimate, C rejected); a page with no Rs amount counts as a failed fetch; Amazon/Flipkart only as links for Sachin to confirm (their terms forbid automated price collection).
+   - Memory: date-range step before retrieval, index past chats with extracted facts, raw excerpts plus memories in the answer context, notes-before-answer with "I don't know", Devanagari + romanized keywords.
+   - Add the 14-case prompt-injection eval set from the research notes.
+3. **Later (Stage B, needs the Mac):** llama.cpp `llama-server` with Qwen3.5-9B / Gemma 4 E4B / Qwen3.5-4B for query rewrite, labels, schema-forced extraction and quarantine; Marathi chat stays on Claude. Marathi voice: IndicWhisper (faster-whisper) vs IndicConformer for STT, Indic Parler-TTS for TTS.
 
 ## Decisions made by Sachin
 
@@ -118,4 +122,5 @@ See "Open decisions" in PLAN.md. Most important:
 | 2026-10-10 | Office laptop (Windows) | Cloned repo. Built Phase 0 cross-platform, then the Claude Code CLI adapter (subscription). Live greeting test passed |
 | 2026-10-10 | Office laptop (Windows) | Built Phase 1 (memory, loop, privacy gate, evals). Live memory test 10/10, eval baseline 8/8 |
 | 2026-10-10 | Office laptop (Windows) | Built Phase 2 (tiers, approvals, taint, quarantine, tools). Live: 10/10 tasks, injection blocked, 0 T4 runs. Pushed to GitHub |
+| 2026-10-10 | Office laptop (Windows) | Fable final tests (live suites pass, evals 12/12; laptop compare fails on retailer-price verification). Planner modes, task cancel, chat browser, memory upkeep, approval replay, migration lock fix, README, research on 5 topics, TESTING.md |
 | 2026-10-10 | Office laptop (Windows) | Built Phase 3 (tasks, team, receipts, projects, teach-by-demo). Five parallel agents built Phases 4–8; all merged and wired in. 494 offline tests pass. First live laptop compare failed verification; quality fixes made; rerun started |
