@@ -1656,3 +1656,6 @@ blockquote.evidence {
 .list-item .title, .list-item .sub { display: block; }
 .stats .sys { grid-column: 1 / -1; }
 .sys-rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); column-gap: var(--s-6); }
+
+/* short windows: keep the navigation usable */
+@media (max-height: 640px) { .side-card { display: none; } }
