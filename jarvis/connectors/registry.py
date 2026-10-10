@@ -21,7 +21,7 @@ from typing import Callable
 
 import yaml
 
-from jarvis.connectors import eventkit
+from jarvis.connectors import applenotes, eventkit
 from jarvis.connectors.config import load_connectors_config
 from jarvis.connectors.google import auth as google_auth
 from jarvis.connectors.google.client import GoogleClient, GoogleError
@@ -60,6 +60,13 @@ CONNECTORS: dict[str, dict] = {
         "tools": {"reminders_list": {"tier": "T2", "agents": NO_AGENTS, "unclassified": True},
                   "reminder_create": {"tier": "T2", "agents": NO_AGENTS, "unclassified": True}},
     },
+    "applenotes": {
+        "type": "native", "source": "osascript (JavaScript for Automation) -> Notes.app (macOS only)",
+        "auth": {"macos_permission": "Automation > Notes"},
+        "tools": {"notes_search": {"tier": "T0", "agents": ["jarvis"]},
+                  "notes_read": {"tier": "T0", "agents": ["jarvis"]},
+                  "notes_create": {"tier": "T1", "agents": ["jarvis"]}},
+    },
 }
 
 
@@ -79,6 +86,7 @@ class ConnectorDeps:
     cfg: dict = field(default_factory=load_connectors_config)
     google_client: Callable[[], GoogleClient | None] | None = None   # None = real client when connected
     eventkit_client: Callable[[], eventkit.EventKitClient | None] | None = None  # None = Mac client on macOS
+    notes_runner: applenotes.Runner | None = None  # None = real osascript (Apple Notes, macOS only)
     now: Callable[[], datetime] = field(default=lambda: datetime.now().astimezone())
 
 
@@ -118,6 +126,8 @@ def connector_tools(deps: ConnectorDeps) -> list[Tool]:
     if ek_enabled and (deps.eventkit_client is not None or eventkit.is_supported()):
         tools += eventkit.EventKitTools(deps.eventkit_client or eventkit.default_client,
                                         deps.cfg.get("timezone") or "Asia/Kolkata").tools()
+    if (deps.cfg.get("notes") or {}).get("enabled", True) and applenotes.is_supported():
+        tools += applenotes.NotesTools(applenotes.NotesClient(deps.notes_runner), deps.cfg, deps.max_privacy).tools()
     return [_with_declared_tier(t) for t in tools]
 
 
@@ -147,8 +157,13 @@ def last_check(store: Store, name: str) -> tuple[bool, str, str] | None:
     return (bool(row[0]), row[1], row[2]) if row else None
 
 
-def connector_health(deps: ConnectorDeps, live: bool = False) -> list[tuple[str, bool, str]]:
-    """Offline checks always; with live=True also one small Google call (recorded as the last check)."""
+def connector_health(deps: ConnectorDeps, live: bool = False,
+                     notes_live: bool = False) -> list[tuple[str, bool, str]]:
+    """Offline checks always; with live=True also one small Google call (recorded as the last check).
+
+    notes_live=True also sends one small Apple Event to Notes (counts folders, never reads a
+    note). It is separate from live because it opens Notes and may show the macOS permission
+    prompt, so it runs only when asked for (`python -m jarvis.connectors.applenotes`)."""
     out: list[tuple[str, bool, str]] = []
     cfg = deps.cfg
 
@@ -196,6 +211,18 @@ def connector_health(deps: ConnectorDeps, live: bool = False) -> list[tuple[str,
     if (cfg.get("eventkit") or {}).get("enabled", True):
         ok, detail = eventkit.health(deps.eventkit_client or eventkit.default_client)
         out.append(("eventkit", ok, detail))
+
+    if not (cfg.get("notes") or {}).get("enabled", True):
+        out.append(("apple notes", True, "disabled in config"))
+    else:
+        ok, detail = applenotes.offline_health()
+        out.append(("apple notes", ok, detail))
+        if ok and notes_live:
+            ok, detail = applenotes.live_health(applenotes.NotesClient(deps.notes_runner))
+            _record(deps.store, "apple notes", ok, detail)
+        prev = last_check(deps.store, "apple notes") if applenotes.is_supported() else None
+        if prev:
+            out.append(("apple notes last check", prev[0], f"{prev[2]}: {prev[1]}"))
     return out
 
 

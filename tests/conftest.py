@@ -88,3 +88,20 @@ def no_network(monkeypatch):
     monkeypatch.setattr(socket, "create_connection", create_connection)
     monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
     yield
+
+
+@pytest.fixture(autouse=True)
+def no_osascript(monkeypatch):
+    """Offline tests never drive the real Notes app: the default osascript runner is replaced,
+    and a test that reaches it fails (tests pass a FakeNotesRunner instead)."""
+    from jarvis.connectors import applenotes
+
+    reached: list[str] = []
+
+    def blocked(argv, timeout):
+        reached.append(argv[5] if len(argv) > 5 else "?")
+        raise applenotes.NotesUnavailable("osascript is blocked in offline tests")
+
+    monkeypatch.setattr(applenotes, "run_osascript", blocked)
+    yield
+    assert not reached, f"a test tried to run osascript against Notes: {reached}"

@@ -7,6 +7,7 @@ Tick each box and note anything odd. Everything here works without Telegram, Goo
 
 - [ ] `.\jarvis.cmd health` → `claude_code: OK - Claude subscription login (max)`
 - [ ] `.\jarvis.cmd connectors status` → tools with tiers; tavily key set; documents 1
+- [ ] Mac only: `.venv/bin/python -m jarvis.connectors.applenotes` → allow "Terminal wants to control Notes" → `apple notes last check: OK`; in chat "Make a note: demo list, milk and bread" → new note in the `Jarvis` folder, `[verified]`
 
 ## 1. Chat and memory (`.\jarvis.cmd chat`)
 

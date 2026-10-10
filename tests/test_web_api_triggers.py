@@ -94,7 +94,7 @@ def test_trigger_routes_check_ids_and_actions(client):
     assert client.post("/api/triggers/t-999/pause", headers=H).status_code == 404
     assert client.post("/api/triggers/bad;id/pause", headers=H).status_code == 400
     assert client.get("/api/triggers/x/runs", headers=H).status_code == 400
-    assert client.post("/api/triggers/t-001/delete", headers=H).status_code == 422  # not offered here
+    assert client.post("/api/triggers/t-001/delete", headers=H).status_code == 422  # delete needs the confirm body with the trigger id
 
 
 def test_trigger_routes_need_token_and_own_origin(client):

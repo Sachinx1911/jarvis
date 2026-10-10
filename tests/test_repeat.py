@@ -624,3 +624,19 @@ def test_telegram_draft_summary_hides_text_and_cli_shows_the_full_draft(isolated
     assert _schedules(isolated) == []                       # viewing never saves
     out = io.StringIO()
     assert cli_main(["task", "draft", "rp-000000"], out=out) == 1
+
+
+def test_confirm_result_is_structured_and_confirm_keeps_its_message(isolated, drafts):
+    from types import SimpleNamespace
+
+    from jarvis.core.runtime import open_runtime
+    from jarvis.tasks.repeat import confirm, confirm_result
+
+    rt = open_runtime()
+    try:
+        p = SimpleNamespace(now=lambda: at(2026, 10, 10, 15, 0), grace_s=3600)
+        r = confirm_result(rt, p, "rp-000000", True)
+        assert (r.status, r.saved) == ("expired", False) and "expired" in r.message
+        assert confirm(rt, p, "rp-000000", True) == r.message
+    finally:
+        rt.close()

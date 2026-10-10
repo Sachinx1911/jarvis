@@ -567,6 +567,13 @@ class ScheduleRunner:
 # ---------------------------------------------------------------- missed runs
 
 
+def _short_time(value: str | None) -> str:
+    try:
+        return datetime.fromisoformat(str(value)).strftime("%a %d %b %H:%M")
+    except (TypeError, ValueError):
+        return str(value)
+
+
 def missed_run_action(next_run_at: datetime, now: datetime, grace: timedelta) -> str | None:
     """'run' (late but within grace), 'skip' (too late), or None (not due yet)."""
     if next_run_at > now:
@@ -579,9 +586,14 @@ class ScheduleService:
     APScheduler's jobs in line with it (new, paused, deleted or changed schedules)."""
 
     def __init__(self, runner: ScheduleRunner, tz: str, sync_seconds: int = 60,
-                 extra_jobs: list[tuple[Callable[[], None], int, str]] | None = None):
+                 extra_jobs: list[tuple[Callable[[], None], int, str]] | None = None,
+                 alert_missed: bool = True, quiet_kinds: tuple[str, ...] = ("heartbeat", "memory_extract")):
         self.runner = runner
         self.tz = tz
+        # Tell Sachin when a run was missed (machine asleep or off past the grace window). Frequent
+        # checks (heartbeat, memory extraction) miss whenever the laptop sleeps, so they stay quiet.
+        self.alert_missed = alert_missed
+        self.quiet_kinds = tuple(quiet_kinds)
         self.sync_seconds = sync_seconds
         self.extra_jobs = extra_jobs or []   # (function, every_seconds, job id): e.g. the reminder check
         self.scheduler = None
@@ -598,6 +610,7 @@ class ScheduleService:
         rt, store = self._store()
         try:
             due: list[str] = []
+            missed: list[str] = []
             for s in store.list():
                 if not s.enabled:
                     continue
@@ -612,9 +625,23 @@ class ScheduleService:
                     store.record(s.id, "catch-up", "missed", f"was due {s.next_run_at}; past the grace window", now)
                     rt.audit.write("schedule_run", schedule_id=s.id, trigger="catch-up", status="missed")
                     store.set_next(s.id, s.next_after(now))
+                    if s.kind not in self.quiet_kinds:
+                        missed.append(f"{s.name} ({s.id}, was due {_short_time(s.next_run_at)})")
         finally:
             rt.close()
+        self._alert_missed(missed)
         return [self.runner.run(sid, "catch-up") for sid in due]  # one run each, however many were missed
+
+    def _alert_missed(self, lines: list[str]) -> None:
+        if not lines or not self.alert_missed or self.runner.notifier is None:
+            return
+        text = ("Missed while Jarvis was off or the computer was asleep (past the grace window):\n"
+                + "\n".join(f"- {line}" for line in lines) + "\nThey run again at their next time; "
+                "use Run now in the Schedules tab (or `jarvis schedule run-now <id>`) if needed.")
+        try:
+            self.runner.notifier.send(text, "Jarvis")
+        except Exception:  # noqa: BLE001 - a failed notice must not stop the scheduler
+            log.exception("missed-run notice failed")
 
     # ---- APScheduler ----
 
@@ -629,6 +656,13 @@ class ScheduleService:
             return
         if event.code == EVENT_JOB_MISSED:
             self.runner.record(sid, "cron", "missed", f"was due {event.scheduled_run_time}; past the grace window")
+            rt, store = self._store()
+            try:
+                s = store.get(sid)
+            finally:
+                rt.close()
+            if s is not None and s.kind not in self.quiet_kinds:
+                self._alert_missed([f"{s.name} ({s.id}, was due {_short_time(str(event.scheduled_run_time))})"])
         elif event.code == EVENT_JOB_MAX_INSTANCES:
             self.runner.record(sid, "cron", "skipped_overlap", "previous run still going")
 

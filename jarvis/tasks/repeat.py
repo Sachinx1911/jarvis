@@ -336,6 +336,11 @@ class RepeatStore:
             return None
         return p
 
+    def pending(self) -> list[RepeatProposal]:
+        """Every unexpired proposal, newest first (expired ones are removed)."""
+        items = [p for p in (self.get(path.stem) for path in self.pending_dir.glob("rp-*.json")) if p is not None]
+        return sorted(items, key=lambda p: (p.created_ts, p.created_at), reverse=True)
+
     def latest(self, session_id: str | None = None) -> RepeatProposal | None:
         """The newest unexpired proposal (of one chat session, when given)."""
         items = []
@@ -481,21 +486,41 @@ def propose(rt: Any, proactive: Any, when: str, *, task_id: str | None = None, s
     return proposal
 
 
-def confirm(rt: Any, proactive: Any, proposal_id: str, save: bool, channel: str = "cli") -> str:
+@dataclass
+class ConfirmResult:
+    """What happened to a draft: status is saved | dropped | expired | refused."""
+    status: str
+    message: str
+    skill: str = ""
+    schedule_id: str = ""
+
+    @property
+    def saved(self) -> bool:
+        return self.status == "saved"
+
+
+def confirm_result(rt: Any, proactive: Any, proposal_id: str, save: bool, channel: str = "cli") -> ConfirmResult:
     """The user's answer to a shown draft. Saves skill + schedule only on an explicit yes for
-    an unexpired draft; returns the message for the user."""
+    an unexpired draft."""
     store = RepeatStore(rt.paths.data)
     p = store.get(proposal_id)
     if p is None:
-        return "That draft expired or was already answered; nothing was saved. Send /repeat again."
+        return ConfirmResult("expired", "That draft expired or was already answered; nothing was saved. "
+                                        "Send /repeat again.")
     if not save:
         store.drop(p.id)
         rt.audit.write("automation_dropped", proposal=p.id, source=p.source, channel=channel)
-        return "Not saved."
+        return ConfirmResult("dropped", "Not saved.")
     try:
         path, schedule = save_proposal(p, store, rt.paths.home / "skills", rt.store.conn, proactive.now(),
                                        proactive.grace_s, rt.audit, channel)
     except ValueError as e:  # RepeatError, or ScheduleStore refusing the draft
-        return f"Not saved: {e}"
-    return (f"Saved skill {p.skill}: {path}\nSaved schedule {schedule.id}: {schedule.line()}\n"
-            "It runs while `jarvis daemon` is running; unattended runs do only T0/T1 actions.")
+        return ConfirmResult("refused", f"Not saved: {e}")
+    return ConfirmResult("saved", f"Saved skill {p.skill}: {path}\nSaved schedule {schedule.id}: {schedule.line()}\n"
+                                  "It runs while `jarvis daemon` is running; unattended runs do only T0/T1 actions.",
+                         p.skill, schedule.id)
+
+
+def confirm(rt: Any, proactive: Any, proposal_id: str, save: bool, channel: str = "cli") -> str:
+    """confirm_result() as the message for the user (terminal chat, CLI, Telegram)."""
+    return confirm_result(rt, proactive, proposal_id, save, channel).message

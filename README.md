@@ -37,6 +37,8 @@ jarvis chat
 
 Optional extras: `pip install -e ".[voice]"` (speech), `".[google]"` (Calendar, Gmail), `".[browser]"` (isolated browser), `".[voice-cloud]"`, `".[wakeword]"`. Dashboard frontend: `cd dashboard && npm install && npm run build`.
 
+Apple Notes (Mac only, no extra install): `python -m jarvis.connectors.applenotes` asks for the Automation permission and checks it; Jarvis can search and read notes and create new ones in its own `Jarvis` folder, never edit or delete.
+
 ## Main commands
 
 Every command below also has a place in the app (`jarvis app`): Chat, Memory, Tasks & Approvals, Projects & Docs,
