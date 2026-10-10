@@ -1,5 +1,6 @@
 """Local backups: create, prune, list, restore-check. Synthetic data only (the repo is public)."""
 
+import argparse
 import hashlib
 import io
 import json
@@ -13,7 +14,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from jarvis import backup
+from jarvis import backup, cli_backup
 from jarvis.backup import MAIN_DB, MANIFEST_NAME, BackupError, BackupSettings
 from jarvis.control.audit import AuditLog
 from jarvis.db import Store
@@ -475,3 +476,53 @@ def test_find_archive_latest_name_and_path(home, cfg, dest):
     with pytest.raises(BackupError, match="no backups"):
         backup.find_archive("latest", dest / "empty")
 
+
+# ---- CLI ----
+
+@pytest.fixture
+def cli(monkeypatch, cfg, dest, home):
+    (cfg / "local.yaml").write_text(f"backup_file:\n  destination: {json.dumps(str(dest))}\n  keep_last: 5\n",
+                                    encoding="utf-8")
+    monkeypatch.setattr(cli_backup, "CONFIG_DIR", cfg)
+    parser = argparse.ArgumentParser()
+    handlers = cli_backup.register(parser.add_subparsers(dest="command"))
+    assert set(handlers) == {"backup"}
+
+    def run(*argv):
+        out = io.StringIO()
+        code = handlers["backup"](parser.parse_args(["backup", *argv]), out, io.StringIO(), None)
+        return code, out.getvalue()
+    return run
+
+
+def test_cli_create_list_and_restore_check(cli, dest):
+    code, text = cli("list")
+    assert code == 0 and "No backups" in text
+    code, text = cli("create")
+    assert code == 0 and "Backup created:" in text and "not encrypted" in text
+    assert "browser profiles (login cookies) (1)" in text
+    [archive] = backup.archives_in(dest)
+    code, text = cli("list")
+    assert code == 0 and archive.name in text and "manifest ok" in text
+    code, text = cli("restore-check")
+    assert code == 0 and f"restore-check {archive.name}: OK" in text
+    assert "integrity ok" in text and "memory files: 1, projects: 1, task rows: 2" in text
+    code, text = cli("restore-check", archive.name)
+    assert code == 0 and "Live data was not touched" in text
+
+
+def test_cli_restore_check_failure_returns_1(cli, dest, tmp_path):
+    cli("create")
+    [archive] = backup.archives_in(dest)
+    bad = tmp_path / "tampered.tar.gz"
+    _rewrite(archive, bad, change={"profile/SOUL.md": b"Be BRIEF."})
+    code, text = cli("restore-check", str(bad))
+    assert code == 1 and "FAILED" in text and "checksum does not match" in text
+
+
+def test_cli_refuses_a_destination_in_the_repo(cli, cfg):
+    target = REPO_ROOT / "backups-never-created"
+    (cfg / "local.yaml").write_text(f"backup_file:\n  destination: {json.dumps(str(target))}\n", encoding="utf-8")
+    code, text = cli("create")
+    assert code == 1 and "Backup error: refusing backup destination" in text
+    assert not target.exists()
