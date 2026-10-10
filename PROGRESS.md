@@ -11,7 +11,7 @@ Ending a session: update this file and commit.
 - **Needs on each machine:** Python 3.12+, `pip install -e ".[dev]"`, Claude Code CLI 2.1.280 or newer logged in with the subscription (`jarvis health`), Tavily key (`jarvis secret set tavily_api_key`). Optional extras: `[voice]`, `[voice-cloud]`, `[wakeword]`, `[google]`, `[browser]`. Dashboard frontend: `cd dashboard; npm install; npm run build`.
 - **Half-done work (2026-10-10, merged so far):** research fixes are in: prompt-injection hardening (taint by default, agent and file provenance, egress control, typed quarantine, approval highlights; offline attack success 0/36), price source tiers + Tavily Extract (store pages confirmed, aggregators as estimates, Amazon/Flipkart as user-check links), memory retrieval upgrade (both scripts, time-aware, session facts, excerpts; offline Recall@5 34.5 -> 96.6), one-click app (`jarvis app`, Desktop shortcut, Projects/Teach/Schedules/Setup tabs, mic button). 791 tests pass. Event triggers merged (849 tests pass). In progress by agents: daily cap + nightly review + backups; memory viewer + approval previews + standing approvals; India features (AMFI NAV, IMD/Sachet alerts, bills tracker, document wallet); verify-after-act + "/repeat" automation. Reports: `reports/Jarvis next steps research.md`, `reports/Personal AI capability gaps.md`.
 - **Last update:** 2026-10-10, office laptop (Windows 11, Python 3.12).
-- **GitHub:** Pushed to `main` on 2026-10-10 up to Phase 2 with Sachin's OK. Everything after that is local until he OKs a push.
+- **GitHub:** Pushed to `main` on 2026-10-10 up to commit b38853f (Phases 0–8, research fixes, app, triggers) with Sachin's OK.
 
 ### What each phase delivered
 
@@ -42,7 +42,6 @@ Ending a session: update this file and commit.
 
 Parked items. Work that does not depend on them continues.
 
-- **Push to GitHub:** Phases 3–8 are local only until Sachin OKs a push.
 - **Worker model:** Claude recommends Opus (low) after the comparison (see Phase 3 live results). Default stays opus until Sachin decides.
 - **Telegram (Phase 4 live check):** create a bot with @BotFather, run `jarvis telegram set-token`, put your numeric Telegram user ID in `config/local.yaml` (`proactive_file: {telegram: {allowed_user_id: ...}}`) and a default weather place (`proactive_file: {brief: {place: "..."}}`). Then `jarvis telegram test` and `jarvis daemon`.
 - **Google (Phase 5 live check):** create a Google Cloud project, enable Calendar and Gmail APIs, create an OAuth "Desktop app" client, set the app to "In production" (Testing tokens expire in 7 days), put the client JSON path in `config/local.yaml` (`connectors_file: {google: {client_secret_file: ...}}`), `pip install -e ".[google]"`, run `jarvis google auth`.
