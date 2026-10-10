@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import { api, clearToken, getToken, post, readTokenFromUrl, setToken } from "@/lib/api";
 import { errText, usePoll } from "@/lib/hooks";
 import Approvals, { ApprovalsData } from "./Approvals";
-import ChatTab from "./ChatTab";
+import ChatTab, { Inject } from "./ChatTab";
+import ProjectsTab from "./ProjectsTab";
+import TeachTab from "./TeachTab";
+import SetupTab from "./SetupTab";
 import MemoryTab from "./MemoryTab";
 import TasksTab from "./TasksTab";
 import AgentsTab from "./AgentsTab";
@@ -16,9 +19,12 @@ const TABS = [
   ["chat", "Chat"],
   ["memory", "Memory"],
   ["tasks", "Tasks & Approvals"],
+  ["projects", "Projects & Docs"],
+  ["teach", "Teach"],
+  ["schedules", "Schedules & Reminders"],
   ["agents", "Agents"],
   ["connectors", "Connectors"],
-  ["schedules", "Schedules"],
+  ["setup", "Setup"],
   ["settings", "Settings & Usage"],
 ] as const;
 type Tab = (typeof TABS)[number][0];
@@ -66,7 +72,8 @@ function TokenGate({ onDone }: { onDone: () => void }) {
       <form className="panel" onSubmit={submit} style={{ maxWidth: 520 }}>
         <h2>Access token needed</h2>
         <p className="muted small">
-          Open the link printed by <code>jarvis dashboard</code>, or paste the token here. It is kept only in this
+          Start Jarvis with the Desktop shortcut or <code>jarvis app</code> (it opens this page with the token), or
+          paste the token printed by <code>jarvis dashboard</code> here. It is kept only in this
           browser tab.
         </p>
         <div className="row">
@@ -93,6 +100,7 @@ function Main() {
   const stop = usePoll(() => api<{ engaged: boolean; detail: string }>("/api/stop"), 3000);
   const approvals = usePoll(() => api<ApprovalsData>("/api/approvals"), 1500);
   const [stopError, setStopError] = useState("");
+  const [inject, setInject] = useState<Inject | null>(null);
   const pending = approvals.data?.pending ?? [];
 
   useEffect(() => {
@@ -163,12 +171,30 @@ function Main() {
         <Approvals data={approvals.data!} reload={approvals.reload} compact />
       )}
 
-      {tab === "chat" && <ChatTab />}
+      {tab === "chat" && <ChatTab inject={inject} onInjected={() => setInject(null)} />}
       {tab === "memory" && <MemoryTab />}
       {tab === "tasks" && <TasksTab approvals={approvals.data} reloadApprovals={approvals.reload} />}
       {tab === "agents" && <AgentsTab />}
       {tab === "connectors" && <ConnectorsTab />}
       {tab === "schedules" && <SchedulesTab />}
+      {tab === "projects" && (
+        <ProjectsTab
+          onUseInChat={(name) => {
+            setInject({ type: "project", name });
+            choose("chat");
+          }}
+        />
+      )}
+      {tab === "teach" && (
+        <TeachTab
+          onRunInChat={(text) => {
+            setInject({ type: "message", text });
+            choose("chat");
+          }}
+          onGoToChat={() => choose("chat")}
+        />
+      )}
+      {tab === "setup" && <SetupTab />}
       {tab === "settings" && <SettingsTab stopEngaged={engaged} onToggleStop={toggleStop} />}
     </div>
   );

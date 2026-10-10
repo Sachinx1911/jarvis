@@ -53,14 +53,17 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T = any>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
+export async function api<T = any>(
+  path: string,
+  opts: { method?: string; body?: unknown; raw?: BodyInit; contentType?: string } = {},
+): Promise<T> {
+  const headers: Record<string, string> = { "X-Jarvis-Token": getToken() };
+  if (opts.raw !== undefined) headers["Content-Type"] = opts.contentType ?? "application/octet-stream";
+  else if (opts.body !== undefined) headers["Content-Type"] = "application/json";
   const res = await fetch(BASE + path, {
     method: opts.method ?? "GET",
-    headers: {
-      "X-Jarvis-Token": getToken(),
-      ...(opts.body !== undefined ? { "Content-Type": "application/json" } : {}),
-    },
-    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    headers,
+    body: opts.raw !== undefined ? opts.raw : opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
     cache: "no-store",
     credentials: "omit",
   });
@@ -72,7 +75,14 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   }
   if (!res.ok) {
     const detail = data?.detail;
-    const msg = typeof detail === "string" ? detail : detail ? JSON.stringify(detail) : res.statusText;
+    const msg =
+      typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map((d: { loc?: unknown[]; msg?: string }) => `${(d.loc ?? []).slice(1).join(".")}: ${d.msg}`).join("; ")
+          : detail
+            ? JSON.stringify(detail)
+            : res.statusText;
     if (res.status === 401) window.dispatchEvent(new Event("jarvis-unauthorized"));
     throw new ApiError(res.status, msg);
   }
@@ -81,3 +91,7 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
 
 export const post = <T = any>(path: string, body: unknown = {}) => api<T>(path, { method: "POST", body });
 export const patch = <T = any>(path: string, body: unknown) => api<T>(path, { method: "PATCH", body });
+export const put = <T = any>(path: string, body: unknown) => api<T>(path, { method: "PUT", body });
+// Raw upload (file or audio): the body is the bytes, extra fields go in the query string.
+export const upload = <T = any>(path: string, raw: BodyInit, contentType?: string) =>
+  api<T>(path, { method: "POST", raw, contentType });

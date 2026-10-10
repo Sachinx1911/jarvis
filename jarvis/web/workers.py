@@ -7,6 +7,7 @@ own thread and Runtime. Request handlers never touch these connections directly.
 
 from __future__ import annotations
 
+import io
 import secrets
 import threading
 import time
@@ -17,9 +18,13 @@ from typing import Callable
 from jarvis.control.audit import AuditLog
 from jarvis.core.chat import ChatSession
 from jarvis.core.runtime import Runtime, make_chat, make_task_runner, open_runtime
+from jarvis.projects import ProjectStore
 from jarvis.web.approvals import ApprovalBroker
 
 ChatFactory = Callable[[Runtime, object], ChatSession]  # (runtime, approver) -> session
+
+# Terminal chat commands that also work in the dashboard chat (jarvis/cli.py _slash).
+CHAT_COMMANDS = ("/memory", "/forget", "/help", "/project", "/record", "/note")
 
 
 @dataclass
@@ -77,12 +82,22 @@ class ChatManager:
 
         def work() -> dict:
             assert chat.session and chat.rt
-            if text.startswith("/remember"):
-                cmd, _, rest = text.partition(" ")
+            cmd, _, rest = text.partition(" ")
+            if cmd in ("/remember", "/remember-private"):
                 if chat.session.extractor is None:
                     return {"reply": "Memory is not available.", "kind": "command"}
                 mem = chat.session.extractor.remember(rest.strip(), private=cmd == "/remember-private")
                 return {"reply": f"Remembered as {mem.id}: {mem.summary_en or mem.name}", "kind": "command"}
+            if cmd == "/task":
+                return {"reply": "Run tasks from the Tasks tab (New task, then Run): the chat would wait "
+                                 "for the whole task.", "kind": "command"}
+            if cmd in CHAT_COMMANDS:
+                from jarvis.cli import _slash
+
+                buf = io.StringIO()
+                _slash(chat.session, chat.rt, text, buf)
+                return {"reply": buf.getvalue().strip() or "Done.", "kind": "command",
+                        "project": chat.session.context.project}
             return {"reply": chat.session.send(text), "kind": "chat"}
 
         chat.busy = True
@@ -91,6 +106,23 @@ class ChatManager:
         finally:
             chat.busy = False
             chat.last_used = time.time()
+
+    def set_project(self, cid: str, project: str | None) -> str | None:
+        """Set the chat's active project (its memories and documents come first), like /project."""
+        chat = self._get(cid)
+
+        def work() -> str | None:
+            assert chat.session and chat.rt
+            if project and not ProjectStore(chat.rt.paths.home).exists(project):
+                raise ValueError(f"no project {project}")
+            chat.session.context.project = project or None
+            return chat.session.context.project
+
+        return chat.executor.submit(work).result()
+
+    def project(self, cid: str) -> str | None:
+        chat = self._get(cid)
+        return getattr(chat.session.context, "project", None) if chat.session else None
 
     def end(self, cid: str) -> list:
         with self._lock:
@@ -122,7 +154,9 @@ class ChatManager:
 
     def list(self) -> list[dict]:
         with self._lock:
-            return [{"id": c.id, "busy": c.busy, "last_used": c.last_used} for c in self._chats.values()]
+            return [{"id": c.id, "busy": c.busy, "last_used": c.last_used,
+                     "project": getattr(c.session.context, "project", None) if c.session else None}
+                    for c in self._chats.values()]
 
     def close_all(self) -> None:
         for c in list(self._chats):
