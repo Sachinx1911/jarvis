@@ -136,7 +136,7 @@ class SchedulesSection:
         end = ctx.now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
         lines = []
         for s in ScheduleStore(ctx.conn).list():
-            if not s.enabled or s.kind in ("brief", "heartbeat"):
+            if not s.enabled or s.kind in ("brief", "heartbeat", "memory_extract"):
                 continue
             nxt = s.next_after(ctx.now)
             if nxt and nxt < end:
