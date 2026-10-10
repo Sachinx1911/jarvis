@@ -61,9 +61,9 @@ Parked items. Work that does not depend on them continues.
 On a new machine first: `git clone`, run `scripts/setup.ps1` (Windows) or `scripts/setup.sh` (Mac), log in to Claude Code with the subscription (`claude`), `jarvis secret set tavily_api_key`, then `cd dashboard; npm install; npm run build`, then `jarvis health`. Personal data (memory, projects, data) does not travel with the repo.
 
 1. **Done 2026-10-10 (Mac):** finished and merged `wip/india-features` (see session log). Was: India tools need registering in `jarvis/tools/catalog.py` (`india_tools`), brief sections via `register_india_sections()` from `jarvis/proactive/integration.py`, CLI `cli_india` in the module tuple of `jarvis/cli.py`; whole suite green; merge.
-2. **Claude:** finish `wip/verify-repeat`: verify-after-act checks for Operator/Coder/browser and receipt "claims vs evidence"; `/repeat <when>` and `jarvis task repeat` (skill + schedule saved only after confirmation); merge.
-3. **Done 2026-10-10 (Mac):** global daily cap + runaway guard, nightly review (episode file + memory conflicts in the brief) merged. **In progress:** `jarvis backup create|list|restore-check` (agent, branch `feature/backup`; destination from config; open decision #10).
-4. **Claude, small hooks:** dashboard triggers adapter (`"triggers": ("jarvis.proactive.triggers", "dashboard_triggers")` in `jarvis/web/adapters.py`), `record_turn` in `ChatSession.send` for "why" on CLI/Telegram chats, enforce "health/politics = sensitive" in code (not only prompts).
+2. **Done 2026-10-10 (Mac):** finished and merged `wip/verify-repeat` (verify-after-act with claims vs evidence; `/repeat` in chat, Telegram and `jarvis task repeat`). Was: verify-after-act checks for Operator/Coder/browser and receipt "claims vs evidence"; `/repeat <when>` and `jarvis task repeat` (skill + schedule saved only after confirmation); merge.
+3. **Done 2026-10-10 (Mac):** global daily cap + runaway guard, nightly review (episode file + memory conflicts in the brief) merged. Backups merged: `jarvis backup create|list|restore-check` (destination `~/JarvisBackups` by default; open decision #10).
+4. **In progress (agents, 2026-10-10 Mac):** dashboard India tab + triggers (`feature/dashboard-india`); why-panel for CLI/Telegram + sensitive-topic enforcement (`feature/small-hooks`). Was: **Claude, small hooks:** dashboard triggers adapter (`"triggers": ("jarvis.proactive.triggers", "dashboard_triggers")` in `jarvis/web/adapters.py`), `record_turn` in `ChatSession.send` for "why" on CLI/Telegram chats, enforce "health/politics = sensitive" in code (not only prompts).
 5. **Claude:** final testing on Claude Fable (`JARVIS_TEST_MODEL=claude-fable-5-1`): live suites, eval + memory eval (`jarvis eval --suite memory --live`), injection live set, laptop compare with price tiers; record results here.
 6. **Sachin:** the "Waiting for Sachin" list; hands-on testing with TESTING.md (section 9: the app).
 
@@ -106,6 +106,12 @@ On a new machine first: `git clone`, run `scripts/setup.ps1` (Windows) or `scrip
 | 2026-10-10 | Telegram `/cloud off` writes an override file that applies to every route; it can only switch cloud off, never loosen `routing.yaml` |
 | 2026-10-10 | The morning brief shows calendar titles and times (P1) but no email until decision #19 |
 | 2026-10-10 | Dashboard: localhost only, token in keyring, no cookie auth; lowering a tool's tier or re-enabling it only by editing the private registry file |
+| 2026-10-10 | India brief: bills and wallet records appear only as counts on Telegram unless `india.brief.details: true` (P2 rule) |
+| 2026-10-10 | Daily cap for unattended work: 100 runs with model calls, 200 model calls, $5 notional per day; pause after 3 failures in a row; a `run-now` Sachin starts is never capped; plain notifications are free (`proactive unattended`) |
+| 2026-10-10 | Nightly review at 22:30 to `memory/episodes/`, output to file (counts only), no model |
+| 2026-10-10 | Repeat-this: at most one run every 30 minutes (`schedules.repeat_min_interval_minutes`); `jarvis task repeat` has no `--yes`; drafts expire after 1 hour; Telegram gets only a P2-safe summary, the full draft is read with `jarvis task draft <id>` |
+| 2026-10-10 | Backups: `~/JarvisBackups`, keep 14, not encrypted yet; never inside the repo; excludes browser profiles, Google client secrets, the Whisper model and SQLite side files |
+| 2026-10-10 | Offline tests block every non-loopback connection (live tests keep network with JARVIS_LIVE=1) |
 
 ## Open decisions
 
@@ -129,6 +135,7 @@ See "Open decisions" in PLAN.md. Most important:
 | 2026-10-10 | Office laptop (Windows) | Built Phase 2 (tiers, approvals, taint, quarantine, tools). Live: 10/10 tasks, injection blocked, 0 T4 runs. Pushed to GitHub |
 | 2026-10-10 | Office laptop (Windows) | Research fixes merged (security, prices, memory), one-click app, triggers, standing approvals and previews. 902 tests pass. Pushed. India features and verify/repeat stopped mid-work on wip branches; handoff to home |
 | 2026-10-10 | Office laptop (Windows) | Fable final tests (live suites pass, evals 12/12; laptop compare fails on retailer-price verification). Planner modes, task cancel, chat browser, memory upkeep, approval replay, migration lock fix, README, research on 5 topics, TESTING.md |
+| 2026-10-10 | Home MacBook M4 | Merged backups and verify-after-act + repeat-this (made the Telegram `/repeat` draft P2-safe, added `jarvis task draft`). 1100 passed |
 | 2026-10-10 | Home MacBook M4 | Sachin updated Claude Code to 2.1.296. Live greeting through the subscription CLI: PASS on the Mac |
 | 2026-10-10 | Home MacBook M4 | Merged `wip/india-features` (wired tools, brief sections, CLI; brief shows bills/wallet as counts unless `india.brief.details`; offline tests now block all non-loopback network). Merged daily cap + runaway guard (`proactive unattended`), nightly review (`review` schedule kind, `memory/episodes/`), memory conflicts (`jarvis memory conflicts`, brief count). 970 passed. Agents running on `wip/verify-repeat`, `feature/backup`, `feature/dashboard-india` (India tab, triggers in dashboard), `feature/small-hooks` (why-panel for CLI/Telegram, sensitive-topic enforcement) |
 | 2026-10-10 | Home MacBook M4 | Pulled office work. `scripts/setup.sh` OK. Offline suite on macOS: 899/902, then 902 passed after fixes: Windows-style paths (`C:/...`, UNC) now refused on Mac/Linux in `PathPolicy` and grant rules (POSIX had treated them as names inside the workspace), shortcut path parsed as a Windows path. `jarvis health`: claude_code OK (Max); Claude Code CLI 2.1.260 too old for `--system-prompt-file` |
