@@ -1,0 +1,54 @@
+# Proactive features: schedules, heartbeat, daily brief, reminders, Telegram (PLAN.md 10.3, 12, 13).
+# Machine-specific values go in config/local.yaml under `proactive_file:` (git-ignored), e.g.
+#   proactive_file:
+#     brief: {place: "Some City"}
+#     telegram: {allowed_user_id: 123456789}
+# The Telegram bot token is a secret: `jarvis telegram set-token` (OS secret store, never a file).
+
+timezone: Asia/Kolkata
+
+# No heartbeat messages in this window (reminders the user asked for still arrive).
+quiet_hours: {start: "22:30", end: "07:00"}
+
+schedules:
+  misfire_grace_minutes: 60   # a run missed (machine asleep/off) is done once on wake if within this window, else skipped
+  default_output: telegram    # telegram | file | both
+  default_budget: {max_model_calls: 12, max_notional_usd: 0.5}
+  stale_lock_hours: 6         # a "running" mark older than this is treated as a crash leftover
+  sync_seconds: 60            # the daemon re-reads schedules changed from the CLI this often
+
+heartbeat:
+  enabled: true
+  every_minutes: 30
+  repeat_after_hours: 6       # do not repeat the same message within this time
+
+brief:
+  enabled: true
+  cron: "0 8 * * *"           # every day at 08:00 in `timezone`
+  place: ""                   # default weather place; set it in config/local.yaml
+  output: telegram
+
+reminders:
+  check_seconds: 30
+
+telegram:
+  allowed_user_id: null       # the only Telegram user Jarvis talks to; set in config/local.yaml
+  approval_timeout_seconds: 300  # no answer in time = denied
+  secret: telegram_bot_token
+
+# Extra provider routes for this module only. They are added in memory to the routes from
+# config/routing.yaml (which stays untouched), and go through the same routing policy
+# (approved providers, cloud_allowed, capabilities).
+routes:
+  schedule_parser:            # only for schedule text the deterministic parser cannot read
+    candidates:
+      - {provider: claude_code, model: claude-haiku-5-5, effort: low}
+    needs: [structured_output]
+    max_privacy: P1
+    cloud_fallback: never
+  heartbeat:                  # decides whether anything on HEARTBEAT.md is worth telling
+    candidates:
+      - {provider: claude_code, model: claude-haiku-5-5, effort: low}
+    needs: [structured_output]
+    max_privacy: P1
+    cloud_fallback: never
