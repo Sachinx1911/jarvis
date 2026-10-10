@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +29,8 @@ from jarvis.tools.system import SystemTools
 from jarvis.tools.web import WebClient
 
 ROUTE = "main_chat"
+
+log = logging.getLogger(__name__)
 
 
 class ChatSession:
@@ -59,6 +62,7 @@ class ChatSession:
         self.extractor = extractor
         self.session_id = uuid.uuid4().hex[:12]
         self.history: list[Message] = []
+        self.last_turn_id: int | None = None  # "Why did Jarvis say that?" record of the latest reply
         self.approver_for_tasks = approver
         max_privacy = config.routing.get("routes", {}).get(decision.route, {}).get("max_privacy", "P1")
         from jarvis.connectors.registry import ConnectorDeps, doc_library
@@ -107,6 +111,7 @@ class ChatSession:
 
     def send(self, text: str) -> str:
         self.stop.check()
+        self.last_turn_id = None
         self._update_browser(text)
         user = Message.text("user", text)
         self.history.append(user)
@@ -124,7 +129,27 @@ class ChatSession:
             self.audit.write("provider_error", session_id=self.session_id, provider=self.decision.provider,
                              kind=e.kind, retryable=e.retryable, detail=str(e))
             raise
+        self._record_turn(ctx)
         return result.text
+
+    def _record_turn(self, ctx) -> None:
+        """Store which memories and past-chat excerpts were in this reply's context, so "Why did
+        Jarvis say that?" (jarvis/web/trust.py) works for every chat: CLI, Telegram, voice and the
+        dashboard. The record is an extra: any error is logged and the reply still goes out."""
+        try:
+            if getattr(self.context.build, "__self__", None) is not self.context:
+                # context.build is wrapped: the dashboard's TurnRecorder records this turn itself
+                # after send() returns; recording here as well would store the turn twice.
+                return
+            from jarvis.web.trust import record_turn
+
+            self.last_turn_id = record_turn(self.store.conn, self.session_id, ctx)
+        except Exception as e:  # noqa: BLE001
+            log.warning("could not record the chat turn context: %s: %s", type(e).__name__, e)
+            try:
+                self.audit.write("turn_record_error", session_id=self.session_id, error=f"{type(e).__name__}: {e}")
+            except Exception:  # noqa: BLE001 (the audit log itself failing must not break the chat either)
+                pass
 
     def user_messages(self) -> list[str]:
         return [m.text_content() for m in self.history if m.role == "user"]
