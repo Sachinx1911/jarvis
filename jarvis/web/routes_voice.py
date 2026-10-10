@@ -42,10 +42,15 @@ def build_router(ctx: WebContext) -> APIRouter:
 
     @r.get("/voice/status")
     def status() -> dict[str, Any]:
+        """stt_ready / stt_detail / tts_engine: the microphone in Chat (unchanged). The rest, per
+        part (English and Marathi speech-to-text, voices, wake word): see jarvis/voice/status.py.
+        Only cheap checks: no model is loaded and nothing is downloaded."""
         from jarvis.voice.base import VoiceUnavailable
+        from jarvis.voice.status import voice_status
 
         with ctx.runtime() as rt:
             home = rt.paths.home
+        cfg = voice_cfg()
         stt = stt_engine(home)
         ready, detail = True, "ready"
         if hasattr(stt, "check"):
@@ -55,7 +60,8 @@ def build_router(ctx: WebContext) -> APIRouter:
                 ready, detail = False, f"{NOT_INSTALLED}: {e}"
         from jarvis.voice.tts import local_engine_name
 
-        return {"stt_ready": ready, "stt_detail": detail, "tts_engine": local_engine_name(voice_cfg())}
+        return {"stt_ready": ready, "stt_detail": detail, "tts_engine": local_engine_name(cfg),
+                **voice_status(cfg, home)}
 
     def transcribe(data: bytes) -> dict[str, Any]:
         from jarvis.voice.base import Audio, VoiceUnavailable
