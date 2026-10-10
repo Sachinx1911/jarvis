@@ -37,7 +37,8 @@ HELP = """Jarvis commands:
 /schedules - list schedules
 /schedule <text> - new schedule, e.g. /schedule every Monday at 9 project summary
 /schedule_pause <id>, /schedule_resume <id>, /schedule_run <id>, /schedule_delete <id>
-/approvals - actions from unattended runs that wait for you;  /dismiss <id>
+/approvals - actions from unattended runs that wait for you (Approve/Deny buttons)
+/approve <id> - run that exact queued action once;  /deny <id>;  /dismiss <id>
 /remind <text> - e.g. /remind in 10 minutes call back
 /reminders - pending reminders
 /brief - today's brief now
@@ -217,8 +218,29 @@ class BotCore:
                 return "Nothing waiting."
             return "\n\n".join(f"#{a['id']} from {a['schedule_id']} ({a['created_at'][:16]}): {a['tool']} "
                                f"[{a['tier']}]\n{a['arguments']}" for a in items[:15]) + \
-                "\n\nThese did not run. Ask me in chat to do one now (you approve it there), or /dismiss <id>."
+                "\n\nThese did not run. /approve <id> runs that exact action once; /deny <id> drops it."
         return self._with_rt(go)
+
+    def pending_approval_ids(self) -> list[int]:
+        return self._with_rt(lambda rt: [a["id"] for a in PendingApprovals(rt.store.conn).list()[:15]])  # type: ignore[arg-type,return-value]
+
+    @staticmethod
+    def _pid(text: str) -> int | None:
+        t = text.strip().lstrip("#")
+        return int(t) if t.isdigit() else None
+
+    def cmd_approve(self, pid: str) -> str:
+        """Replays the exact queued call once (jarvis/proactive/replay.py); the result also goes to the notifier."""
+        n = self._pid(pid)
+        if n is None:
+            return "Usage: /approve <id> (see /approvals)"
+        return self.p.approve_pending(n, source="telegram").message
+
+    def cmd_deny(self, pid: str) -> str:
+        n = self._pid(pid)
+        if n is None:
+            return "Usage: /deny <id> (see /approvals)"
+        return self.p.deny_pending(n, source="telegram").message
 
     def cmd_dismiss(self, pid: str) -> str:
         def go(rt) -> str:

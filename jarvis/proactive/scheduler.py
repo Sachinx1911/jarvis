@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS sched_pending_approvals (
     tier TEXT NOT NULL,
     arguments TEXT NOT NULL,
     reason TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending'   -- pending | dismissed
+    status TEXT NOT NULL DEFAULT 'pending'   -- see PendingApprovals
 );
 """
 
@@ -237,12 +237,48 @@ class ScheduleStore:
         return [dict(zip(keys, r)) for r in rows]
 
 
+_PENDING_EXTRA_COLS = {"decided_at": "TEXT", "result": "TEXT", "ok": "INTEGER", "verified": "INTEGER"}
+_PENDING_KEYS = ("id", "schedule_id", "run_id", "created_at", "tool", "tier", "arguments", "reason", "status",
+                 "decided_at", "result", "ok", "verified")
+
+
 class PendingApprovals:
-    """Actions an unattended run wanted but was not allowed to do."""
+    """Actions an unattended run wanted but was not allowed to do.
+
+    status: pending -> dismissed | denied | stale | refused | running -> executed | failed.
+    Approving replays the exact stored call once (jarvis/proactive/replay.py).
+    """
 
     def __init__(self, conn: sqlite3.Connection):
         self.db = conn
         self.db.executescript(_SCHEMA)
+        have = {r[1] for r in self.db.execute("PRAGMA table_info(sched_pending_approvals)")}
+        for col, kind in _PENDING_EXTRA_COLS.items():
+            if col not in have:
+                self.db.execute(f"ALTER TABLE sched_pending_approvals ADD COLUMN {col} {kind}")
+        self.db.commit()
+
+    def get(self, pid: int) -> dict[str, Any] | None:
+        row = self.db.execute(f"SELECT {', '.join(_PENDING_KEYS)} FROM sched_pending_approvals WHERE id=?",
+                              (pid,)).fetchone()
+        if not row:
+            return None
+        data = dict(zip(_PENDING_KEYS, row))
+        data["arguments"] = json.loads(data["arguments"])
+        return data
+
+    def set_status(self, pid: int, status: str, now: datetime, from_status: str = "pending") -> bool:
+        """Atomic: only moves an item that is still in `from_status` (a second click does nothing)."""
+        cur = self.db.execute("UPDATE sched_pending_approvals SET status=?, decided_at=? WHERE id=? AND status=?",
+                              (status, _iso(now), pid, from_status))
+        self.db.commit()
+        return cur.rowcount == 1
+
+    def finish(self, pid: int, status: str, result: str, ok: bool, verified: bool | None, now: datetime) -> None:
+        self.db.execute(
+            "UPDATE sched_pending_approvals SET status=?, decided_at=?, result=?, ok=?, verified=? WHERE id=?",
+            (status, _iso(now), result[:4000], int(ok), None if verified is None else int(verified), pid))
+        self.db.commit()
 
     def add(self, schedule_id: str | None, run_id: int | None, req: ApprovalRequest, now: datetime) -> int:
         cur = self.db.execute(
