@@ -53,12 +53,25 @@ def test_check_answer_rules():
     q = {"category": "knowledge-update", "answer": {"contains_any": ["Baner"], "not_contains": ["Hinjewadi"]},
          "stale_values": ["Hinjewadi"]}
     assert me.check_answer(q, "Your office is in Baner, sir.") == (True, False, "ok")
-    ok, stale, _ = me.check_answer(q, "It moved from Hinjewadi to Baner.")
-    assert not ok and stale
+    # the old value as history is fine; as the current value it is stale
+    assert me.check_answer(q, "It moved from Hinjewadi to Baner.") == (True, False, "ok")
+    assert me.check_answer(q, "- Tumcha office ata Baner la ahe. - Adhi Hinjewadi la hota.")[0]
+    for wrong in ("Your office is in Hinjewadi, sir.", "Baner, or maybe Hinjewadi.", "ऑफिस Hinjewadi ला आहे."):
+        ok, stale, _ = me.check_answer(q, wrong)
+        assert not ok and stale
+    plan = {"category": "knowledge-update", "answer": {"contains_any": ["399"], "not_contains": ["299"]},
+            "stale_values": ["299"]}
+    assert me.check_answer(plan, "You're on the ₹399 plan (before that it was the ₹299 plan).")[0]
+    assert not me.check_answer(plan, "You're on the ₹299 plan, sir.")[0]
+    assert not me.check_answer(plan, "Your plan was changed to ₹299; the ₹399 offer ended.")[0]
     un = {"category": "unanswerable"}
     assert me.check_answer(un, "I don't know, sir.")[0]
     assert me.check_answer(un, "मला माहित नाही, sir.")[0]
     assert not me.check_answer(un, "It is 42.")[0]
+    for declined in ("I'm afraid I don't have it, sir.", "tumchya aai chya vayachi mahiti mazya memory madhe nahi.",
+                     "मागच्या वर्षीच्या सहलीची माझ्याकडे नोंद नाही."):
+        assert me.check_answer(un, declined)[0]
+    assert not me.check_answer(un, "Your mother is 58, sir.")[0]
 
 
 def test_live_run_uses_the_chat_route_with_a_fake_provider(tmp_path, monkeypatch):

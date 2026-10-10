@@ -277,7 +277,7 @@ questions:
     script: roman
     query: majhi bahin kuthe rahate?
     evidence: [[m-0001, a1b2c3d40001]]
-    answer: {contains_any: [Pune, पुण, pune]}
+    answer: {contains_any: [Pune, पुण, pune, puny, punya]}   # romanized Marathi: Punyat, Punyala
   - id: sf-2
     category: single-fact
     script: en
@@ -346,7 +346,7 @@ questions:
     query: मला उत्तरं कशी हवी असतात?
     evidence: [[m-0003, a1b2c3d40003]]
     note: cross-language (Marathi question, English memory); lexical search is not expected to find it
-    answer: {contains_any: [bullet, short, point, मुद्द]}
+    answer: {contains_any: [bullet, short, point, मुद्द, बुलेट, पॉइंट, थोडक्यात, छोट]}
 
   # ---- knowledge update (supersede) ----
   - id: ku-1

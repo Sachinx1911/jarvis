@@ -17,6 +17,8 @@ Each run builds a throwaway Jarvis home: real memory and chats are never touched
 
 from __future__ import annotations
 
+import re
+
 import json
 import tempfile
 from dataclasses import asdict, dataclass, field
@@ -53,7 +55,18 @@ LEAVE_ONE_OUT = [(f"all - {name}", {**FULL, name: False})
 ABSTAIN = ("don't know", "do not know", "don't remember", "do not remember", "not sure", "no record",
            "haven't told", "have not told", "didn't tell", "did not tell", "no information", "not mentioned",
            "माहित नाही", "माहीत नाही", "आठवत नाही", "mahit nahi", "mahiti nahi", "athvat nahi", "सांगितलं नाही",
-           "sangitla nahi", "सांगितले नाही")
+           "sangitla nahi", "सांगितले नाही",
+           # "I don't have it" / "not saved" / "no note of it", in English, romanized and Devanagari Marathi
+           "don't have", "do not have", "not saved", "never saved", "wasn't saved", "no note of",
+           "नोंद नाही", "nond nahi", "memory madhe nahi", "मेमरीत नाही", "माहिती नाही", "माझ्याकडे नाही",
+           "mazyakade nahi", "सापडले नाही", "sapadla nahi")
+
+# Words that put a value in the past ("before that it was the 299 plan"). In a knowledge update,
+# naming the old value as history is fine; presenting it as the current value is stale.
+# Only explicit "before/earlier" words: a bare "was" ("your plan was changed to 299") can present the
+# old value as current, so it does not count.
+PAST_MARKERS = ("before", "earlier", "previous", "used to", "moved from", "switched from", "changed from",
+                "until ", "former", "adhi", "aadhi", "pahile", "purvi", "agodar", "पूर्वी", "आधी", "पहिले", "अगोदर")
 
 
 # ---- fixtures ----
@@ -230,17 +243,29 @@ class LiveResult:
     output: str = ""
 
 
+def _clauses(low: str) -> list[str]:
+    return [c.strip() for c in re.split(r"[.!?;()\n।]|\s-\s|^-\s", low) if c.strip()]
+
+
+def _as_current(value: str, low: str) -> bool:
+    """The value appears in some clause that does not put it in the past."""
+    v = value.lower()
+    return any(v in c and not any(m in f" {c} " for m in PAST_MARKERS) for c in _clauses(low))
+
+
 def check_answer(q: dict[str, Any], output: str) -> tuple[bool, bool, str]:
     """(passed, stale, detail)."""
     low = output.lower()
-    stale = any(v.lower() in low for v in q.get("stale_values", []))
+    update = q["category"] == "knowledge-update"
+    present = (lambda v: _as_current(v, low)) if update else (lambda v: v.lower() in low)
+    stale = any(present(v) for v in q.get("stale_values", []))
     if q["category"] == "unanswerable":
         ok = any(p in low for p in ABSTAIN)
         return ok, False, "declined" if ok else "answered instead of declining"
     checks = q.get("answer", {})
     if checks.get("contains_any") and not any(s.lower() in low for s in checks["contains_any"]):
         return False, stale, f"missing any of {checks['contains_any']}"
-    bad = [s for s in checks.get("not_contains", []) if s.lower() in low]
+    bad = [s for s in checks.get("not_contains", []) if present(s)]
     if bad:
         return False, stale, f"contains {bad}"
     return True, stale, "ok"
