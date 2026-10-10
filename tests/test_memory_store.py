@@ -95,3 +95,33 @@ def test_sensitive_hidden_in_memory_md(mem, tmp_path):
 def test_export(mem, tmp_path):
     mem.save(_m("one"))
     assert mem.export(tmp_path / "out.json") == 1
+
+
+# ---- trash and restore (dashboard delete) ----
+
+def test_trash_moves_file_and_forgets_index(mem, tmp_path):
+    m = mem.save(_m("garden tool shed", keywords="shed garden"))
+    other = mem.save(_m("bike service day"))
+    dest = mem.trash(m.id)
+    assert dest.parent == tmp_path / "memory" / ".trash" and dest.exists()
+    assert dest.name.startswith(f"{m.id}-")
+    assert mem.get(m.id) is None and not mem.search("garden shed")
+    assert m.id not in (tmp_path / "memory" / "MEMORY.md").read_text(encoding="utf-8")
+    assert mem.reindex() == 1                              # the trash is not indexed again
+    assert mem.save(_m("new thing")).id == "m-0003"        # ids are never reused
+    assert [f for f, _ in mem.trashed()] == [dest.name]
+    with pytest.raises(KeyError):
+        mem.trash(m.id)
+    assert mem.get(other.id)
+
+
+def test_restore_brings_it_back(mem):
+    m = mem.save(_m("garden tool shed", keywords="shed garden"))
+    file = mem.trash(m.id).name
+    back = mem.restore(file)
+    assert back.id == m.id and mem.get(m.id) and mem.search("garden shed")
+    assert mem.trashed() == []
+    with pytest.raises(KeyError):
+        mem.restore("../evil.md")
+    with pytest.raises(KeyError):
+        mem.restore(file)
