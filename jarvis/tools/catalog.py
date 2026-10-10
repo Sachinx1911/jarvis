@@ -134,6 +134,11 @@ def build_registry(reg: ToolRegistry, d: ToolDeps) -> ToolRegistry:
              "T0", web_search, taints=True))
 
     def web_fetch(args: dict) -> str:
+        from jarvis.agents.sources import classify
+
+        if classify(args["url"]).kind == "user_check":  # their terms forbid automated collection
+            return ("Not fetched: this site's terms forbid automated reading. Give the link to the user "
+                    "and ask them to check it themselves.")
         if not d.quarantine:
             return "Reading web pages is not available."
         try:
@@ -174,6 +179,17 @@ def build_registry(reg: ToolRegistry, d: ToolDeps) -> ToolRegistry:
     add(Tool(ToolSpec("open_url", "Open a link in the user's browser.", _obj({"url": S}, ["url"])), "T2", sysd.open_url))
     add(Tool(ToolSpec("set_brightness", "Set screen brightness, 0 to 100.",
                       _obj({"level": {"type": "integer"}}, ["level"])), "T2", sysd.brightness))
+
+    # ---- connectors (Phase 5): documents, Google Calendar/Gmail, EventKit ----
+    from jarvis.connectors.registry import ConnectorDeps, connector_tools
+
+    for tool in connector_tools(ConnectorDeps(d.home, d.store, d.audit, max_privacy=d.max_privacy)):
+        add(tool)
+
+    # ---- store pages through Tavily Extract with price evidence (never Amazon/Flipkart) ----
+    from jarvis.tools.extract_tool import make_web_extract_tool
+
+    add(make_web_extract_tool(d))
     return reg
 
 

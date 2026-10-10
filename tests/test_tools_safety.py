@@ -246,3 +246,10 @@ def test_chat_browser_only_for_sites_the_user_named(env):
     assert s.browser.started is False  # nothing launched until a browser tool is used
     s.end()
     assert s.browser is None
+
+
+def test_catalog_registers_connector_and_extract_tools(env):
+    s = _session(env, [])
+    names = {t.spec.name for t in s.tools.all()}
+    assert {"doc_search", "calendar_list", "calendar_create_event", "gmail_send", "web_extract"} <= names
+    assert s.tools.get("gmail_send").tier == "T3" and s.tools.get("calendar_create_event").tier == "T2"
