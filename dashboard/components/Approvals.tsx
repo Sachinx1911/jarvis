@@ -16,6 +16,10 @@ export type Approval = {
   expires: number;
   args_sha256: string;
   outcome: string;
+  // What will change, in plain text ("[[x]]" = highlighted part, "+ "/"- " = diff lines).
+  preview?: string;
+  // Non-empty when approving also allows something for the rest of this session.
+  scope?: string;
 };
 
 export type ApprovalsData = { pending: Approval[]; recent: Approval[]; timeout_s: number; now: number };
@@ -109,6 +113,17 @@ function ApprovalCard({ a, skew, reload }: { a: Approval; skew: number; reload: 
           from {a.source} · auto-deny in {left}s
         </span>
       </div>
+      {a.scope && (
+        <div className="notice small">
+          <strong>Approving also grants:</strong> {a.scope}
+        </div>
+      )}
+      {a.preview && (
+        <>
+          <div className="small muted">What will change:</div>
+          <Preview text={a.preview} />
+        </>
+      )}
       <div className="small muted">Exact arguments:</div>
       <pre>{JSON.stringify(a.arguments, null, 2)}</pre>
       {needsTick && (
@@ -129,4 +144,29 @@ function ApprovalCard({ a, skew, reload }: { a: Approval; skew: number; reload: 
       {error && <div className="error">{error}</div>}
     </div>
   );
+}
+
+// Preview text from the server: "[[x]]" marks a highlighted part (e.g. a URL's domain).
+// Lines starting "+" / "-" are diff lines; "+++" / "---" are diff headers.
+export function Preview({ text }: { text: string }) {
+  return (
+    <pre className="preview">
+      {text.split("\n").map((line, i) => {
+        const header = line.startsWith("+++") || line.startsWith("---");
+        const cls = header ? "diff-head" : line.startsWith("+") ? "diff-add" : line.startsWith("-") ? "diff-del" : undefined;
+        return (
+          <span key={i} className={cls}>
+            {highlight(line)}
+            {"\n"}
+          </span>
+        );
+      })}
+    </pre>
+  );
+}
+
+function highlight(line: string): React.ReactNode[] {
+  return line
+    .split(/(\[\[[\s\S]*?\]\])/)
+    .map((part, i) => (part.startsWith("[[") && part.endsWith("]]") ? <mark key={i}>{part.slice(2, -2)}</mark> : part));
 }
