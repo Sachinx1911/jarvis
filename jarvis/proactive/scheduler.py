@@ -28,6 +28,7 @@ from typing import Any, Callable
 
 from jarvis.control.approvals import ApprovalRequest, Approver
 from jarvis.control.audit import AuditLog
+from jarvis.proactive.guard import CAPPED, UnattendedGuard, cap_notice, capped_today
 from jarvis.control.stop import EmergencyStop, StopSwitch
 from jarvis.core.loop import BudgetExceeded
 from jarvis.db import notional_usd
@@ -66,7 +67,7 @@ CREATE TABLE IF NOT EXISTS sched_runs (
     trigger TEXT NOT NULL,          -- cron | catch-up | run-now
     started_at TEXT NOT NULL,
     finished_at TEXT,
-    status TEXT NOT NULL,           -- running | ok | quiet | failed | budget | stopped | missed | skipped_overlap
+    status TEXT NOT NULL,           -- running | ok | quiet | failed | budget | stopped | missed | skipped_overlap | capped
     detail TEXT,
     output_path TEXT,
     model_calls INTEGER NOT NULL DEFAULT 0,
@@ -398,13 +399,14 @@ class ScheduleRunner:
 
     def __init__(self, open_rt: Callable[[], Any], executors: dict[str, Executor], notifier=None,
                  clock: Callable[[], datetime] | None = None, stale_lock: timedelta = timedelta(hours=6),
-                 default_budget: dict[str, Any] | None = None):
+                 default_budget: dict[str, Any] | None = None, guard: UnattendedGuard | None = None):
         self.open_rt = open_rt
         self.executors = executors
         self.notifier = notifier
         self.clock = clock or (lambda: datetime.now().astimezone())
         self.stale_lock = stale_lock
         self.default_budget = default_budget or {}
+        self.guard = guard  # global daily cap + pause after repeated failures (jarvis/proactive/guard.py)
 
     def run(self, sid: str, trigger_kind: str = "run-now") -> RunResult:
         rt = self.open_rt()
@@ -440,6 +442,20 @@ class ScheduleRunner:
             if trigger_kind != "run-now":
                 store.set_next(sid, s.next_after(now))
             return RunResult(sid, run_id, "stopped")
+        attended = trigger_kind == "run-now"   # Sachin started it himself: counted, never capped
+        if self.guard is not None and not attended:
+            reason = self.guard.over_cap(rt.store.conn, now)
+            if reason:
+                first = not capped_today(rt.store.conn, now)
+                run_id = store.record(sid, trigger_kind, CAPPED, f"daily cap reached: {reason}", now)
+                rt.audit.write("schedule_run", schedule_id=sid, trigger=trigger_kind, status=CAPPED, detail=reason)
+                store.set_next(sid, s.next_after(now))
+                if first and self.notifier is not None:
+                    try:
+                        self.notifier.send(cap_notice(reason), "Jarvis")
+                    except Exception:  # noqa: BLE001 - a failed notice must not stop the scheduler
+                        log.exception("cap notice failed")
+                return RunResult(sid, run_id, CAPPED, f"Not run: daily cap reached ({reason}).")
         if not store.acquire(sid, now, self.stale_lock):
             run_id = store.record(sid, trigger_kind, "skipped_overlap", "previous run still going", now)
             rt.audit.write("schedule_run", schedule_id=sid, trigger=trigger_kind, status="skipped_overlap")
@@ -447,7 +463,10 @@ class ScheduleRunner:
 
         run_id = store.start_run(sid, trigger_kind, now)
         limits = {**self.default_budget, **(s.budget or {})}
-        budget = RunBudget(limits.get("max_model_calls"), limits.get("max_notional_usd"))
+        if self.guard is not None and not attended:
+            budget = RunBudget(*self.guard.clip(limits, rt.store.conn, now))
+        else:
+            budget = RunBudget(limits.get("max_model_calls"), limits.get("max_notional_usd"))
         pending = PendingApprovals(rt.store.conn)
         approver = unattended_approver(pending, sid, run_id, self.clock, rt.audit)
         status, text = "ok", ""
@@ -493,7 +512,27 @@ class ScheduleRunner:
             store.set_next(sid, s.next_after(done))
         rt.audit.write("schedule_run", schedule_id=sid, run_id=run_id, trigger=trigger_kind, status=status,
                        model_calls=budget.calls, pending_approvals=waiting, output=output_path, delivered=delivered)
+        if self.guard is not None and status in ("failed", "budget"):
+            self._maybe_pause(rt, store, s, done)
         return RunResult(sid, run_id, status, text, output_path, waiting)
+
+    def _maybe_pause(self, rt: Any, store: "ScheduleStore", s: Schedule, now: datetime) -> None:
+        """Runaway guard: pause a schedule that failed several times in a row, and say so."""
+        assert self.guard is not None
+        n = self.guard.pause_after_failures
+        statuses = [r["status"] for r in store.runs(s.id, limit=max(n * 4, 10))]
+        current = store.get(s.id)
+        if current is None or not current.enabled or not self.guard.should_pause(statuses):
+            return
+        store.set_enabled(s.id, False, now)
+        rt.audit.write("schedule_auto_paused", schedule_id=s.id, failures_in_a_row=n)
+        if self.notifier is not None:
+            try:
+                self.notifier.send(f"Paused schedule {s.name} ({s.id}) after {n} failed runs in a row. "
+                                   f"Last result: {current.last_detail or '-'}. Resume: jarvis schedule resume {s.id}",
+                                   "Jarvis")
+            except Exception:  # noqa: BLE001
+                log.exception("pause notice failed")
 
     @staticmethod
     def _write_output(rt: Any, s: Schedule, run_id: int, status: str, text: str, now: datetime) -> Path:
