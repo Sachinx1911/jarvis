@@ -22,4 +22,10 @@ def make_provider(name: str, config: Config) -> ReasoningProvider:
         from jarvis.providers.claude_code import ClaudeCodeProvider
 
         return ClaudeCodeProvider(config.models)
+    if name == "local":
+        # Stage B: a local inference server on localhost (measured, not approved in routing.yaml).
+        from jarvis.providers.local import DEFAULT_ENDPOINT, LocalProvider
+
+        endpoint = config.providers.get("local", {}).get("endpoint", DEFAULT_ENDPOINT)
+        return LocalProvider(config.models, endpoint)
     raise ValueError(f"unknown provider: {name}")
