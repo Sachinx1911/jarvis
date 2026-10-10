@@ -65,6 +65,28 @@ Tick each box and note anything odd. Everything here works without Telegram, Goo
 - [ ] `.\jarvis.cmd dashboard --open` → all 7 tabs; chat in Marathi; new task from the Tasks tab; Emergency stop button
 - [ ] Approvals: ask in dashboard chat to replace a file → approval card appears; approve/deny
 
+## 9. In the app (no terminal)
+
+Start: `.\jarvis.cmd app --install-shortcut` once, then double-click **Jarvis** on the Desktop (or `.\jarvis.cmd app`).
+The browser opens the dashboard. Do not run `jarvis daemon` at the same time (the app already runs the scheduler).
+
+- [ ] Double-click the shortcut again → no second copy; the browser just opens the running one
+- [ ] **Setup**: paste the Tavily key → "set"; the key is never shown again. Run health checks → claude_code OK
+- [ ] **Setup**: Telegram user id + weather place (e.g. Pune) → saved to `config\local.yaml`
+- [ ] **Setup**: profile interview → answer two questions (one in Marathi) → memories saved (see Memory tab)
+- [ ] **Chat**: "नमस्कार" → Marathi reply; tick "Speak replies" → spoken on the laptop speakers
+- [ ] **Chat**: 🎤 Talk → says "speech-to-text not installed (run voice setup)" until Whisper is installed
+- [ ] **Projects & Docs**: create `demo-trip2`, upload a .md/.pdf/.docx → indexed, P2; mark one P1 (asks first); search "train" → citation
+- [ ] **Projects & Docs**: "Use in chat" → Chat shows the project; ask about the document
+- [ ] **Teach**: Start recording → do the daily-note task in Chat → add a note → Stop → Draft a skill (asks first) → edit → Approve → Run in chat
+- [ ] **Schedules & Reminders**: "every day at 21:00 summarize my tasks" → Read it → draft shown, nothing saved until **Save this schedule**
+- [ ] Pause / Resume / Runs / Delete a schedule; Run now (asks first)
+- [ ] Reminder "in 2 minutes drink water" → desktop notification while the app runs; cancel another one
+- [ ] **Show morning brief**
+- [ ] **Setup**: Run evaluation (asks first; calls the model) → results table
+- [ ] **Setup**: Quit Jarvis → the page stops answering; start it again from the shortcut
+- [ ] Optional: `.\jarvis.cmd app --autostart on`, log out and in → Jarvis starts; `--autostart off` to undo
+
 ## Report back
 
 For each failure note: the command, what you expected, what happened (copy the text). Jarvis's own log is `data\audit.jsonl`; task details are in `data\tasks\<id>\`.
