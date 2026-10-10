@@ -209,7 +209,7 @@ def test_cli_repeat_shows_draft_and_saves_only_after_yes(isolated, drafts):
     text = out.getvalue()
     assert "--- SKILL.md draft ---" in text and "name: weekly-price-check" in text and "source: task t-001" in text
     assert "tool `web_search`, tier T0" in text and "tool `write_file`, tier T1" in text  # tiers from the registry
-    assert "Cron: 0 9 * * mon" in text and "Runs: run skill 'weekly-price-check'" in text
+    assert "Cron: 0 9 * * mon" in text and "Runs: run skill 'weekly-price-check' (no extra input)" in text
     assert "Unattended runs may only read and write new files (T0/T1)" in text
     assert "Save this skill and schedule? [y/N]" in text and "Not saved." in text
     assert not (isolated / "skills" / "weekly-price-check").exists() and _schedules(isolated) == []
