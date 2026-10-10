@@ -11,7 +11,7 @@ from jarvis.paths import CONFIG_DIR
 
 DEFAULTS: dict[str, Any] = {
     "stt": {"engine": "faster_whisper", "model": "small", "device": "cpu", "compute_type": "int8",
-            "language": "auto", "min_confidence": 0.45, "marathi_engine": "indicconformer"},
+            "language": "auto", "min_confidence": 0.35, "marathi_engine": "indicconformer", "hotwords": "Jarvis"},
     "tts": {"engine": "auto", "voice": "", "rate": 0,
             "marathi": {"offline_engine": "mms_tts", "cloud_enabled": False, "engine": "edge_tts",
                         "voice": "mr-IN-ManoharNeural", "max_privacy": "P1"}},

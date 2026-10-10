@@ -66,12 +66,14 @@ class FasterWhisperSTT:
     name = "faster_whisper"
     cloud = False
 
-    def __init__(self, home: Path, model: str = "small", device: str = "cpu", compute_type: str = "int8"):
+    def __init__(self, home: Path, model: str = "small", device: str = "cpu", compute_type: str = "int8",
+                 hotwords: str | None = "Jarvis"):
         self.home = home
         self.model = model
         self.device = device
         self.compute_type = compute_type
         self._whisper: Any = None
+        self.hotwords = hotwords  # words the decoder is nudged toward (the assistant's name)
         self.last_language_probs: dict[str, float] = {}
 
     def check(self) -> None:
@@ -95,7 +97,10 @@ class FasterWhisperSTT:
             raise ValueError(f"expected {SAMPLE_RATE} Hz audio, got {audio.sample_rate}")
         whisper = self._load()
         samples = pcm_to_float(audio)
-        segments, info = whisper.transcribe(samples, language=language, beam_size=5, vad_filter=True)
+        # condition_on_previous_text=False: short clips must not inherit a hallucinated context;
+        # hotwords: the name "Jarvis" is otherwise often heard as "that was" / "service".
+        segments, info = whisper.transcribe(samples, language=language, beam_size=5, vad_filter=True,
+                                            condition_on_previous_text=False, hotwords=self.hotwords or None)
         # Every language's probability from the detection step (None when a language was given).
         self.last_language_probs = dict(getattr(info, "all_language_probs", None) or [])
         return segments, info
@@ -216,8 +221,13 @@ def make_marathi_stt(cfg: dict[str, Any], home: Path):
 
 # ---- language routing ----
 
-# Whisper's language guess at or above this goes straight to the Marathi engine.
-SURE_MARATHI = 0.5
+# A language guess at or above this is trusted without a second look.
+SURE = 0.45
+
+
+def devanagari_share(text: str) -> float:
+    letters = [ch for ch in text if ch.isalpha()]
+    return sum("\u0900" <= ch <= "\u097f" for ch in letters) / len(letters) if letters else 0.0
 
 
 class LanguageRouter:
@@ -225,10 +235,12 @@ class LanguageRouter:
 
     en   = Whisper, English only.
     mr   = the Marathi engine only.
-    auto = Whisper detects the language (cheap: segments are never decoded for non-English).
-           English stays with Whisper. A sure Marathi guess goes to the Marathi engine. Anything
-           else (Whisper often labels Marathi as Hindi, and accented English as Hindi or Urdu)
-           goes to whichever of English and Marathi Whisper rated more likely.
+    auto = Jarvis expects English or Marathi only, so Whisper's guess over all languages is
+           narrowed to those two (Hindi counts as Marathi evidence: Whisper often labels Marathi
+           as Hindi). Measured 2026-10-11 on the Mac app's recordings: an Indian-accent "hello
+           hello hello" came back as Arabic 0.28, English 0.20, so a sure guess (>= SURE) wins,
+           and an unsure one is settled by decoding once with Whisper forced to Marathi: Marathi
+           speech comes out in Devanagari, English speech in Latin letters.
     A per-call language hint ("en" / "mr") overrides the mode.
     """
 
@@ -266,29 +278,20 @@ class LanguageRouter:
         if mode == "mr":
             return replace(self.marathi.transcribe(audio, "mr"), engine=self.marathi.name)
         t, lang, prob = self.english.transcribe_if_english(audio)
-        if t is not None:
-            if t.confidence >= self.min_confidence or not self.marathi_ready()[0]:
-                return replace(t, engine=self.english.name)
-            # Unsure English. Marathi speech that starts with an English word ("Jarvis, aaj...")
-            # is often labelled English and comes out as nonsense. Try the Marathi engine and
-            # keep it if it is surer (English speech it writes in Devanagari, which still reads).
-            try:
-                mr = self.marathi.transcribe(audio, "mr")
-            except VoiceUnavailable:
-                return replace(t, engine=self.english.name)
-            if mr.text.strip() and mr.confidence > t.confidence:
-                return replace(mr, engine=self.marathi.name)
-            return replace(t, engine=self.english.name)
-        if not (lang == "mr" and prob >= SURE_MARATHI):
-            # Whisper named another language (often Hindi or Urdu, both for Marathi speech and for
-            # short English phrases in an Indian accent; seen 2026-10-11: "how are you" went to the
-            # Marathi engine). Jarvis expects only English or Marathi, so compare just those two
-            # guesses. Comparing transcript confidences does not work: IndicConformer writes English
-            # speech in Devanagari letters with high confidence.
-            probs = getattr(self.english, "last_language_probs", None) or {}
-            if probs.get("en", 0.0) > probs.get("mr", 0.0):
-                return replace(self.english.transcribe(audio, "en"), engine=self.english.name)
-        return replace(self.marathi.transcribe(audio, "mr"), engine=self.marathi.name)
+        probs = getattr(self.english, "last_language_probs", None) or {}
+        p_en = probs.get("en", prob if lang == "en" else 0.0)
+        p_mr = probs.get("mr", prob if lang == "mr" else 0.0) + probs.get("hi", prob if lang == "hi" else 0.0)
+        english = lambda: replace(t if t is not None else self.english.transcribe(audio, "en"), engine=self.english.name)
+        marathi = lambda: replace(self.marathi.transcribe(audio, "mr"), engine=self.marathi.name)
+        if not self.marathi_ready()[0]:
+            return english()
+        if p_en >= SURE and p_en >= p_mr:
+            return english()
+        if p_mr >= SURE and p_mr > p_en:
+            return marathi()
+        # Unsure: one decode forced to Marathi tells the scripts apart (see the class docstring).
+        probe = self.english.transcribe(audio, "mr")
+        return marathi() if devanagari_share(probe.text) >= 0.5 else english()
 
 
 class FakeSTT:
@@ -314,11 +317,11 @@ def make_stt(cfg: dict[str, Any], home: Path):
     engine = stt.get("engine", "faster_whisper")
     if engine == "faster_whisper":
         whisper = FasterWhisperSTT(home, stt.get("model", "small"), stt.get("device", "cpu"),
-                                   stt.get("compute_type", "int8"))
+                                   stt.get("compute_type", "int8"), hotwords=stt.get("hotwords", "Jarvis"))
         marathi = make_marathi_stt(cfg, home)
         if marathi is None:
             return whisper  # no Marathi engine: Whisper handles every language itself
-        return LanguageRouter(whisper, marathi, stt.get("language", "auto"), float(stt.get("min_confidence", 0.45)))
+        return LanguageRouter(whisper, marathi, stt.get("language", "auto"), float(stt.get("min_confidence", 0.35)))
     if engine == "fake":
         return FakeSTT()
     raise ValueError(f"unknown stt engine {engine!r}")
