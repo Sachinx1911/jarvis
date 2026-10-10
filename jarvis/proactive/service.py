@@ -32,6 +32,7 @@ HEARTBEAT_NAME = "Heartbeat"
 BRIEF_NAME = "Daily brief"
 EXTRACT_NAME = "Memory extraction"
 CLEANUP_NAME = "Memory cleanup"
+REVIEW_NAME = "Nightly review"
 
 
 def _memory_settings() -> dict[str, Any]:
@@ -149,7 +150,19 @@ class Proactive:
         chat = chat_executor(self.chat)
         from jarvis.proactive.integration import agent_task_executor
         return {"prompt": chat, "skill": chat, "agent": agent_task_executor, "brief": brief, "heartbeat": beat,
-                "memory_extract": self._memory_extract, "memory_cleanup": self._memory_cleanup}
+                "memory_extract": self._memory_extract, "memory_cleanup": self._memory_cleanup,
+                "review": self._nightly_review}
+
+    def _nightly_review(self, ctx: RunContext) -> str | None:
+        from jarvis.proactive.review import nightly_review
+
+        return nightly_review(ctx.rt.paths.home, ctx.rt.store.conn, ctx.rt.memory, ctx.now).summary
+
+    def guard(self):
+        """Global daily cap and runaway guard for unattended work (config: proactive unattended)."""
+        from jarvis.proactive.guard import UnattendedGuard
+
+        return UnattendedGuard.from_settings(self.settings.section("unattended"))
 
     # ---- memory upkeep (PLAN.md 6.3 rule 8, 6.6) ----
 
@@ -207,7 +220,8 @@ class Proactive:
 
     def runner(self) -> ScheduleRunner:
         stale = timedelta(hours=float(self.settings.section("schedules").get("stale_lock_hours", 6)))
-        return ScheduleRunner(self.open_rt, self.executors(), self.notifier, self.clock, stale, self.default_budget)
+        return ScheduleRunner(self.open_rt, self.executors(), self.notifier, self.clock, stale, self.default_budget,
+                              guard=self.guard())
 
     def ensure_default_schedules(self) -> list[str]:
         """The brief and the heartbeat are ordinary schedules, so they can be paused like any other.
@@ -220,6 +234,7 @@ class Proactive:
             b, h = self.settings.section("brief"), self.settings.section("heartbeat")
             q = dict(self.memory_settings.get("quiet_extract") or {})
             c = dict(self.memory_settings.get("cleanup") or {})
+            r = dict(self.memory_settings.get("review") or {})
             every_q = int(q.get("every_minutes", 10))
             defaults = [
                 (BRIEF_NAME, "brief", str(b.get("cron") or "0 8 * * *"), str(b.get("output") or self.default_output),
@@ -231,6 +246,8 @@ class Proactive:
                 (CLEANUP_NAME, "memory_cleanup", str(c.get("cron") or "0 21 * * sun"),
                  str(c.get("output") or self.default_output), "every week (Sunday evening)", c.get("enabled", True),
                  self.grace_s),
+                (REVIEW_NAME, "review", str(r.get("cron") or "30 22 * * *"), str(r.get("output") or "file"),
+                 "every night", r.get("enabled", True), self.grace_s),
             ]
             marker = rt.paths.data / "proactive_defaults_created"
             created_before = set(marker.read_text(encoding="utf-8").split()) if marker.exists() else set()
@@ -294,7 +311,8 @@ class Proactive:
             google = default_google_client(cfg)
         return TriggerEngine(self.open_rt, self.trigger_settings, self.clock, chat=self.chat,  # type: ignore[arg-type]
                              agent_executor=agent_task_executor, notifier=self.notifier, web=web, tavily_key=key,
-                             google=google, connectors_cfg=cfg, default_budget=self.default_budget)
+                             google=google, connectors_cfg=cfg, default_budget=self.default_budget,
+                             guard=self.guard())
 
     def draft_trigger(self, text: str, defaults: dict[str, Any] | None = None):
         """Parse and validate; raises TriggerParseError (a question) or TriggerInvalid (a refusal)."""
