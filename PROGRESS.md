@@ -37,6 +37,14 @@ Ending a session: update this file and commit.
 
 ### Final testing on Claude Fable (2026-10-10)
 
+**Second round, home MacBook (after all merges, commit 3a8d9fb and later):**
+- Live suites (`JARVIS_LIVE=1 JARVIS_TEST_MODEL=claude-fable-5-1 pytest -m live`): greeting, memory test, demo -> skill and injection PASS. Tools first 7/10 (web fetch and weather failed: python.org Python on macOS had no CA certificates); after the TLS fix (`jarvis/netssl.py`) tools 10/10, injection blocked, 0 T4 runs.
+- Eval suite: 12/12.
+- Memory eval live (`jarvis eval --suite memory --live`): raw 22/29, but all 7 misses were correct answers the grader could not read (romanized/Devanagari forms, Marathi declines, old value named as history). Grader fixed; the same answers re-grade to 29/29, stale 0/4, abstention 4/4.
+- Not run: laptop compare (needs the Tavily key on this Mac).
+
+**First round, office laptop:**
+
 - Live suites with `JARVIS_TEST_MODEL=claude-fable-5-1`: greeting PASS, memory test 10/10, tools 10/10 with injection blocked and 0 T4 runs, demo -> skill PASS (API-key test skipped: no key, by decision).
 - Eval suite: 12/12 (Marathi/English, memory, structured output, tool calling).
 - Laptop compare team task on Fable: FAILED twice (first $5 budget hit; then 3 rounds, 62 calls, $11.65 notional): no price could be confirmed on an Indian retailer page. Research shows Amazon/Flipkart terms forbid automated price collection, so the verifier needs source tiers (see Next step).
@@ -64,7 +72,7 @@ On a new machine first: `git clone`, run `scripts/setup.ps1` (Windows) or `scrip
 2. **Done 2026-10-10 (Mac):** finished and merged `wip/verify-repeat` (verify-after-act with claims vs evidence; `/repeat` in chat, Telegram and `jarvis task repeat`). Was: verify-after-act checks for Operator/Coder/browser and receipt "claims vs evidence"; `/repeat <when>` and `jarvis task repeat` (skill + schedule saved only after confirmation); merge.
 3. **Done 2026-10-10 (Mac):** global daily cap + runaway guard, nightly review (episode file + memory conflicts in the brief) merged. Backups merged: `jarvis backup create|list|restore-check` (destination `~/JarvisBackups` by default; open decision #10).
 4. **Partly done 2026-10-10 (Mac):** merged why-panel recording for every chat (CLI, Telegram) and sensitive-topic enforcement in code. **In progress:** dashboard India tab + triggers adapter (`feature/dashboard-india`). **Left:** a dashboard endpoint for CLI/Telegram turns (`GET /api/sessions/{sid}/turns` or turn ids in session lines) and a `/why` chat command. Was: **Claude, small hooks:** dashboard triggers adapter (`"triggers": ("jarvis.proactive.triggers", "dashboard_triggers")` in `jarvis/web/adapters.py`), `record_turn` in `ChatSession.send` for "why" on CLI/Telegram chats, enforce "health/politics = sensitive" in code (not only prompts).
-5. **Claude:** final testing on Claude Fable (`JARVIS_TEST_MODEL=claude-fable-5-1`): live suites, eval + memory eval (`jarvis eval --suite memory --live`), injection live set, laptop compare with price tiers; record results here.
+5. **Done 2026-10-10 (Mac), except laptop compare (needs Tavily key here):** final testing on Claude Fable (`JARVIS_TEST_MODEL=claude-fable-5-1`): live suites, eval + memory eval (`jarvis eval --suite memory --live`), injection live set, laptop compare with price tiers; record results here.
 6. **Sachin:** the "Waiting for Sachin" list; hands-on testing with TESTING.md (section 9: the app).
 
 ## Decisions made by Sachin
@@ -138,6 +146,7 @@ See "Open decisions" in PLAN.md. Most important:
 | 2026-10-10 | Office laptop (Windows) | Built Phase 2 (tiers, approvals, taint, quarantine, tools). Live: 10/10 tasks, injection blocked, 0 T4 runs. Pushed to GitHub |
 | 2026-10-10 | Office laptop (Windows) | Research fixes merged (security, prices, memory), one-click app, triggers, standing approvals and previews. 902 tests pass. Pushed. India features and verify/repeat stopped mid-work on wip branches; handoff to home |
 | 2026-10-10 | Office laptop (Windows) | Fable final tests (live suites pass, evals 12/12; laptop compare fails on retailer-price verification). Planner modes, task cancel, chat browser, memory upkeep, approval replay, migration lock fix, README, research on 5 topics, TESTING.md |
+| 2026-10-10 | Home MacBook M4 | Merged dashboard India tab + event triggers (fixed a pending-approvals table race, added `GET /api/sessions/{id}/turns`, docs). Added `/why`. Fable final tests on the Mac (see Final testing). Fixed macOS TLS certificates and the memory-eval grader. 1230 passed |
 | 2026-10-10 | Home MacBook M4 | Merged why-panel recording for every chat and sensitive enforcement; fixed two privacy gaps found by the agent (Devanagari-digit P3, sensitive memories in the extractor's decide step). 1186 passed |
 | 2026-10-10 | Home MacBook M4 | Merged backups and verify-after-act + repeat-this (made the Telegram `/repeat` draft P2-safe, added `jarvis task draft`). 1100 passed |
 | 2026-10-10 | Home MacBook M4 | Sachin updated Claude Code to 2.1.296. Live greeting through the subscription CLI: PASS on the Mac |
