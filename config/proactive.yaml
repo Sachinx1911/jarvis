@@ -17,6 +17,14 @@ schedules:
   stale_lock_hours: 6         # a "running" mark older than this is treated as a crash leftover
   sync_seconds: 60            # the daemon re-reads schedules changed from the CLI this often
 
+# Global daily cap and runaway guard for ALL unattended work (schedules and trigger actions).
+# One runaway loop must not burn the day's model allowance (Hermes masterclass review, 2026-10-10).
+# Counted per local day from the run receipts; a run counts only if it made a model call.
+# A `run-now` that Sachin starts himself is counted but never blocked. Plain notifications are free.
+unattended:
+  daily_cap: {max_runs: 100, max_model_calls: 200, max_notional_usd: 5.0}
+  pause_after_failures: 3     # pause a schedule or trigger after this many failed runs in a row (0 = never)
+
 heartbeat:
   enabled: true
   every_minutes: 30

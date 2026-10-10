@@ -170,6 +170,17 @@ def cmd_memory(args: argparse.Namespace, out: TextIO) -> int:
             from jarvis.memory import session_facts
             print(f"Indexed {mem.reindex()} memory files.", file=out)
             session_facts.reindex_all(rt.store.conn)  # facts of chats extracted before this index existed
+        elif args.action == "conflicts":
+            from jarvis.memory.conflicts import find_conflicts
+            found = find_conflicts(mem.list(status="active"))
+            if not found:
+                print("No possible memory conflicts.", file=out)
+            for c in found:
+                print(f"Subject {c.subject!r} ({c.type}): {len(c.memories)} active memories disagree", file=out)
+                for m in c.memories:
+                    print(f"  {m.id} (from {m.valid_from}): {m.summary_en or m.name}: {m.body.strip()[:200]}", file=out)
+            if found:
+                print("Keep the right one; archive the other with `jarvis memory archive <id>`.", file=out)
         elif args.action == "add":
             saved = make_extractor(rt, args.provider).remember(" ".join(args.text), private=args.private)
             print(f"Remembered as {saved.id}: {saved.summary_en or saved.name}", file=out)
@@ -311,7 +322,7 @@ def build_parser() -> argparse.ArgumentParser:
     chat.add_argument("-m", "--message", help="send one message and exit")
 
     mem = sub.add_parser("memory", help="list, search, show, archive, export, reindex or add memories")
-    mem.add_argument("action", choices=["list", "search", "show", "archive", "export", "reindex", "add"])
+    mem.add_argument("action", choices=["list", "search", "show", "archive", "export", "reindex", "add", "conflicts"])
     mem.add_argument("text", nargs="*")
     mem.add_argument("--type", choices=["fact", "preference", "procedure", "constraint", "episode"])
     mem.add_argument("--all", action="store_true", help="include superseded and archived")

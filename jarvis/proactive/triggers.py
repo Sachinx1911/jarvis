@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS trig_fires (
     trigger_id TEXT NOT NULL,
     started_at TEXT NOT NULL,
     finished_at TEXT,
-    status TEXT NOT NULL,              -- running | ok | failed | budget | stopped
+    status TEXT NOT NULL,              -- running | ok | failed | budget | stopped | capped
     events INTEGER NOT NULL DEFAULT 0,
     detail TEXT,
     output_path TEXT,
@@ -279,8 +279,9 @@ class TriggerEngine:
                  chat: Callable[[Any, Any], Any] | None = None, agent_executor: Callable[[RunContext], str] | None = None,
                  notifier: Any = None, web: Any = None, tavily_key: Callable[[], str | None] | None = None,
                  google: Callable[[], Any] | None = None, connectors_cfg: dict[str, Any] | None = None,
-                 default_budget: dict[str, Any] | None = None):
+                 default_budget: dict[str, Any] | None = None, guard: Any = None):
         self.open_rt = open_rt
+        self.guard = guard  # UnattendedGuard: global daily cap + pause after repeated failures
         self.settings = settings or {}
         self.clock = clock
         self.chat = chat
@@ -453,11 +454,18 @@ class TriggerEngine:
         fid = store.start_fire(t.id, len(events), now)
         pending = PendingApprovals(rt.store.conn)
         before = _pending_count(rt.store.conn, t.id)
-        budget = RunBudget(self.default_budget.get("max_model_calls"), self.default_budget.get("max_notional_usd"))
+        capped = None
+        if self.guard is not None and t.action != "notify":   # plain notifications use no model
+            capped = self.guard.over_cap(rt.store.conn, now)
+            budget = RunBudget(*self.guard.clip(self.default_budget, rt.store.conn, now))
+        else:
+            budget = RunBudget(self.default_budget.get("max_model_calls"), self.default_budget.get("max_notional_usd"))
         status, text = "ok", ""
         summaries = "\n".join(f"- {e.summary}" for e in events)
         try:
-            if t.action == "notify":
+            if capped:
+                status, text = "capped", f"{summaries}\n\nNot run: daily cap for unattended work reached ({capped})."
+            elif t.action == "notify":
                 text = summaries
             else:
                 StopSwitch(rt.paths.data).check()
@@ -509,6 +517,20 @@ class TriggerEngine:
         rt.audit.write("trigger_fired", trigger_id=t.id, fire_id=fid, source=t.source, action=t.action,
                        events=len(events), status=status, model_calls=budget.calls, pending_approvals=waiting,
                        output=output_path, delivered=delivered)
+        if self.guard is not None and status in ("failed", "budget"):
+            statuses = [f["status"] for f in store.fires(t.id, limit=max(self.guard.pause_after_failures * 4, 10))]
+            current = store.get(t.id)
+            if current is not None and current.enabled and self.guard.should_pause(statuses):
+                store.set_enabled(t.id, False, done)
+                rt.audit.write("trigger_auto_paused", trigger_id=t.id,
+                               failures_in_a_row=self.guard.pause_after_failures)
+                if self.notifier is not None:
+                    try:
+                        self.notifier.send(f"Paused trigger {t.safe_name} ({t.id}) after "
+                                           f"{self.guard.pause_after_failures} failed actions in a row. "
+                                           f"Resume: jarvis trigger resume {t.id}", "Jarvis")
+                    except Exception:  # noqa: BLE001
+                        log.exception("pause notice failed")
         return PollOutcome(t.id, "fired", f"{len(events)} event(s)", events, status, text, output_path, waiting)
 
     @staticmethod
