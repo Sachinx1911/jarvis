@@ -66,7 +66,7 @@ def test_tool_loop_memory_search(env):
     assert s.send("what do I drink?") == "You prefer tea, sir."
     tool_msg = provider.requests[1].messages[-1]
     assert tool_msg.role == "tool" and "Prefers tea." in tool_msg.parts[0].content
-    assert {t.name for t in provider.requests[0].tools} == {"memory_search", "session_search", "load_skill"}
+    assert {"memory_search", "session_search", "load_skill"} <= {t.name for t in provider.requests[0].tools}
 
 
 def test_bad_tool_args_return_error_not_crash(env):

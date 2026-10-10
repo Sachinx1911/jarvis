@@ -24,6 +24,8 @@ PERSONAL_DIRS = (
     "projects",
     "data/tasks",
     "data/sessions",
+    "workspace",
+    "connectors",
 )
 
 

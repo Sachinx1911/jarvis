@@ -1,0 +1,12 @@
+# Built-in tool settings. Machine-specific changes go in config/local.yaml under tools_file.
+files:
+  # Folders Jarvis may read and write. Relative paths are inside JARVIS_HOME.
+  # Add more one at a time in config/local.yaml (decided 2026-10-10: workspace only to start).
+  allowed: [workspace]
+
+# Extra apps Jarvis may open, as name: executable (Windows) or app name (macOS).
+# Built-in lists are in jarvis/tools/system.py.
+apps: {}
+
+weather:
+  default_place: ""   # e.g. a city name; used when no place is given

@@ -1,4 +1,4 @@
-"""Command line: jarvis init | chat | memory | sessions | interview | eval | stop | resume | secret | health."""
+"""Command line: jarvis init | chat | memory | sessions | interview | eval | connectors | stop | resume | secret | health."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TextIO
 
 from jarvis.config import load_config
+from jarvis.control.approvals import ApprovalRequest
 from jarvis.control.audit import AuditLog
 from jarvis.control.stop import EmergencyStop, StopSwitch
 from jarvis.core.chat import ChatSession
@@ -19,6 +20,7 @@ from jarvis.providers import make_provider
 from jarvis.providers.base import ProviderError
 from jarvis.routing.policy import RoutingError
 from jarvis.secrets import KNOWN_SECRETS, get_secret, set_secret
+from jarvis.tools.catalog import file_roots, registry_path
 
 EXIT_WORDS = {"/exit", "/quit", "exit", "quit"}
 PROVIDERS = ["claude_code", "anthropic", "fake"]
@@ -79,11 +81,23 @@ def _slash(session: ChatSession, rt: Runtime, text: str, out: TextIO) -> bool:
     return False
 
 
+def terminal_approver(out: TextIO, inp: TextIO):
+    """Ask in the terminal, showing the exact arguments. Anything but y/yes/ho means no."""
+    def ask(req: ApprovalRequest) -> bool:
+        print("\n" + req.describe(), file=out)
+        out.write("Allow? [y/N] ")
+        out.flush()
+        return inp.readline().strip().lower() in ("y", "yes", "ho", "हो")
+    return ask
+
+
 def cmd_chat(args: argparse.Namespace, out: TextIO, inp: TextIO) -> int:
     rt = open_runtime()
     try:
         try:
-            session = make_chat(rt, args.provider)
+            # One-shot messages have nobody to ask, so actions that need approval are denied.
+            approver = None if args.message is not None else terminal_approver(out, inp)
+            session = make_chat(rt, args.provider, approver)
         except RoutingError as e:
             print(f"Routing error: {e}", file=out)
             return 2
@@ -214,6 +228,25 @@ def cmd_eval(args: argparse.Namespace, out: TextIO) -> int:
         rt.close()
 
 
+def cmd_connectors(args: argparse.Namespace, out: TextIO) -> int:
+    rt = open_runtime()
+    try:
+        session = make_chat(rt, "fake")  # builds the tool registry without calling any model
+        print(f"Registry: {registry_path(rt.paths.home)}", file=out)
+        for t in sorted(session.tools.all(), key=lambda t: (t.tier, t.spec.name)):
+            print(f"  {t.tier}  {t.spec.name:<15} {'enabled' if t.enabled else 'DISABLED'}", file=out)
+        print("Health:", file=out)
+        print(f"  tavily key: {'set' if get_secret('tavily_api_key') else 'NOT SET (jarvis secret set tavily_api_key)'}", file=out)
+        roots = file_roots(rt.paths.home, rt.config.tools)
+        print("  file folders: " + ", ".join(str(r) for r in roots), file=out)
+        for name in ("claude_code",):
+            h = make_provider(name, rt.config).health()
+            print(f"  {name}: {'OK' if h.ok else 'NOT OK'} - {h.detail}", file=out)
+        return 0
+    finally:
+        rt.close()
+
+
 def cmd_stop(args: argparse.Namespace, out: TextIO) -> int:
     paths = default_paths()
     switch = StopSwitch(paths.data)
@@ -284,6 +317,9 @@ def build_parser() -> argparse.ArgumentParser:
     ev.add_argument("--provider", choices=PROVIDERS, default=None)
     ev.add_argument("--category", default=None)
 
+    con = sub.add_parser("connectors", help="tools, risk tiers and health checks")
+    con.add_argument("action", choices=["status"])
+
     stop = sub.add_parser("stop", help="emergency stop: block all model and tool calls")
     stop.add_argument("reason", nargs="*")
     sub.add_parser("resume", help="release the emergency stop")
@@ -310,6 +346,7 @@ def main(argv: list[str] | None = None, out: TextIO | None = None, inp: TextIO |
         "sessions": lambda: cmd_sessions(args, out),
         "interview": lambda: cmd_interview(args, out, inp),
         "eval": lambda: cmd_eval(args, out),
+        "connectors": lambda: cmd_connectors(args, out),
         "stop": lambda: cmd_stop(args, out),
         "resume": lambda: cmd_stop(args, out),
         "secret": lambda: cmd_secret(args, out),

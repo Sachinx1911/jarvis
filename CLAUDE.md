@@ -36,7 +36,7 @@ Work runs over many days. It stops and resumes, sometimes on this MacBook, somet
 
 ## Privacy and secrets (the GitHub repo is PUBLIC)
 - Never commit API keys, tokens, `.env` files or Keychain exports. Secrets live in the macOS Keychain on each machine.
-- Never commit Jarvis's personal data: `memory/`, `profile/`, `projects/`, `skills/` (learned skills), `data/`, `connectors/registry.yaml`. They are in `.gitignore`. Their backup or sync goes to a separate private place (decision pending in `PLAN.md`).
+- Never commit Jarvis's personal data: `memory/`, `profile/`, `projects/`, `skills/` (learned skills), `data/`, `workspace/`, `connectors/registry.yaml`. They are in `.gitignore`. Their backup or sync goes to a separate private place (decision pending in `PLAN.md`).
 - Use made-up examples in code, tests and fixtures, never real details about Sachin.
 
 ## New machine checklist

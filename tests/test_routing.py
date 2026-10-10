@@ -6,7 +6,7 @@ from jarvis.routing.policy import RoutingError, decide
 
 def _config(**routing) -> Config:
     base = load_config()
-    return Config(base.providers, base.models, {**base.routing, **routing})
+    return Config(base.providers, base.models, {**base.routing, **routing}, base.tools)
 
 
 def test_default_main_chat_is_opus_via_subscription():

@@ -11,6 +11,7 @@
 /projects/
 /skills/
 /data/
+/workspace/
 /connectors/registry.yaml
 *.db
 *.sqlite

@@ -16,6 +16,11 @@ from jarvis.paths import PROMPTS_DIR, JarvisPaths, default_paths
 from jarvis.providers import make_provider
 from jarvis.routing.policy import RoutingError, decide
 from jarvis.skills.loader import SkillLibrary
+from jarvis.control.approvals import Approver
+from jarvis.tools import quarantine as quarantine_mod
+from jarvis.tools.catalog import registry_path, write_registry
+from jarvis.tools.quarantine import Quarantine
+from jarvis.tools.web import WebClient
 
 
 @dataclass
@@ -54,10 +59,23 @@ def make_extractor(rt: Runtime, provider_override: str | None = None) -> Extract
     return Extractor(rt.memory, make_provider(decision.provider, rt.config), decision, rt.audit)
 
 
-def make_chat(rt: Runtime, provider_override: str | None = None) -> ChatSession:
+def make_quarantine(rt: Runtime, provider_override: str | None = None) -> Quarantine:
+    try:
+        decision = decide(rt.config, quarantine_mod.ROUTE, provider_override)
+    except RoutingError as e:
+        rt.audit.write("routing_error", route=quarantine_mod.ROUTE, detail=str(e))
+        return Quarantine(None, None, rt.audit)
+    return Quarantine(make_provider(decision.provider, rt.config), decision, rt.audit)
+
+
+def make_chat(rt: Runtime, provider_override: str | None = None, approver: Approver | None = None,
+              web: WebClient | None = None) -> ChatSession:
     decision = decide(rt.config, ROUTE, provider_override)  # RoutingError goes to the caller
-    return ChatSession(
+    session = ChatSession(
         rt.config, make_provider(decision.provider, rt.config), decision, rt.store, rt.audit,
         home=rt.paths.home, memory=rt.memory, skills=rt.skills,
-        extractor=make_extractor(rt, provider_override),
+        extractor=make_extractor(rt, provider_override), approver=approver,
+        quarantine=make_quarantine(rt, provider_override), web=web,
     )
+    write_registry(session.tools, registry_path(rt.paths.home))
+    return session

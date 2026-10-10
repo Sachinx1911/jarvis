@@ -5,7 +5,7 @@ Ending a session: update this file and commit.
 
 ## Current status
 
-- **Phase:** Phase 1 built. Done-when met: memory test 10/10 on Claude via subscription (9/10 needed; one probe first scored as fail because of a bug in the test's own check, fixed). Act probes pass. Waiting for Sachin to review before Phase 2.
+- **Phase:** Phase 2 built. Done-when met on Claude via subscription: 10/10 tool tasks verified, prompt-injection page blocked, no T4 action ran. Waiting for Sachin to review before Phase 3.
 - **AI provider now:** Claude through Sachin's Claude Max subscription, via the local Claude Code CLI (`claude -p`), adapter `jarvis/providers/claude_code.py`. No API key, no per-call billing; calls count against the plan's usage limits. Main chat: Opus 5.5 (medium). Memory enrichment/extraction: Haiku 5.5 (low). The Anthropic API adapter (`claude.py`) stays but is not approved in `config/routing.yaml`.
 - **Code:** Phase 0 (provider interface, fake + Claude Code + Claude API adapters, routing, SQLite, audit, keyring, CLI) plus Phase 1:
   - `jarvis/memory/`: markdown memory files + SQLite index (FTS5 unicode61 + trigram, RRF, gate, recency boost), `/remember`, two-step extractor (quote required, ADD/UPDATE/SUPERSEDE/NOOP/REJECT), MEMORY.md index.
@@ -14,8 +14,18 @@ Ending a session: update this file and commit.
   - `jarvis/tools/registry.py` (T0 only in Phase 1): `memory_search`, `session_search`, `load_skill`. `jarvis/skills/loader.py` (SKILL.md). `jarvis/control/stop.py` (emergency stop file).
   - `jarvis/evals/runner.py` + `tests/evals/migration/tasks.yaml` (8 synthetic tasks).
   - CLI: `chat` (/remember, /remember-private, /memory, /forget), `memory list|search|show|archive|export|reindex|add`, `sessions search`, `interview`, `eval`, `stop`, `resume`.
-- **Tests:** 96 pass offline, 3 live tests opt-in (`JARVIS_LIVE=1 pytest -m live -s`). Claude baseline (eval suite, subscription, 2026-10-10): 8/8.
-- **Not built (deferred):** vector search (decided), automatic extraction 10–30 min after a quiet session (needs the Phase 4 scheduler; now runs at /exit), weekly memory cleanup, query rewrite as a separate model call (summary_en + keywords saved with each memory cover romanized Marathi for now).
+- **Phase 2 code:**
+  - `jarvis/control/approvals.py`: T0 runs; T1 runs then verified (asks once the session is tainted); T2/T3 ask with exact arguments; T4 never runs and is logged. Decisions go to the `approvals` table and the audit log (with output hash).
+  - `jarvis/tools/registry.py`: schema check -> path pre-check (secret paths are T4) -> gate -> run -> verify -> log. Taint flag set by web tools.
+  - `jarvis/tools/files.py`: read/list (T0), write new (T1), overwrite/move (T2), delete to `.trash` (T3); only inside `workspace/` (config `config/tools.yaml`).
+  - `jarvis/tools/web.py` + `quarantine.py`: Tavily search, page fetch (public http(s) only, redirects checked), weather (Open-Meteo, no key). Pages are read by a quarantined Haiku call with no tools.
+  - `jarvis/tools/system.py`: open_app (allowlist, T1), notify (T1), media keys (T1), open_url (T2), brightness (T2, Windows). Windows and macOS.
+  - `jarvis/tools/catalog.py`: all built-in tools and the private registry `connectors/registry.yaml` (disable or raise a tier; lowering is ignored). `jarvis connectors status`.
+  - Chat asks for approval in the terminal; one-shot `chat -m` denies anything that needs approval.
+- **Tests:** 125 pass offline, 4 live tests opt-in (`JARVIS_LIVE=1 pytest -m live -s`). Live on 2026-10-10: memory 10/10, tools 10/10 + injection blocked, eval baseline 8/8.
+- **Not live-tested on purpose:** media keys, notifications, open_app, brightness (they change the computer). Covered by unit tests only; Sachin can try them in chat.
+- **Tavily:** code ready; key not stored yet, so `web_search` answers that it is not set up.
+- **Not built (deferred):** news via RSS (Tavily `topic: news` covers news and cricket), traffic (needs a maps API), Do Not Disturb (no simple Windows API), vector search (decided), automatic extraction 10–30 min after a quiet session (needs the Phase 4 scheduler; now runs at /exit), weekly memory cleanup, query rewrite as a separate model call (summary_en + keywords saved with each memory cover romanized Marathi for now).
 - **Needs on each machine:** Claude Code CLI 2.1.280 or newer, logged in with the Claude subscription. `jarvis health` checks this.
 - **Half-done work:** None.
 - **Last update:** 2026-10-10, office laptop (Windows 11, Python 3.12).
@@ -23,9 +33,9 @@ Ending a session: update this file and commit.
 
 ## Next step
 
-1. **Sachin:** Try it: `.venv\Scripts\jarvis.exe chat` (or `jarvis interview`), then review Phase 1.
-2. **Sachin:** Confirm the P2 definition used by the memory prompts (see decisions, 2026-10-10).
-3. **Sachin:** Say "Start Phase 2" (Tools + Safety).
+1. **Sachin:** Create a free Tavily account, then store the key: `.venv\Scripts\jarvis.exe secret set tavily_api_key`.
+2. **Sachin:** Try Phase 2 in chat (weather, files in `workspace/`, volume, open notepad), then review.
+3. **Sachin:** Say "Start Phase 3" (Tasks + Agent team).
 
 ## Decisions made by Sachin
 
@@ -50,7 +60,9 @@ Ending a session: update this file and commit.
 | 2026-10-10 | Do not use the Claude API for now. The Claude API adapter stays in the code but is not approved |
 | 2026-10-10 | Use Sachin's Claude Max subscription instead, through the Claude Code CLI as a provider adapter (`claude_code`). Claude Code CLI updated to 2.1.296 on the office laptop |
 | 2026-10-10 | Start Phase 1 now, built and tested against the fake provider plus the subscription provider. Vector search deferred (keyword + trigram first) |
-| 2026-10-10 | (Claude, pending Sachin's confirmation) P2 "sensitive" in memory prompts = health, money, ID document contents/numbers, other people's phone/email/address. Family names, where things are kept, schedules and preferences are P1. The first live run marked a daughter's name and a document location as P2, which withheld them from Claude |
+| 2026-10-10 | (Confirmed by Sachin) P2 "sensitive" in memory prompts = health, money, ID document contents/numbers, other people's phone/email/address. Family names, where things are kept, schedules and preferences are P1. The first live run marked a daughter's name and a document location as P2, which withheld them from Claude |
+| 2026-10-10 | Start Phase 2. Web search stays Tavily (compared with Brave, Claude search via Max, Google CSE, DuckDuckGo, SearXNG; Tavily: no card, AI-ready content, provider-independent) |
+| 2026-10-10 | File tools start with the Jarvis `workspace/` folder only; more folders can be added one at a time in `config/local.yaml` |
 
 ## Open decisions
 
@@ -71,4 +83,5 @@ See "Open decisions" in PLAN.md. Most important:
 | 2026-10-10 | MacBook M4 | PLAN v3.5: migration path for every AI-dependent component, rule for moving a component local. CLAUDE.md rule added |
 | 2026-10-10 | Office laptop (Windows) | Cloned repo. Built Phase 0 cross-platform: provider interface, fake + Claude adapters, routing, SQLite, audit, keyring, CLI, setup scripts, 26 tests passing |
 | 2026-10-10 | Office laptop (Windows) | Added the Claude Code CLI adapter (subscription login, isolated, JSON reply/action mode). Live greeting test passed. Phase 0 complete. Phase 1 plan approved |
+| 2026-10-10 | Office laptop (Windows) | Built Phase 2: tiers and approvals, taint flag, quarantine, file/web/weather/system/media tools, verifier, connector registry. Live: 10/10 tasks, injection blocked, 0 T4 runs |
 | 2026-10-10 | Office laptop (Windows) | Built Phase 1: memory store/search, write path, context builder, agent loop, privacy gate v1, tools, skills, session search, emergency stop, interview, eval scaffold. Live memory test 10/10, eval baseline 8/8 |

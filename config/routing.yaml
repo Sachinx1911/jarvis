@@ -18,3 +18,9 @@ routes:
     needs: [structured_output]
     max_privacy: P1
     cloud_fallback: never
+  quarantine:                # reads untrusted web content; never gets tools
+    candidates:
+      - {provider: claude_code, model: claude-haiku-5-5, effort: low}
+    needs: [structured_output]
+    max_privacy: P1
+    cloud_fallback: never

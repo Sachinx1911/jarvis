@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +36,7 @@ class Config:
     providers: dict[str, Any]
     models: dict[str, Any]
     routing: dict[str, Any]
+    tools: dict[str, Any] = field(default_factory=dict)
 
 
 def load_config(config_dir: Path = CONFIG_DIR) -> Config:
@@ -43,8 +44,10 @@ def load_config(config_dir: Path = CONFIG_DIR) -> Config:
     providers = _merge(_read_yaml(config_dir / "providers.yaml"), local.get("providers_file", {}))
     models = _merge(_read_yaml(config_dir / "models.yaml"), local.get("models_file", {}))
     routing = _merge(_read_yaml(config_dir / "routing.yaml"), local.get("routing_file", {}))
+    tools = _merge(_read_yaml(config_dir / "tools.yaml"), local.get("tools_file", {}))
     return Config(
         providers=providers.get("providers", {}),
         models=models.get("models", {}),
         routing=routing,
+        tools=tools,
     )

@@ -16,53 +16,18 @@ from jarvis.db import Store
 from jarvis.memory.extract import Extractor
 from jarvis.memory.store import MemoryStore
 from jarvis.paths import default_paths
-from jarvis.privacy import SENSITIVITY_TO_CLASS, allowed
+from jarvis.control.approvals import ApprovalGate, Approver
 from jarvis.providers.base import Message, ProviderError, ReasoningProvider
 from jarvis.routing.policy import RouteDecision
+from jarvis.secrets import get_secret
 from jarvis.skills.loader import SkillLibrary
-from jarvis.tools.registry import Tool, ToolRegistry
-from jarvis.providers.base import ToolSpec
+from jarvis.tools.catalog import ToolDeps, apply_registry, build_registry, registry_path
+from jarvis.tools.quarantine import Quarantine
+from jarvis.tools.registry import ToolRegistry
+from jarvis.tools.system import SystemTools
+from jarvis.tools.web import WebClient
 
 ROUTE = "main_chat"
-
-
-def build_tools(registry: ToolRegistry, memory: MemoryStore | None, skills: SkillLibrary | None,
-                store: Store, session_id: Callable[[], str], max_privacy: str) -> None:
-    if memory:
-        def memory_search(args: dict) -> str:
-            lines = []
-            for hit in memory.search(args["query"], k=5):
-                m = hit.memory
-                if not allowed(SENSITIVITY_TO_CLASS.get(m.sensitivity, "P2"), max_privacy):
-                    lines.append(f"- [{m.id}] (sensitive memory withheld)")
-                    continue
-                memory.mark_used(m.id)
-                lines.append(f"- [{m.id}, {m.type}] {m.summary_en or m.name}: {m.body}")
-            return "\n".join(lines) or "No matching memories."
-
-        registry.register(Tool(ToolSpec(
-            "memory_search", "Search the user's long-term memory. Use English keywords and the user's own words.",
-            {"type": "object", "properties": {"query": {"type": "string", "description": "What to look for"}},
-             "required": ["query"]},
-        ), "T0", memory_search))
-
-    def session_search(args: dict) -> str:
-        rows = store.search_sessions(args["query"], limit=5, exclude_session=session_id())
-        return "\n".join(f"- {r['ts']} {r['role']}: {r['text'][:300]}" for r in rows) or "No matching past conversations."
-
-    registry.register(Tool(ToolSpec(
-        "session_search", "Search past conversations with the user.",
-        {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
-    ), "T0", session_search))
-
-    if skills:
-        def load_skill(args: dict) -> str:
-            return skills.load(args["name"]) or f"No skill named {args['name']}."
-
-        registry.register(Tool(ToolSpec(
-            "load_skill", "Load the full instructions of a skill from the skill index.",
-            {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
-        ), "T0", load_skill))
 
 
 class ChatSession:
@@ -78,6 +43,10 @@ class ChatSession:
         memory: MemoryStore | None = None,
         skills: SkillLibrary | None = None,
         extractor: Extractor | None = None,
+        approver: Approver | None = None,
+        quarantine: Quarantine | None = None,
+        web: WebClient | None = None,
+        system: SystemTools | None = None,
     ):
         home = home or default_paths().home
         self.config = config
@@ -93,9 +62,15 @@ class ChatSession:
         max_privacy = config.routing.get("routes", {}).get(decision.route, {}).get("max_privacy", "P1")
         self.context = ContextBuilder(home, memory, skills, max_privacy)
         self.stop = StopSwitch(home / "data")
-        tools = ToolRegistry(store, audit)
-        build_tools(tools, memory, skills, store, lambda: self.session_id, max_privacy)
-        self.loop = AgentLoop(provider, decision, tools, store, audit, self.stop)
+        self.tools = ToolRegistry(store, audit, ApprovalGate(store, audit, approver))
+        build_registry(self.tools, ToolDeps(
+            home=home, store=store, audit=audit, memory=memory, skills=skills,
+            session_id=lambda: self.session_id, max_privacy=max_privacy, tools_config=config.tools,
+            web=web or WebClient(), quarantine=quarantine, tavily_key=lambda: get_secret("tavily_api_key"),
+            system=system or SystemTools(),
+        ))
+        apply_registry(self.tools, registry_path(home), audit)
+        self.loop = AgentLoop(provider, decision, self.tools, store, audit, self.stop)
         audit.write(
             "route_decision", session_id=self.session_id, route=decision.route,
             provider=decision.provider, model=decision.model, reason=decision.reason,
