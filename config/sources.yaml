@@ -1,0 +1,47 @@
+# Source tiers for prices and shop facts (jarvis/agents/sources.py).
+# Machine-specific changes go in config/local.yaml under sources_file.
+#
+# Each entry is a domain ("croma.com", subdomains match too) or a domain plus a path
+# prefix ("dell.com/en-in" matches www.dell.com/en-in/...). First match wins, checked in
+# this order: user_check, store, aggregator. Anything else is tier C.
+
+# Retailers whose terms forbid automated price collection. Jarvis never fetches these
+# pages; their prices appear only as links for Sachin to check himself.
+user_check:
+  - amazon.in
+  - amzn.in
+  - amzn.to
+  - flipkart.com
+  - fkrt.it
+  - fkrt.cc
+
+# Tier A: official retailer or brand store pages. A price read from one of these pages
+# (with a Rs amount near the product name) counts as confirmed for that day.
+store:
+  - croma.com
+  - reliancedigital.in
+  - vijaysales.com
+  - dell.com/en-in
+  - dell.com/in
+  - hp.com/in-en
+  - lenovo.com/in
+  - apple.com/in
+  - samsung.com/in
+  - asus.com/in
+  - store.acer.com/en-in
+  - acer.com/in-en
+  - mi.com/in
+
+# Tier B: aggregators and price comparison. Good for discovery; their prices are
+# labelled estimates, never confirmed prices.
+aggregator:
+  - smartprix.com
+  - 91mobiles.com
+  - pricehistory.app
+  - pricehistory.in
+  - buyhatke.com
+  - mysmartprice.com
+  - pricebefore.com
+  - shopping.google.com
+  - google.com/shopping
+  - google.co.in/shopping

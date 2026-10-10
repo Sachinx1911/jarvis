@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from jarvis.agents.sources import PRICE_RULES, check_price_rows, evidence_from_runs, is_price_task, today
 from jarvis.agents.team import CHECKER, RESEARCHER, WRITER, AgentEnv, WorkOrder, run_agent
 from jarvis.config import Config
 from jarvis.control.approvals import ApprovalGate, Approver
@@ -60,6 +61,7 @@ PLAN_SCHEMA: dict[str, Any] = {
             "required": ["filename", "outline"], "additionalProperties": False},
         "acceptance_criteria": {"type": "array", "items": {"type": "string"}},
         "solo_instructions": {"type": "string"},
+        "price_check": {"type": "boolean"},  # optional: the report shows shop prices, so source tiers apply
     },
     "required": ["title", "use_team", "research", "deliverable", "acceptance_criteria", "solo_instructions"],
     "additionalProperties": False,
@@ -240,11 +242,12 @@ class TaskRunner:
         plan, cp = task.plan, dict(task.checkpoint)
         env = self._env()
         project = self._project_context(task)
+        rules = f"\n\n{PRICE_RULES}" if is_price_task(task.goal, plan) else ""
 
         if "research" not in cp:
             self._step(task_id, f"{len(plan['research'])} researchers working")
             orders = [WorkOrder(
-                objective=r["objective"], context=f"Overall task: {task.goal}\nYour focus: {r['focus']}{project}",
+                objective=r["objective"], context=f"Overall task: {task.goal}\nYour focus: {r['focus']}{project}{rules}",
                 output_format="FINDINGS, SOURCES (title - URL), GAPS", stop_condition="you have the facts, or after about 4 searches",
             ) for r in plan["research"]]
             with ThreadPoolExecutor(max_workers=max(1, len(orders))) as pool:
@@ -270,7 +273,7 @@ class TaskRunner:
                 order = WorkOrder(
                     objective=f"Write the report for: {task.goal}",
                     context=f"Outline:\n{plan['deliverable']['outline']}\n\nAcceptance criteria:\n- "
-                            + "\n- ".join(plan["acceptance_criteria"]) + f"\n\nFindings:\n{findings}{project}",
+                            + "\n- ".join(plan["acceptance_criteria"]) + f"\n\nFindings:\n{findings}{project}{rules}",
                     output_format=f"Create the file {filename} with write_file.",
                     stop_condition="the file is created", extra=extra)
                 run_agent(WRITER, "writer", order, env)
@@ -293,7 +296,7 @@ class TaskRunner:
             self._step(task_id, "follow-up research on the checker's findings")
             order = WorkOrder(
                 objective="Find the missing or wrong facts listed below, with a source link for each.",
-                context=f"Overall task: {task.goal}\n\nWhat the checker found:\n- " + "\n- ".join(problems) + project,
+                context=f"Overall task: {task.goal}\n\nWhat the checker found:\n- " + "\n- ".join(problems) + project + rules,
                 output_format="FINDINGS, SOURCES (title - URL), GAPS",
                 stop_condition="every listed problem has an answer with a source, or no source exists")
             follow = run_agent(RESEARCHER, f"researcher-fix-{cp['version']}", order, env)
@@ -419,10 +422,25 @@ class TaskRunner:
                 elif unknown:
                     problems.append("links not found in the research: " + ", ".join(unknown[:5]))
 
+        goal = self.tasks.get(task_id).goal  # type: ignore[union-attr]
+        price_task = plan.get("mode") not in ("operate", "code") and is_price_task(goal, plan)
+        tier_note = ""
+        if exists and price_task:
+            # Source tiers: confirmed = store page read today with a Rs amount near the product;
+            # estimate = aggregator plus a link for the user; Amazon/Flipkart = link only.
+            tier_problems, rows = check_price_rows(path.read_text(encoding="utf-8"), self._price_evidence(task_id),
+                                                   today())
+            checks.append({"check": "every price row is confirmed on a store page or a labelled estimate with a "
+                                    "user-check link", "passed": not tier_problems,
+                           "note": f"{rows} price rows, {len(tier_problems)} problems"})
+            problems.extend(tier_problems)
+            tier_note = (f"\n\n{PRICE_RULES}\n\nJarvis's deterministic price-label check on {rows} rows: "
+                         + ("passed." if not tier_problems else "failed:\n- " + "\n- ".join(tier_problems)))
+
         if exists and use_checker:
             order = WorkOrder(
-                objective=f"Verify the report file {filename} for this task: {self.tasks.get(task_id).goal}",  # type: ignore[union-attr]
-                context="Acceptance criteria:\n- " + "\n- ".join(plan["acceptance_criteria"]),
+                objective=f"Verify the report file {filename} for this task: {goal}",
+                context="Acceptance criteria:\n- " + "\n- ".join(plan["acceptance_criteria"]) + tier_note,
                 output_format="JSON only: {\"passed\": ..., \"checks\": [...], \"problems\": [...]}")
             result = run_agent(CHECKER, "checker", order, self._env())
             verdict = parse_verdict(result.text)
@@ -440,15 +458,24 @@ class TaskRunner:
 
     def _seen_urls(self, task_id: str) -> set[str]:
         rows = self.store.conn.execute(
-            "SELECT result FROM tool_runs WHERE task_id=? AND ok=1 AND tool IN ('web_search', 'web_fetch')", (task_id,))
+            "SELECT result FROM tool_runs WHERE task_id=? AND ok=1 AND tool IN ('web_search', 'web_fetch', 'web_extract')",
+            (task_id,))
         urls: set[str] = set()
         for (result,) in rows:
             urls |= {u.rstrip(".,;") for u in URL_RE.findall(result or "")}
         args = self.store.conn.execute(
-            "SELECT arguments FROM tool_runs WHERE task_id=? AND ok=1 AND tool='web_fetch'", (task_id,))
+            "SELECT arguments FROM tool_runs WHERE task_id=? AND ok=1 AND tool IN ('web_fetch', 'web_extract')",
+            (task_id,))
         for (a,) in args:
             urls |= set(URL_RE.findall(a or ""))
         return urls
+
+    def _price_evidence(self, task_id: str) -> dict[str, tuple[str, str]]:
+        """Store pages read with web_extract in this task: url -> (price evidence, fetch date)."""
+        rows = self.store.conn.execute(
+            "SELECT arguments, result FROM tool_runs WHERE task_id=? AND ok=1 AND tool='web_extract' ORDER BY id",
+            (task_id,))
+        return evidence_from_runs(rows)
 
     # ---- endings ----
 

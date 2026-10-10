@@ -25,6 +25,10 @@ MAX_PAGE_CHARS = 60000  # store pages put menus and filters first; prices come l
 USER_AGENT = "Jarvis/0.1 (personal assistant)"
 
 TAVILY_URL = "https://api.tavily.com/search"
+TAVILY_EXTRACT_URL = "https://api.tavily.com/extract"
+TAVILY_ERRORS = {400: "Tavily rejected the request (bad or unreadable links)", 401: "Tavily key missing or invalid",
+                 429: "Tavily rate limit; try again soon", 432: "Tavily monthly limit reached",
+                 433: "Tavily pay-as-you-go limit reached"}
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
@@ -146,8 +150,7 @@ class WebClient:
         body: dict[str, Any] = {"query": query, "search_depth": "basic", "max_results": max_results, "topic": topic}
         if time_range:
             body["time_range"] = time_range
-        status_errors = {401: "Tavily key missing or invalid", 429: "Tavily rate limit; try again soon",
-                         432: "Tavily monthly limit reached", 433: "Tavily pay-as-you-go limit reached"}
+        status_errors = TAVILY_ERRORS
         data_raw = json.dumps(body).encode()
         status, raw = self.transport("POST", TAVILY_URL, {"Content-Type": "application/json",
                                                           "Authorization": f"Bearer {api_key}"}, data_raw)
@@ -156,6 +159,40 @@ class WebClient:
         data = json.loads(raw.decode("utf-8"))
         return [{"title": r.get("title", ""), "url": r.get("url", ""), "content": r.get("content", ""),
                  "published_date": r.get("published_date", "")} for r in data.get("results", [])]
+
+    def tavily_extract(self, api_key: str, urls: list[str], query: str | None = None,
+                       depth: str = "basic") -> dict[str, list[dict[str, str]]]:
+        """Tavily Extract (POST /extract, docs.tavily.com, checked 2026-10-10).
+
+        Renders JavaScript pages on Tavily's side; "advanced" depth is for JS-heavy pages and
+        tables. With a query, raw_content holds only the most relevant chunks. Returns
+        {"results": [{"url", "raw_content"}], "failed_results": [{"url", "error"}]}.
+        """
+        if not 1 <= len(urls) <= 20:
+            raise WebError("Tavily Extract takes 1 to 20 links")
+        if depth not in ("basic", "advanced"):
+            raise WebError(f"unknown extract depth: {depth}")
+        # Server-side timeout below our own socket timeout (TIMEOUT), so Tavily answers first.
+        body: dict[str, Any] = {"urls": list(urls), "extract_depth": depth, "format": "markdown",
+                                "timeout": 10.0 if depth == "basic" else float(TIMEOUT - 2)}
+        if query:
+            body["query"] = query
+            body["chunks_per_source"] = 3
+        status, raw = self.transport("POST", TAVILY_EXTRACT_URL,
+                                     {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+                                     json.dumps(body).encode())
+        if status >= 400:
+            raise WebError(TAVILY_ERRORS.get(status, f"Tavily HTTP {status}"))
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as e:
+            raise WebError("bad JSON from Tavily") from e
+        return {
+            "results": [{"url": r.get("url", ""), "raw_content": r.get("raw_content") or ""}
+                        for r in data.get("results") or []],
+            "failed_results": [{"url": r.get("url", ""), "error": str(r.get("error", ""))}
+                               for r in data.get("failed_results") or []],
+        }
 
     # ---- Open-Meteo ----
 

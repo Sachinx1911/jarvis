@@ -7,6 +7,8 @@ Decide:
 - deliverable: a file name (lowercase, words joined by "-", ending in .md), and an outline of the sections the final report needs.
 - acceptance_criteria: 3 to 6 checks that decide whether the task is done. Make them checkable: "lists exactly 3 laptops under the price limit", "every price has a source link", not "good quality".
   Every criterion must be achievable with web search and reading public web pages. Do not require things nobody can prove from a web page (for example "confirm live stock" or "no blank fields"); say "states availability as shown on the source page" and "marks a field 'not published' with the source checked when no source gives it".
+- price_check: true when the report will show shop prices (buying, comparing products, "under Rs X"); otherwise false.
+- Prices (when price_check is true): every price in the report gets one of three labels, and the criteria must use them. Write the price criterion like this: "every price is marked 'confirmed (store page, date)' with the official store link, or 'estimate (aggregator)' with the aggregator link plus an Amazon/Flipkart or store link marked 'check yourself'". Official store pages are Croma, Reliance Digital, Vijay Sales and the brands' India stores. Never require a price to be confirmed on Amazon.in or Flipkart: their terms forbid automated price collection, so Jarvis only gives their links for the user to check. Prices are valid for the same day only.
 - solo_instructions: when use_team is false, what Jarvis should do alone.
 - title: at most 8 words.
 
