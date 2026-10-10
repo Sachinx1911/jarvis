@@ -1,0 +1,166 @@
+/* Light and dark themes follow the operating system. System fonts only (no external
+   requests); the Devanagari fonts listed render Marathi on macOS and Windows. */
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --panel-2: #f0f2f5;
+  --text: #1b1f24;
+  --muted: #5d6673;
+  --border: #d9dee5;
+  --accent: #2f5fd0;
+  --accent-text: #ffffff;
+  --danger: #c62f2f;
+  --danger-bg: #fdecec;
+  --warn: #a35a00;
+  --warn-bg: #fff4e0;
+  --ok: #1d7a3e;
+  --ok-bg: #e6f5ec;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111418;
+    --panel: #1a1e24;
+    --panel-2: #222831;
+    --text: #e6e9ee;
+    --muted: #9aa4b2;
+    --border: #2e3540;
+    --accent: #6f95f0;
+    --accent-text: #0d1117;
+    --danger: #ff6b6b;
+    --danger-bg: #3a1c1c;
+    --warn: #f0b05a;
+    --warn-bg: #3a2c16;
+    --ok: #5fd08a;
+    --ok-bg: #173323;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", "Noto Sans", "Noto Sans Devanagari",
+    "Kohinoor Devanagari", "Nirmala UI", "Mangal", sans-serif;
+}
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+button {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+button.danger { background: var(--danger); color: #fff; border-color: var(--danger); }
+button.link { background: none; border: none; color: var(--accent); padding: 0; }
+
+input, select, textarea {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+textarea { width: 100%; resize: vertical; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+pre {
+  font-family: var(--mono);
+  font-size: 13px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 6px 0;
+}
+
+.app { max-width: 1280px; margin: 0 auto; padding: 0 16px 40px; }
+
+header.top {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 0; border-bottom: 1px solid var(--border); margin-bottom: 14px;
+}
+header.top h1 { font-size: 20px; margin: 0 8px 0 0; }
+nav.tabs { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
+nav.tabs button { border-color: transparent; background: none; }
+nav.tabs button[aria-selected="true"] { background: var(--panel); border-color: var(--border); font-weight: 600; }
+
+.badge {
+  display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 10px;
+  font-size: 12px; font-weight: 600; text-align: center;
+  background: var(--panel-2); border: 1px solid var(--border);
+}
+.badge.alert { background: var(--danger); color: #fff; border-color: var(--danger); }
+.tier { font-family: var(--mono); font-size: 12px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); }
+.tier.T0, .tier.T1 { background: var(--ok-bg); color: var(--ok); }
+.tier.T2 { background: var(--warn-bg); color: var(--warn); }
+.tier.T3, .tier.T4 { background: var(--danger-bg); color: var(--danger); }
+
+.panel {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 14px; margin-bottom: 14px;
+}
+.panel h2 { font-size: 16px; margin: 0 0 8px; }
+.panel h3 { font-size: 14px; margin: 12px 0 6px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.grow { flex: 1; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.error { color: var(--danger); background: var(--danger-bg); padding: 6px 10px; border-radius: 6px; margin: 6px 0; }
+.notice { background: var(--warn-bg); color: var(--warn); padding: 6px 10px; border-radius: 6px; margin: 6px 0; }
+.okbox { background: var(--ok-bg); color: var(--ok); padding: 6px 10px; border-radius: 6px; margin: 6px 0; }
+
+.stopbar {
+  background: var(--danger); color: #fff; padding: 8px 14px; border-radius: 8px; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 12px;
+}
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 13px; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover, tr.selected { background: var(--panel-2); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.cell-clip { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; }
+
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+@media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+
+/* chat */
+.chat-log { min-height: 320px; max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px; }
+.msg { max-width: 80%; padding: 8px 12px; border-radius: 10px; white-space: pre-wrap; word-break: break-word; }
+.msg.user { align-self: flex-end; background: var(--accent); color: var(--accent-text); }
+.msg.jarvis { align-self: flex-start; background: var(--panel-2); border: 1px solid var(--border); }
+.msg.system { align-self: center; color: var(--muted); font-size: 13px; }
+
+/* task board */
+.board { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.column { background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px; min-height: 80px; }
+.column h3 { font-size: 13px; margin: 0 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px;
+  margin-bottom: 6px; cursor: pointer; font-size: 14px;
+}
+.card:hover, .card.selected { border-color: var(--accent); }
+
+/* approvals */
+.approval { border: 2px solid var(--warn); background: var(--warn-bg); color: var(--text); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+.approval.T3, .approval.T4 { border-color: var(--danger); background: var(--danger-bg); }
+
+.bar { height: 10px; background: var(--accent); border-radius: 3px; min-width: 2px; }
+dl.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 6px 0; }
+dl.kv dt { color: var(--muted); }
+dl.kv dd { margin: 0; word-break: break-word; }
+label.field { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; font-size: 13px; color: var(--muted); }
+label.field > input, label.field > select, label.field > textarea { color: var(--text); font-size: 15px; }
