@@ -1,4 +1,4 @@
-"""Schedules, reminders, unattended approvals and the morning brief in the dashboard.
+"""Schedules, event triggers, reminders, unattended approvals and the morning brief in the dashboard.
 
 Uses the public Proactive object (jarvis/proactive/service.py) and its stores; nothing in
 jarvis/proactive is changed. A schedule is saved only after an explicit confirm: the
@@ -8,6 +8,7 @@ confirm call with that id saves exactly what was shown.
 
 from __future__ import annotations
 
+import re
 import secrets
 import threading
 import time
@@ -23,6 +24,7 @@ from jarvis.web.jobs import JobBusy
 
 DRAFT_TTL_S = 15 * 60
 MAX_DRAFTS = 20
+TRIGGER_ID = re.compile(r"^t-\d{3,}$")
 
 
 class DraftBody(BaseModel):
@@ -160,6 +162,42 @@ def build_router(ctx: WebContext) -> APIRouter:
         with ctx.runtime() as rt:
             s = need(rt, sid)
             return _schedule_json(s, schedule_store(rt).runs(sid, 20))
+
+    # ---- event triggers (the list is GET /api/triggers via adapters.triggers) ----
+
+    def trigger_store(rt):
+        from jarvis.proactive.triggers import TriggerStore
+
+        return TriggerStore(rt.store.conn)
+
+    def need_trigger(rt, tid: str):
+        if not TRIGGER_ID.match(tid):
+            raise HTTPException(400, "invalid trigger id")
+        t = trigger_store(rt).get(tid)
+        if t is None:
+            raise HTTPException(404, "no such trigger")
+        return t
+
+    @r.post("/triggers/{tid}/{action}")
+    def trigger_action(tid: str, action: Literal["pause", "resume"]) -> dict[str, Any]:
+        """Same as `jarvis trigger pause|resume`. Resuming checks again at the next poll."""
+        p = ctx.proactive()
+        with ctx.runtime() as rt:
+            need_trigger(rt, tid)
+            t = trigger_store(rt).set_enabled(tid, action == "resume", p.now())
+            rt.audit.write(f"trigger_{action}", trigger_id=tid, source="dashboard")
+        return {"id": tid, "done": action, "enabled": t.enabled}
+
+    @r.get("/triggers/{tid}/runs")
+    def trigger_runs(tid: str) -> dict[str, Any]:
+        with ctx.runtime() as rt:
+            t = need_trigger(rt, tid)
+            fires = trigger_store(rt).fires(tid, 20)
+        if t.source == "email_from":
+            # Like the list (dashboard_triggers): an email rule's events name the sender, P2 until decision #19.
+            for f in fires:
+                f["detail"] = None
+        return {"id": tid, "safe_name": t.safe_name, "runs": fires}
 
     # ---- approvals queued by unattended runs ----
 

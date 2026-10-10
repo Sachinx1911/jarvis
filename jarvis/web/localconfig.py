@@ -27,6 +27,12 @@ FIELDS: dict[str, list[tuple[str, ...]]] = {
     "weather_place": [("tools_file", "weather", "default_place"), ("proactive_file", "brief", "place")],
 }
 
+# Fields other tabs write (the Setup tab neither shows nor sends them).
+EXTRA_FIELDS: dict[str, list[tuple[str, ...]]] = {
+    # India tab: the mutual fund schemes whose NAVs are shown, [{code, label}] (jarvis/india/nav.py).
+    "india_nav_schemes": [("india_file", "nav", "schemes")],
+}
+
 
 class LocalConfigError(ValueError):
     pass
@@ -67,7 +73,8 @@ def current_values(config_dir: Path) -> dict[str, Any]:
 
 def update_local(config_dir: Path, values: dict[str, Any]) -> list[str]:
     """Merge the given dashboard fields into local.yaml. Returns the key paths changed."""
-    unknown = set(values) - set(FIELDS)
+    writable = {**FIELDS, **EXTRA_FIELDS}
+    unknown = set(values) - set(writable)
     if unknown:
         raise LocalConfigError(f"cannot set: {', '.join(sorted(unknown))}")
     path = config_dir / LOCAL_FILE
@@ -75,7 +82,7 @@ def update_local(config_dir: Path, values: dict[str, Any]) -> list[str]:
     patch: dict[str, Any] = {}
     changed: list[str] = []
     for field, value in values.items():
-        for keys in FIELDS[field]:
+        for keys in writable[field]:
             node = patch
             for key in keys[:-1]:
                 node = node.setdefault(key, {})

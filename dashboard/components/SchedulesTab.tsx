@@ -36,7 +36,59 @@ type Pending = {
   args_sha256: string;
 };
 
+type Trigger = {
+  id: string;
+  what: string;
+  source: string;
+  action: string;
+  enabled: boolean;
+  every_minutes: number;
+  cooldown_minutes: number;
+  last_check: string | null;
+  next_check: string | null;
+  last_status: string | null;
+  last_detail: string | null;
+  last_fired: string | null;
+  failures: number;
+};
+type TriggersData = {
+  installed: boolean;
+  wired?: boolean;
+  detail?: string;
+  error?: string;
+  items?: Trigger[];
+  running_here: boolean;
+};
+type Fire = {
+  id: number;
+  started_at: string;
+  finished_at: string | null;
+  status: string;
+  events: number;
+  detail: string | null;
+  output_path: string | null;
+  pending_approvals: number;
+  model_calls: number;
+};
+
 const short = (s: string | null) => (s ? s.replace("T", " ").slice(0, 16) : "-");
+
+// Colour class for a status word; the word itself is always shown next to the colour.
+function tone(status: string | null): string {
+  if (!status) return "off";
+  if (["ok", "fired", "baseline", "done"].includes(status)) return "ok";
+  if (["waiting", "cooldown", "running", "budget"].includes(status)) return "warn";
+  if (["error", "failed", "stopped"].includes(status)) return "bad";
+  return "off";
+}
+
+const SOURCE_TEXT: Record<string, string> = {
+  file_new: "new file",
+  web_price: "price drop",
+  email_from: "email",
+  calendar_soon: "meeting soon",
+  web_search_new: "new search results",
+};
 
 export default function SchedulesTab() {
   const s = usePoll(() => api<SchedData>("/api/schedules/all"), 5000);
@@ -54,6 +106,7 @@ export default function SchedulesTab() {
         <Reminders />
       </div>
       <ScheduleList data={s.data} error={s.error} reload={s.reload} />
+      <Triggers />
       <Brief />
     </>
   );
@@ -296,6 +349,150 @@ function ScheduleList({ data, error, reload }: { data: SchedData | null; error: 
             </tbody>
           </table>
           {runs.items.length === 0 && <p className="muted small">No runs yet.</p>}
+        </>
+      )}
+    </section>
+  );
+}
+
+function Triggers() {
+  const t = usePoll(() => api<TriggersData>("/api/triggers"), 10000);
+  const [runs, setRuns] = useState<{ id: string; items: Fire[] } | null>(null);
+  const [err, setErr] = useState("");
+  const d = t.data;
+  const items = d?.items ?? [];
+
+  async function act(tr: Trigger, action: "pause" | "resume") {
+    setErr("");
+    try {
+      await post(`/api/triggers/${encodeURIComponent(tr.id)}/${action}`);
+      t.reload();
+    } catch (e) {
+      setErr(errText(e));
+    }
+  }
+
+  async function showRuns(id: string) {
+    setErr("");
+    try {
+      const r = await api<{ runs: Fire[] }>(`/api/triggers/${encodeURIComponent(id)}/runs`);
+      setRuns({ id, items: r.runs });
+    } catch (e) {
+      setErr(errText(e));
+    }
+  }
+
+  return (
+    <section className="panel" aria-label="Event triggers">
+      <div className="row">
+        <h2 className="grow">Event triggers</h2>
+        <button onClick={t.reload}>Refresh</button>
+      </div>
+      <p className="small muted">
+        A trigger does something when something happens (a new file, a price drop, an email, a meeting soon). Add one
+        in a terminal: <code>jarvis trigger add &quot;when a new file arrives in workspace/inbox summarize it&quot;</code>.
+        Triggers run unattended: only read-only actions run; anything else waits above for your approval.
+      </p>
+      {d && !d.running_here && items.length > 0 && (
+        <div className="notice small">
+          Triggers are checked only while Jarvis runs in the background (the app or jarvis daemon).
+        </div>
+      )}
+      {d && !d.installed && <div className="notice small">Triggers are not installed: {d.detail}</div>}
+      {(t.error || err || d?.error) && <div className="error">{t.error || err || d?.error}</div>}
+      {items.length > 0 && (
+        <table>
+          <thead>
+            <tr>
+              <th>Id</th>
+              <th>When / then</th>
+              <th>Checks</th>
+              <th>Status</th>
+              <th>Last check</th>
+              <th>Last fired</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((tr) => (
+              <tr key={tr.id}>
+                <td>{tr.id}</td>
+                <td>
+                  <strong>{tr.what}</strong>
+                  <div className="small muted">
+                    {SOURCE_TEXT[tr.source] ?? tr.source} → {tr.action === "notify" ? "tell you" : tr.action}
+                  </div>
+                </td>
+                <td className="small">
+                  every {tr.every_minutes} min
+                  <div className="muted">cooldown {tr.cooldown_minutes} min</div>
+                </td>
+                <td className="small">
+                  {tr.enabled ? <span className="pill ok">active</span> : <span className="pill off">paused</span>}
+                  {tr.last_status && (
+                    <div>
+                      <span className={`pill ${tone(tr.last_status)}`}>{tr.last_status}</span>
+                      {tr.failures > 0 && <span className="muted"> {tr.failures} failure(s) in a row</span>}
+                    </div>
+                  )}
+                  {tr.last_detail && <div className="muted cell-wrap">{tr.last_detail}</div>}
+                </td>
+                <td className="small">
+                  {short(tr.last_check)}
+                  {tr.enabled && <div className="muted">next {short(tr.next_check)}</div>}
+                </td>
+                <td className="small">{short(tr.last_fired)}</td>
+                <td>
+                  <div className="row">
+                    {tr.enabled ? (
+                      <button onClick={() => act(tr, "pause")}>Pause</button>
+                    ) : (
+                      <button onClick={() => act(tr, "resume")}>Resume</button>
+                    )}
+                    <button onClick={() => showRuns(tr.id)}>Runs</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {d && d.installed && items.length === 0 && <p className="muted">No triggers yet.</p>}
+      {runs && (
+        <>
+          <h3>Runs of {runs.id}</h3>
+          {runs.items.length > 0 && (
+            <table>
+              <thead>
+                <tr>
+                  <th>Started</th>
+                  <th>Status</th>
+                  <th className="num">Events</th>
+                  <th className="num">Model calls</th>
+                  <th className="num">Waiting approvals</th>
+                  <th>Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {runs.items.map((f) => (
+                  <tr key={f.id}>
+                    <td className="small">{short(f.started_at)}</td>
+                    <td className="small">
+                      <span className={`pill ${tone(f.status)}`}>{f.status}</span>
+                    </td>
+                    <td className="small num">{f.events}</td>
+                    <td className="small num">{f.model_calls}</td>
+                    <td className="small num">{f.pending_approvals}</td>
+                    <td className="small cell-clip" title={f.detail ?? ""}>
+                      {f.detail ?? <span className="muted">details hidden (private email rule)</span>}
+                      {f.output_path && <div className="muted">{f.output_path}</div>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {runs.items.length === 0 && <p className="muted small">Not fired yet.</p>}
         </>
       )}
     </section>

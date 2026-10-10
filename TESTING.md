@@ -64,6 +64,11 @@ Tick each box and note anything odd. Everything here works without Telegram, Goo
 - [ ] `.\jarvis.cmd schedule add "every day at 21:00 summarize my tasks"` → shows the parsed schedule, asks before saving
 - [ ] `.\jarvis.cmd remind "in 2 minutes drink water"` then `.\jarvis.cmd daemon` → desktop notification
 - [ ] `.\jarvis.cmd memory-maint run --dry-run` → cleanup report
+- [ ] `.\jarvis.cmd memory conflicts` → "No possible memory conflicts", or pairs of memories about the same subject
+- [ ] `.\jarvis.cmd schedule list` → includes **Nightly review** (22:30); `schedule run-now <id>` → `memory\episodes\<today>.md` written
+- [ ] Daily cap: set `proactive_file: {unattended: {daily_cap: {max_model_calls: 1}}}` in `config\local.yaml`, wait for two scheduled runs → the second is "capped" and one notice arrives; remove the line afterwards
+- [ ] `.\jarvis.cmd backup create` → archive in `~/JarvisBackups`; `backup list`; `backup restore-check latest` → all checks OK
+- [ ] India: `.\jarvis.cmd bills add` (paste a made-up bill SMS) → tracked; `.\jarvis.cmd brief` shows only a count for bills
 
 ## 7. Voice (speaking only, until Whisper is installed)
 
@@ -92,6 +97,9 @@ The browser opens the dashboard. Do not run `jarvis daemon` at the same time (th
 - [ ] Pause / Resume / Runs / Delete a schedule; Run now (asks first)
 - [ ] Reminder "in 2 minutes drink water" → desktop notification while the app runs; cancel another one
 - [ ] **Show morning brief**
+- [ ] **Schedules & Reminders → Event triggers**: list, pause/resume, runs (email rules show no sender)
+- [ ] **India**: refresh NAVs (after adding a scheme code), add a made-up bill from pasted text, mark it paid; add a wallet record with a made-up number → only the last 4 shown; UPI link preview shows payee and amount, link only after confirm
+- [ ] **Chat** in the terminal: ask something, then `/why` → the memories and past chats used
 - [ ] **Setup**: Run evaluation (asks first; calls the model) → results table
 - [ ] **Setup**: Quit Jarvis → the page stops answering; start it again from the shortcut
 - [ ] Optional: `.\jarvis.cmd app --autostart on`, log out and in → Jarvis starts; `--autostart off` to undo

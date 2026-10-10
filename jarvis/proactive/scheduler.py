@@ -83,7 +83,11 @@ CREATE TABLE IF NOT EXISTS sched_pending_approvals (
     tier TEXT NOT NULL,
     arguments TEXT NOT NULL,
     reason TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending'   -- see PendingApprovals
+    status TEXT NOT NULL DEFAULT 'pending',  -- see PendingApprovals
+    decided_at TEXT,
+    result TEXT,
+    ok INTEGER,
+    verified INTEGER
 );
 """
 
@@ -254,9 +258,13 @@ class PendingApprovals:
         self.db = conn
         self.db.executescript(_SCHEMA)
         have = {r[1] for r in self.db.execute("PRAGMA table_info(sched_pending_approvals)")}
-        for col, kind in _PENDING_EXTRA_COLS.items():
+        for col, kind in _PENDING_EXTRA_COLS.items():  # databases made before these columns existed
             if col not in have:
-                self.db.execute(f"ALTER TABLE sched_pending_approvals ADD COLUMN {col} {kind}")
+                try:
+                    self.db.execute(f"ALTER TABLE sched_pending_approvals ADD COLUMN {col} {kind}")
+                except sqlite3.OperationalError as e:  # another connection added it in between
+                    if "duplicate column" not in str(e).lower():
+                        raise
         self.db.commit()
 
     def get(self, pid: int) -> dict[str, Any] | None:
