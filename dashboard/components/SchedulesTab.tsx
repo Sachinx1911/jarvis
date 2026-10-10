@@ -394,7 +394,9 @@ function Triggers() {
         Triggers run unattended: only read-only actions run; anything else waits above for your approval.
       </p>
       {d && !d.running_here && items.length > 0 && (
-        <div className="notice small">Triggers are checked only while Jarvis runs in the background (the app or jarvis daemon).</div>
+        <div className="notice small">
+          Triggers are checked only while Jarvis runs in the background (the app or jarvis daemon).
+        </div>
       )}
       {d && !d.installed && <div className="notice small">Triggers are not installed: {d.detail}</div>}
       {(t.error || err || d?.error) && <div className="error">{t.error || err || d?.error}</div>}
@@ -459,35 +461,37 @@ function Triggers() {
       {runs && (
         <>
           <h3>Runs of {runs.id}</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>Started</th>
-                <th>Status</th>
-                <th className="num">Events</th>
-                <th className="num">Model calls</th>
-                <th className="num">Waiting approvals</th>
-                <th>Result</th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs.items.map((f) => (
-                <tr key={f.id}>
-                  <td className="small">{short(f.started_at)}</td>
-                  <td className="small">
-                    <span className={`pill ${tone(f.status)}`}>{f.status}</span>
-                  </td>
-                  <td className="small num">{f.events}</td>
-                  <td className="small num">{f.model_calls}</td>
-                  <td className="small num">{f.pending_approvals}</td>
-                  <td className="small cell-clip" title={f.detail ?? ""}>
-                    {f.detail ?? <span className="muted">details hidden (private email rule)</span>}
-                    {f.output_path && <div className="muted">{f.output_path}</div>}
-                  </td>
+          {runs.items.length > 0 && (
+            <table>
+              <thead>
+                <tr>
+                  <th>Started</th>
+                  <th>Status</th>
+                  <th className="num">Events</th>
+                  <th className="num">Model calls</th>
+                  <th className="num">Waiting approvals</th>
+                  <th>Result</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {runs.items.map((f) => (
+                  <tr key={f.id}>
+                    <td className="small">{short(f.started_at)}</td>
+                    <td className="small">
+                      <span className={`pill ${tone(f.status)}`}>{f.status}</span>
+                    </td>
+                    <td className="small num">{f.events}</td>
+                    <td className="small num">{f.model_calls}</td>
+                    <td className="small num">{f.pending_approvals}</td>
+                    <td className="small cell-clip" title={f.detail ?? ""}>
+                      {f.detail ?? <span className="muted">details hidden (private email rule)</span>}
+                      {f.output_path && <div className="muted">{f.output_path}</div>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
           {runs.items.length === 0 && <p className="muted small">Not fired yet.</p>}
         </>
       )}
