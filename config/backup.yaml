@@ -1,0 +1,21 @@
+# Local backups of Jarvis's personal data: `jarvis backup create | list | restore-check`.
+# Machine-specific overrides go in config/local.yaml under `backup_file:` (git-ignored), e.g.
+#   backup_file:
+#     destination: ~/JarvisBackups
+#     keep_last: 30
+#
+# OPEN DECISION (#10 in PLAN.md): the final backup / sync location is not decided yet.
+# Archives are NOT encrypted yet. Keep `destination` on this computer or on an external
+# disk you control. Do NOT point it at a shared or public cloud folder.
+# A destination inside the code repository is always refused: the repo is public.
+#
+# What is backed up (under JARVIS_HOME): memory/, profile/, skills/, projects/, workspace/,
+# connectors/, data/ (the SQLite database via the online backup API) and config/local.yaml.
+# Never backed up: data/browser/ (login cookies), .env / .env.*, *.key, *.pem and other key
+# files, workspace/.trash, caches and downloaded models, symlinks, the backup folder itself.
+# Secrets live in the OS keyring (Keychain / Credential Manager) and are not exported.
+# On Windows the folder keeps the permissions of your user profile (private by default).
+
+destination: ~/JarvisBackups   # absolute path or ~/...; created owner-only (0700), archives 0600 (Mac/Linux)
+keep_last: 14                  # newest archives kept; older jarvis-backup-*.tar.gz in this folder are deleted
+exclude: []                    # extra glob patterns relative to JARVIS_HOME, e.g. ["workspace/videos", "*.mp4"]
