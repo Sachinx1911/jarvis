@@ -8,7 +8,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api, upload } from "@/lib/api";
-import { micSupported, Recording, startRecording, toWav16k } from "@/lib/audio";
+import { micSupported, RAW_MIC, Recording, startRecording, toWav16k } from "@/lib/audio";
 import { errText } from "@/lib/hooks";
 
 export const NOT_INSTALLED = "speech-to-text not installed (run voice setup)";
@@ -169,7 +169,7 @@ export function useHandsFree(opts: { enabled: boolean; mode: HandsFreeMode; paus
     let armTimer = 0;
 
     // detector state
-    let noise = 0.004;
+    let noise = 0.003;
     let loudRun = 0;
     let speaking = false;
     let busy = false;
@@ -276,9 +276,7 @@ export function useHandsFree(opts: { enabled: boolean; mode: HandsFreeMode; paus
       setPhase("starting");
       if (!micSupported()) return fail("This browser cannot record audio.");
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-        });
+        stream = await navigator.mediaDevices.getUserMedia({ audio: RAW_MIC });
       } catch (e) {
         return fail(`Microphone not available: ${errText(e)}`);
       }
@@ -313,7 +311,7 @@ export function useHandsFree(opts: { enabled: boolean; mode: HandsFreeMode; paus
         let sum = 0;
         for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
         const rms = Math.sqrt(sum / data.length);
-        const threshold = Math.max(0.012, noise * 3);
+        const threshold = Math.max(0.008, noise * 3); // raw mic (no automatic gain) is quieter
         if (!speaking) {
           preroll.push(data);
           if (preroll.length > prerollN) preroll.shift();

@@ -9,8 +9,14 @@ export function micSupported(): boolean {
   return typeof window !== "undefined" && !!navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== "undefined";
 }
 
+// The microphone without the browser's call processing. Echo cancellation makes macOS turn
+// down every other sound while the microphone is open ("ducking"), so Jarvis's spoken replies
+// got quieter and louder. Jarvis speaks through the Mac's speakers, not the page, so echo
+// cancellation could not help anyway. The level is evened out in toWav16k instead.
+export const RAW_MIC: MediaTrackConstraints = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+
 export async function startRecording(): Promise<Recording> {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: RAW_MIC });
   const rec = new MediaRecorder(stream);
   const chunks: Blob[] = [];
   rec.ondataavailable = (e) => {
@@ -52,7 +58,19 @@ export async function toWav16k(blob: Blob): Promise<ArrayBuffer> {
   src.connect(offline.destination);
   src.start();
   const rendered = await offline.startRendering();
-  return encodeWav(rendered.getChannelData(0), RATE);
+  return encodeWav(normalize(rendered.getChannelData(0)), RATE);
+}
+
+// Brings quiet speech up to a steady level (peak about 0.9) so speech-to-text hears it well.
+// Near-silence is left alone so background noise is not blown up.
+function normalize(samples: Float32Array): Float32Array {
+  let peak = 0;
+  for (let i = 0; i < samples.length; i++) peak = Math.max(peak, Math.abs(samples[i]));
+  if (peak < 0.01 || peak >= 0.9) return samples;
+  const gain = Math.min(0.9 / peak, 12);
+  const out = new Float32Array(samples.length);
+  for (let i = 0; i < samples.length; i++) out[i] = samples[i] * gain;
+  return out;
 }
 
 function encodeWav(samples: Float32Array, rate: number): ArrayBuffer {
