@@ -1,0 +1,19 @@
+# Dashboard settings (Phase 7, PLAN.md section 18). Machine-specific changes go in
+# config/local.yaml under web_file.
+
+# The dashboard only listens on this machine. A non-loopback host is refused.
+host: 127.0.0.1
+port: 8765
+
+# How long a pending approval waits for a click before it counts as "deny".
+approval_timeout_s: 300
+
+# Chat sessions idle longer than this are ended (memories are extracted, like /exit).
+chat_idle_minutes: 120
+
+# Provider override for chats and tasks started from the dashboard (null = normal routing).
+provider: null
+
+# Extra browser origins allowed to call the API, e.g. http://localhost:3000 while running
+# `npm run dev` in dashboard/. Never use "*".
+dev_origins: []
