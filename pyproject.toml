@@ -10,6 +10,7 @@ requires-python = ">=3.12"
 dependencies = [
     "anthropic>=1.0",   # Claude adapter only (jarvis/providers/claude.py)
     "keyring>=25",      # secrets in macOS Keychain / Windows Credential Manager
+    "certifi>=2024",    # CA bundle when Python has none (python.org builds on macOS); see jarvis/netssl.py
     "pyyaml>=6",        # config/*.yaml
     "pypdf>=6",         # document library: text per PDF page, so answers can cite the page
     "python-docx>=1.2", # document library: DOCX text and headings

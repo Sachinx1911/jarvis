@@ -17,6 +17,7 @@ import urllib.request
 from html.parser import HTMLParser
 from typing import Any, Callable
 
+from jarvis.netssl import https_handler
 from jarvis.privacy import redact_p3
 
 TIMEOUT = 20
@@ -72,7 +73,7 @@ class _SafeRedirects(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-_OPENER = urllib.request.build_opener(_SafeRedirects)
+_OPENER = urllib.request.build_opener(_SafeRedirects, https_handler())  # system or certifi CAs (jarvis/netssl.py)
 
 
 def default_transport(method: str, url: str, headers: dict[str, str], body: bytes | None) -> tuple[int, bytes]:

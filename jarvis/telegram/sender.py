@@ -12,6 +12,8 @@ import urllib.error
 import urllib.request
 from typing import Any, Callable
 
+from jarvis.netssl import tls_context
+
 API = "https://api.telegram.org"
 TIMEOUT = 20
 MAX_TEXT = 4000  # Telegram's limit is 4096 characters per message
@@ -27,7 +29,7 @@ class TelegramSendError(Exception):
 def _default_transport(url: str, body: bytes) -> tuple[int, bytes]:
     req = urllib.request.Request(url, data=body, method="POST", headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:  # noqa: S310 (fixed https host)
+        with urllib.request.urlopen(req, timeout=TIMEOUT, context=tls_context()) as resp:  # noqa: S310 (fixed https host)
             return resp.status, resp.read(100_000)
     except urllib.error.HTTPError as e:
         return e.code, e.read(100_000) if e.fp else b""
