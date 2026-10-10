@@ -73,9 +73,15 @@ Tick each box and note anything odd. Everything here works without Telegram, Goo
 - [ ] `.\jarvis.cmd backup create` → archive in `~/JarvisBackups`; `backup list`; `backup restore-check latest` → all checks OK
 - [ ] India: `.\jarvis.cmd bills add` (paste a made-up bill SMS) → tracked; `.\jarvis.cmd brief` shows only a count for bills
 
-## 7. Voice (speaking only, until Whisper is installed)
+## 7. Voice
 
-- [ ] `.\jarvis.cmd say "Good evening, sir."` → spoken by Windows
+- [ ] `.\jarvis.cmd say "Good evening, sir."` → spoken by Windows (`jarvis say ...` on the Mac: macOS `say`)
+- [ ] `pip install -e ".[voice]"`, then `jarvis voice setup` → lists Whisper small, Marathi speech-to-text (IndicConformer) and the offline Marathi voice (MMS-TTS) with sizes and licenses, asks once; run again → "already downloaded"
+- [ ] `jarvis say --lang mr "उद्या सकाळी दहा वाजता बैठक आहे."` → "Speaking with mms_tts" (offline, no cloud), understandable Marathi
+- [ ] Mac: first `jarvis voice` → macOS asks for Microphone access for the terminal → Allow
+- [ ] `jarvis voice` → Enter, say "What is on my calendar tomorrow?", Enter → correct English text; then say a Marathi sentence (e.g. "उद्या सकाळी दहा वाजता आठवण करून दे") → Devanagari text; `data/audit.jsonl` voice_turn shows `stt_engine` faster_whisper, then indicconformer
+- [ ] Optional wake word: `jarvis voice setup --model hey_jarvis`; add `voice_file: {wake_word: {enabled: true}}` to `config/local.yaml`; `jarvis voice` → "Hey Jarvis" → "Yes?"; remove the line afterwards
+- [ ] Real-model check (offline, after setup): `JARVIS_VOICE_MODELS="$PWD" python -m pytest -q tests/test_voice_marathi.py -k real` → 2 passed
 
 ## 8. Dashboard
 

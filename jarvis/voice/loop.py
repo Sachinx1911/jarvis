@@ -186,7 +186,7 @@ class VoiceLoop:
         self.audit.write(
             "voice_turn", session_id=getattr(self.session, "session_id", None), status=r.status,
             source="voice" if t is not None or audio_seconds else "typed",
-            stt_engine=getattr(self.stt, "name", None) if t is not None else None,
+            stt_engine=(t.engine or getattr(self.stt, "name", None)) if t is not None else None,
             language=t.language if t else None, confidence=round(t.confidence, 3) if t else None,
             audio_seconds=round(audio_seconds, 2), heard_chars=len(r.heard), reply_chars=len(r.reply),
             tts_engine=r.tts_engine or None, cloud_tts=r.cloud_tts, stt_ms=stt_ms,

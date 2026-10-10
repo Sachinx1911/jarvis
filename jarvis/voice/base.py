@@ -66,6 +66,7 @@ class Transcript:
     text: str
     language: str | None  # ISO 639-1 code, e.g. "en", "mr"; None if unknown
     confidence: float  # 0..1; engines map their own scores onto this
+    engine: str | None = None  # set by LanguageRouter: the engine that produced this text
 
 
 class SpeechToText(Protocol):

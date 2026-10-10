@@ -7,16 +7,24 @@ stt:
   model: small
   device: cpu
   compute_type: int8       # int8 is the fastest CPU setting in the faster-whisper benchmark
+  # en = English only (Whisper). mr = Marathi only. auto = Whisper detects the language; English
+  # stays with Whisper, anything else goes to the Marathi engine (Jarvis expects English or Marathi).
   language: auto           # auto | en | mr
   min_confidence: 0.45     # below this Jarvis asks you to repeat instead of acting
-  # Marathi speech needs an Indic model (IndicConformer / IndicWhisper). Not built yet: evaluation later.
-  marathi_engine: none
+  # Marathi speech-to-text, local: indicconformer | none (none = Whisper for Marathi too, which is weak).
+  # indicconformer = AI4Bharat IndicConformer Marathi (MIT), ONNX int8, 138 MB, via onnx-asr.
+  # Measured 2026-10-10 on 18 FLEURS Marathi test clips: WER 23%, CER 7.6% (Whisper small is far worse).
+  marathi_engine: indicconformer
 
 tts:
   engine: auto             # auto (windows_sapi on Windows, mac_say on macOS) | windows_sapi | mac_say
   voice: ""                # "" = system default. Windows e.g. "Microsoft Zira Desktop"; macOS e.g. "Rishi"
   rate: 0                  # Windows: -10..10. macOS: words per minute (0 = default)
   marathi:
+    # Offline Marathi voice, local: mms_tts | none. mms_tts = Meta MMS-TTS Marathi (VITS, ONNX, 115 MB).
+    # License: CC-BY-NC 4.0, non-commercial only (fine for Sachin's personal use). Marathi text uses it
+    # first; then the cloud voice (if enabled); then the system voice. `jarvis voice setup` downloads it.
+    offline_engine: mms_tts
     # edge-tts sends the text to Microsoft's online speech service (CLOUD). Off by default.
     # Even when on: P3 text is never sent, and nothing above max_privacy is sent.
     cloud_enabled: false
@@ -41,8 +49,9 @@ vad:
   end_silence_ms: 900      # wake-word mode: this much silence ends an utterance
 
 wake_word:
-  # openWakeWord "hey_jarvis". Off: the package's last release is 0.6.0 (Feb 2024) and is
-  # unverified on macOS and Python 3.12+. Its pre-trained models are CC BY-NC-SA 4.0 (personal use).
+  # openWakeWord "hey_jarvis". Off by default. Last release 0.6.0 (Feb 2024); checked 2026-10-10 on the
+  # M4 Mac with Python 3.13: installs and loads on onnxruntime. Pre-trained models: CC BY-NC-SA 4.0
+  # (personal use). Model (about 6 MB): `jarvis voice setup --model hey_jarvis`.
   enabled: false
   engine: openwakeword
   model: hey_jarvis        # a pre-trained model name or a path to an .onnx file

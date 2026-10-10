@@ -5,9 +5,14 @@ Local engines (no new dependency):
   variable, never into the script, so it cannot inject commands.
 - macOS: `say`. The text goes through stdin (`say` reads stdin when no message is given).
 
+Offline Marathi voice (on by default once downloaded): Meta MMS-TTS Marathi, run locally as ONNX
+(jarvis/voice/mms_tts.py). License CC-BY-NC 4.0, fine for personal use. Neither Windows nor
+macOS ships a Marathi system voice (`say -v '?'` on macOS 26 lists only Hindi "Lekha").
+
 Cloud engine (optional, off by default): edge-tts, Microsoft's online speech service, for the
 Marathi voice (PLAN.md 5.8). P3 text is never sent, nor anything above the configured privacy
-class (capped at P1).
+class (capped at P1). Marathi goes local first: offline voice, then (if enabled) the cloud voice,
+then the system voice.
 
 All processes run with list arguments and shell=False.
 """
@@ -280,8 +285,10 @@ class SpeechOutput:
     """Chooses the engine for each utterance and enforces the cloud privacy rules."""
 
     def __init__(self, local: TextToSpeech | None, cloud_marathi: TextToSpeech | None = None,
-                 cloud_max_privacy: str = "P1", audit: AuditLog | None = None):
+                 cloud_max_privacy: str = "P1", audit: AuditLog | None = None,
+                 local_marathi: TextToSpeech | None = None):
         self.local = local
+        self.local_marathi = local_marathi
         self.cloud_marathi = cloud_marathi
         cap = cloud_max_privacy if cloud_max_privacy in CLASSES else "P0"
         self.cloud_max_privacy = cap if CLASSES.index(cap) <= CLASSES.index("P1") else "P1"
@@ -300,7 +307,19 @@ class SpeechOutput:
         lang = language or detect_language(text)
         say = spoken_text(text)
         note = ""
+        if lang == "mr" and self.local_marathi is not None:
+            try:
+                pb = self.local_marathi.speak(say, lang)
+                self._log(self.local_marathi.name, False, lang, say)
+                return SpeakResult(pb, self.local_marathi.name, False)
+            except VoiceUnavailable as e:  # not downloaded / no player: say so, use the next voice
+                note = f"offline Marathi voice unavailable: {e}"
+            except Exception as e:  # a model or audio problem must not silence Jarvis
+                note = f"offline Marathi voice failed ({type(e).__name__})"
+                if self.audit:
+                    self.audit.write("voice_tts_error", engine=self.local_marathi.name, error=type(e).__name__)
         if lang == "mr":
+            offline_note = note
             ok, note = self.cloud_allowed(text, sensitivity)
             if ok:
                 try:
@@ -314,6 +333,8 @@ class SpeechOutput:
                                          error=type(e).__name__)
             elif self.cloud_marathi is not None and self.audit:
                 self.audit.write("voice_cloud_tts_blocked", reason=note)
+            if offline_note:
+                note = offline_note if self.cloud_marathi is None else f"{offline_note}; {note}"
         if self.local is None:
             raise VoiceUnavailable("no local voice on this platform (Windows and macOS only)")
         pb = self.local.speak(say, lang)
@@ -350,8 +371,17 @@ def make_speech(cfg: dict[str, Any], home: Path, audit: AuditLog | None = None, 
                 popen: Popen = subprocess.Popen, force_cloud: bool | None = None) -> SpeechOutput:
     marathi = cfg.get("tts", {}).get("marathi", {})
     enabled = marathi.get("cloud_enabled", False) if force_cloud is None else force_cloud
+    tmp = home / "data" / "voice" / "tmp"
     cloud = None
     if enabled and marathi.get("engine", "edge_tts") == "edge_tts":
-        cloud = EdgeTTS(marathi.get("voice", "mr-IN-ManoharNeural"), home / "data" / "voice" / "tmp", popen,
-                        platform=platform)
-    return SpeechOutput(make_local_tts(cfg, platform, popen), cloud, marathi.get("max_privacy", "P1"), audit)
+        cloud = EdgeTTS(marathi.get("voice", "mr-IN-ManoharNeural"), tmp, popen, platform=platform)
+    offline = (marathi.get("offline_engine") or "none").lower()
+    local_marathi = None
+    if offline == "mms_tts":
+        from jarvis.voice.mms_tts import MmsTTS
+
+        local_marathi = MmsTTS(home, tmp, popen, platform)
+    elif offline != "none":
+        raise ValueError(f"unknown offline Marathi voice {offline!r} (choose: mms_tts, none)")
+    return SpeechOutput(make_local_tts(cfg, platform, popen), cloud, marathi.get("max_privacy", "P1"), audit,
+                        local_marathi)

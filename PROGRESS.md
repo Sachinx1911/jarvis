@@ -13,7 +13,8 @@ Ending a session: update this file and commit.
   - On `main` and tested (902 pass): everything through Phases 0–8, research fixes (prompt-injection hardening, price tiers, memory retrieval), one-click app, event triggers, approval previews + grouped and standing approvals + memory sources/trash + "why" panel.
   - Stopped mid-work, saved on branches (pushed, NOT merged, not tested): `wip/india-features` (AMFI NAV, IMD/Sachet feeds, bills tracker, document wallet, UPI link; tests partly written) and `wip/verify-repeat` (verify-after-act, `/repeat`). Resume each: check out the branch, run the whole suite, finish the brief in this file's "Next step", then merge.
   - Done later on the Mac (2026-10-10): global daily cap, nightly review, backups, India features, verify/repeat, dashboard India tab and triggers.
-- **Last update:** 2026-10-10, home MacBook (Apple M4, macOS 26.5, Python 3.13): pulled, set up `.venv`, full offline suite 902 passed after 3 Mac-portability fixes.
+- **Last update:** 2026-10-11, home MacBook (Apple M4, macOS 26.5, Python 3.13): voice merged (local Marathi speech-to-text, offline Marathi voice, wake word model; 1420 passed). Laptop compare rerun on Fable (see Final testing). Stage B (local models) agent still running on `feature/stage-b-local`; Qwen3.5-9B and Gemma 4 E4B are downloaded and verified.
+- **Models on the home MacBook** (all under `data/models/`, git-ignored): Whisper small 484 MB, IndicConformer Marathi 138 MB, MMS-TTS Marathi 114 MB, openWakeWord 9 MB, Qwen3.5-9B Q4_K_M 5.7 GB (unsloth/Qwen3.5-9B-GGUF), Gemma 4 E4B Q4_K_M 5.0 GB (unsloth/gemma-4-E4B-it-GGUF, downloaded by Sachin in the browser, SHA-256 checked). Ollama and `gemma3:4b` on this Mac belong to another of Sachin's projects, not to Jarvis: leave them alone.
 - **GitHub:** `main` pushed on 2026-10-10 from the home MacBook (all Mac merges, fixes and Fable results) with Sachin's OK. The old branches `wip/india-features` and `wip/verify-repeat` on GitHub are merged and can be deleted.
 
 ### What each phase delivered
@@ -24,7 +25,7 @@ Ending a session: update this file and commit.
 - **Phase 3 — tasks + agent team:** task queue and states, planner, parallel researchers, writer, deterministic link-grounding check + independent checker, follow-up research and one revision, receipts from logs, budgets (calls, tokens, notional USD), checkpoints and resume, projects, teach-by-demonstration (chat, tool runs, file changes, terminal transcript, browser steps, notes → SKILL.md draft → approval), worker profiles opus/sonnet.
 - **Phase 4 — Telegram + proactive:** APScheduler schedules (missed runs, no overlap, unattended = T0/T1 only), heartbeat, morning brief (weather, calendar, reminders, goals, tasks, schedules), reminders, Telegram bot (only Sachin's user ID, Approve/Deny buttons, `/stop`, `/cloud off`), `jarvis daemon`.
 - **Phase 5 — connectors:** document library (md/txt/pdf/docx, page citations, P2 by default), `doc_search`, active project context, Google Calendar + Gmail via OAuth desktop flow (create event T2 with read-back verify, send T3), time parser (English + Marathi), EventKit (Mac only), connector health.
-- **Phase 6 — voice:** push-to-talk loop, Windows System.Speech and macOS `say`, faster-whisper speech-to-text (model download pending), optional Marathi cloud voice and wake word (off), voice approvals default to deny.
+- **Phase 6 — voice:** push-to-talk loop, Windows System.Speech and macOS `say`, faster-whisper speech-to-text, voice approvals default to deny. Added 2026-10-11: local Marathi speech-to-text (AI4Bharat IndicConformer, ONNX int8 via `onnx-asr`) with en/mr/auto routing, offline Marathi voice (Meta MMS-TTS Marathi, ONNX), wake word model downloaded (wake word still off), optional Marathi cloud voice (off).
 - **Phase 7 — dashboard:** FastAPI on 127.0.0.1 with a token, strict origin checks, approvals queue with argument hash, emergency stop; Next.js static export with Chat, Memory, Tasks & Approvals, Agents, Connectors, Schedules, Settings & Usage. `jarvis dashboard`.
 - **Phase 8 — extras:** isolated Playwright browser (domain allowlist, fresh context, T3 submit with exact fields, passwords never logged, download checks), browser step recording, Operator and Coder agents, `run_tests` allowlist. Not built: OCR, signed .app, meeting notes, magic search. (Smart home dropped by Sachin.)
 
@@ -41,7 +42,15 @@ Ending a session: update this file and commit.
 - Live suites (`JARVIS_LIVE=1 JARVIS_TEST_MODEL=claude-fable-5-1 pytest -m live`): greeting, memory test, demo -> skill and injection PASS. Tools first 7/10 (web fetch and weather failed: python.org Python on macOS had no CA certificates); after the TLS fix (`jarvis/netssl.py`) tools 10/10, injection blocked, 0 T4 runs.
 - Eval suite: 12/12.
 - Memory eval live (`jarvis eval --suite memory --live`): raw 22/29, but all 7 misses were correct answers the grader could not read (romanized/Devanagari forms, Marathi declines, old value named as history). Grader fixed; the same answers re-grade to 29/29, stale 0/4, abstention 4/4.
-- Not run: laptop compare (needs the Tavily key on this Mac).
+- Laptop compare (2026-10-10 night, Tavily key now on the Mac; task `t-001`, $12 notional budget, 580k tokens in, 43k out): FAILED rounds 1 and 2, much closer than before. Round 3 was cut off by Sachin's emergency-stop test. 7 of 9 checks passed: 3 laptops (2 Lenovo, 1 Dell), all under Rs 80,000, specs right, every price dated and labelled "estimate (aggregator)", recommendation consistent. Failed checks:
+  - "Check yourself" link: researchers cannot get Amazon/Flipkart product URLs (Jarvis does not open those sites). In round 2 the writer made search URLs itself (`amazon.in/s?k=<model>`), and the link-grounding check rejected them as not from research.
+  - The "dropped candidates" table showed prices without a label.
+  - The checker said the report "ends mid-sentence". The file on disk is complete (9.8 KB). Cause not found yet.
+  - Proposed fix: Jarvis's code (not the model) builds the Amazon/Flipkart search link from a model number that appears in the research. Sachin said to leave it for now (2026-10-11). Until then, shop-price comparisons can end as "verification failed" even when the report is useful; the report is still saved in the task folder.
+
+**Hands-on checks by Sachin (2026-10-10 night):**
+- Emergency stop from the dashboard: PASS. Pressed at 23:31:26 while `t-001` was running. The running researcher stopped within 16 s, the app stopped, and `data/STOP` stayed until `jarvis resume`.
+- Dashboard microphone in Chrome: "Permission denied by system". macOS has not given Chrome microphone access (System Settings > Privacy & Security > Microphone). Sachin will turn it on.
 
 **First round, office laptop:**
 
@@ -58,11 +67,14 @@ Also built on 2026-10-10: `jarvis connectors status --live`, `/repeat` and `/why
 Can be built after Sachin's OK:
 - Adding a UPI payee in the app with an explicit "I checked this ID" step.
 
+Built on 2026-10-11 (Mac): local Marathi speech-to-text, offline Marathi voice, wake word model (see Phase 6).
+
+In progress: Stage B, the local model runtime, local adapter and migration evals on this Mac (agent on `feature/stage-b-local`; measures only, routing changes need Sachin's OK).
+
 Need Sachin's OK for a download or a decision first:
-- Marathi speech-to-text (IndicConformer or IndicWhisper, local; today only a placeholder) and the English Whisper model download.
-- Backup encryption (new dependency or an external tool) and the final backup location (#10).
+- Backup encryption (deferred by Sachin; location decided: local).
 - Signed Mac `.app` started by a LaunchAgent (stable macOS permissions).
-- Stage B: local model runtime + local adapter + migration evals on this Mac.
+- Dashboard voice setup page and `jarvis voice devices` show only Whisper; Marathi status could be added there (no decision needed, small follow-up).
 
 Blocked by the "no P2 to the cloud" rule until a category is enabled or a local model is ready:
 - Screen understanding on request (screenshots are P2).
@@ -76,10 +88,9 @@ Parked items. Work that does not depend on them continues.
 - **Worker model:** Claude recommends Opus (low) after the comparison (see Phase 3 live results). Default stays opus until Sachin decides.
 - **Telegram (Phase 4 live check):** create a bot with @BotFather, run `jarvis telegram set-token`, put your numeric Telegram user ID in `config/local.yaml` (`proactive_file: {telegram: {allowed_user_id: ...}}`) and a default weather place (`proactive_file: {brief: {place: "..."}}`). Then `jarvis telegram test` and `jarvis daemon`.
 - **Google (Phase 5 live check):** create a Google Cloud project, enable Calendar and Gmail APIs, create an OAuth "Desktop app" client, set the app to "In production" (Testing tokens expire in 7 days), put the client JSON path in `config/local.yaml` (`connectors_file: {google: {client_secret_file: ...}}`), `pip install -e ".[google]"`, run `jarvis google auth`.
-- **Open decision #19:** do email sender and subject count as P1 or P2? Default P2 (`gmail.header_class`).
 - **Confirm tiers:** `parse_time` set to T0 (pure local computation); EventKit tools kept at T2.
-- **Voice (Phase 6 live check):** OK to install `faster-whisper` (~80 MB of packages) and download the Whisper `small` model (486 MB) with `jarvis voice setup`?
-- **Voice:** Marathi cloud voice (edge-tts) on or off (default off)? Wake word "hey jarvis" now or later (~100 MB, models CC BY-NC-SA)?
+- **Voice (Phase 6 live check):** models and packages are installed. Restart `jarvis app`, allow Chrome microphone access in macOS settings, say one English and one Marathi sentence and check the text; run `jarvis say --lang mr "..."` and rate the Marathi voice.
+- **Voice:** Marathi cloud voice (edge-tts) stays off unless Sachin turns it on. Wake word "hey jarvis" is downloaded but off: turn it on in `config/local.yaml` if wanted.
 - **Browser (Phase 8):** `jarvis browser setup` downloads Playwright Chromium (~150–200 MB) per machine; this laptop already has a cached copy.
 - **Dashboard (Phase 7):** on this laptop the built frontend is already in `dashboard/out/` (copied from the agent's build). On another machine: `cd dashboard; npm install; npm run build` (one-time download).
 - **Mac checks:** Rishi voice (`say -v '?'`), Whisper speed on the M4, microphone permission, EventKit (`pyobjc-framework-EventKit`, Reminders permission), browser profiles permissions, everything once on the Mac.
@@ -92,8 +103,9 @@ On a new machine first: `git clone`, run `scripts/setup.ps1` (Windows) or `scrip
 2. **Done 2026-10-10 (Mac):** finished and merged `wip/verify-repeat` (verify-after-act with claims vs evidence; `/repeat` in chat, Telegram and `jarvis task repeat`). Was: verify-after-act checks for Operator/Coder/browser and receipt "claims vs evidence"; `/repeat <when>` and `jarvis task repeat` (skill + schedule saved only after confirmation); merge.
 3. **Done 2026-10-10 (Mac):** global daily cap + runaway guard, nightly review (episode file + memory conflicts in the brief) merged. Backups merged: `jarvis backup create|list|restore-check` (destination `~/JarvisBackups` by default; open decision #10).
 4. **Done 2026-10-10 (Mac):** dashboard triggers adapter and Event triggers panel, India tab, why-panel recording for every chat (CLI, Telegram) with `GET /api/sessions/{id}/turns` and `/why`, sensitive-topic enforcement in code.
-5. **Done 2026-10-10 (Mac), except laptop compare (needs Tavily key here):** final testing on Claude Fable (`JARVIS_TEST_MODEL=claude-fable-5-1`): live suites, eval + memory eval (`jarvis eval --suite memory --live`), injection live set, laptop compare with price tiers; record results here.
+5. **Done 2026-10-10 (Mac):** laptop compare rerun on Fable: FAILED on "check yourself" links (see Final testing). Search links left out by Sachin for now. Small fixes that need no decision: keep prices out of the dropped-candidates table, find why the checker saw a cut-off report. Was: final testing on Claude Fable (`JARVIS_TEST_MODEL=claude-fable-5-1`): live suites, eval + memory eval (`jarvis eval --suite memory --live`), injection live set, laptop compare with price tiers; record results here.
 6. **Sachin:** the "Waiting for Sachin" list; hands-on testing with TESTING.md (section 9: the app).
+7. **Claude:** when the Stage B agent finishes, review `feature/stage-b-local` (local adapter is localhost-only and not approved in routing; import boundary), merge main into it, run the whole suite, merge, record the measurements here, and ask Sachin which components (if any) may move local (Stage C).
 
 ## Decisions made by Sachin
 
@@ -126,8 +138,10 @@ On a new machine first: `git clone`, run `scripts/setup.ps1` (Windows) or `scrip
 | 2026-10-10 | Smart home control (skill #24) is not wanted: dropped from the plan |
 | 2026-10-10 | #19 decided: email sender/subject and Apple Notes titles stay P2 (not sent to the cloud model) for now |
 | 2026-10-10 | #10 decided: backups stay local (`~/JarvisBackups`, never inside the repo) and must be encrypted |
+| 2026-10-10 | Backup encryption work deferred by Sachin ("backup apan nantar baguya"); backups stay as they are (local, not encrypted) until he picks it up |
 | 2026-10-10 | No adding UPI payees from the app; payees stay terminal-only |
 | 2026-10-10 | Downloads approved: English Whisper model, Marathi speech models (STT/TTS), wake word, and Stage B local AI (runtime + models). Stage B measures only; live routing changes need Sachin's OK |
+| 2026-10-11 | Amazon/Flipkart search links as "check yourself" links in price reports: leave it for now |
 | 2026-10-10 | Vetted the Hermes Agent Masterclass (Jack Roberts, hermes-masterclass.vercel.app). Taken: a global daily cap for unattended work (runaway-loop risk), a nightly review into `memory/episodes/` with memory conflicts in the brief, local dated backups (destination still open decision #10). Already in Jarvis: soul file, markdown memory + FTS, risk tiers/approvals/kill switch, Telegram allow-list, cron/heartbeat/brief, planner-worker-critic, budgets, dashboard. Dropped: VPS/Docker hosting (data leaves the laptop), OpenRouter (new key/cost), WhatsApp (banned for AI assistants), public webhooks (security), the selling/money module, the unproven "CLI uses 100x fewer tokens" claim |
 
 ## Decisions made by Claude (for Sachin to review)
@@ -152,6 +166,9 @@ On a new machine first: `git clone`, run `scripts/setup.ps1` (Windows) or `scrip
 | 2026-10-10 | Office files: create_docx/create_xlsx are T1 and create-only; the Writer may use them inside the task folder (sandboxed like write_file); formulas only from a short allowlist (no HYPERLINK, WEBSERVICE, INDIRECT, external links); openpyxl added as a dependency. Files made by openpyxl have no cached formula results, so analyze_table reads formula cells as blank until the file is saved in Excel |
 | 2026-10-10 | Missed-run alerts: one grouped notice; heartbeat and memory extraction stay quiet (`schedules.alert_missed`, `missed_alert_quiet_kinds`) |
 | 2026-10-10 | Dashboard: an email trigger's sender is hidden even on the local draft screen (question for Sachin: show it there?) |
+| 2026-10-11 | Marathi speech-to-text: AI4Bharat IndicConformer (MIT) from OpenVoiceOS's ungated ONNX int8 copy (the official repo needs a Hugging Face login), run with `onnx-asr` (4 MB, MIT, new in the `[voice]` extra). Auto mode: English stays with Whisper, anything else goes to Marathi (Whisper labelled 6 of 18 Marathi clips as Hindi/Sinhala/Bengali). Measured on 18 FLEURS clips: WER 23.1%, CER 7.6% |
+| 2026-10-11 | Offline Marathi voice: Meta MMS-TTS Marathi (CC-BY-NC, personal use only) as a third-party ONNX export; checked against the official weights (99.6% of the tensors used for speaking match exactly; the rest are training-only parts). Marathi text uses it first, then the cloud voice if enabled, then the system voice. Indic Parler-TTS skipped (0.9B + torch) |
+| 2026-10-11 | Voice model downloads are pinned to a commit and checked by SHA-256; Hugging Face xet transfer turned off for them (`HF_HUB_DISABLE_XET`) because it stalled on this Mac |
 
 ## Open decisions
 
@@ -173,6 +190,7 @@ See "Open decisions" in PLAN.md. Most important:
 | 2026-10-10 | Office laptop (Windows) | Built Phase 2 (tiers, approvals, taint, quarantine, tools). Live: 10/10 tasks, injection blocked, 0 T4 runs. Pushed to GitHub |
 | 2026-10-10 | Office laptop (Windows) | Research fixes merged (security, prices, memory), one-click app, triggers, standing approvals and previews. 902 tests pass. Pushed. India features and verify/repeat stopped mid-work on wip branches; handoff to home |
 | 2026-10-10 | Office laptop (Windows) | Fable final tests (live suites pass, evals 12/12; laptop compare fails on retailer-price verification). Planner modes, task cancel, chat browser, memory upkeep, approval replay, migration lock fix, README, research on 5 topics, TESTING.md |
+| 2026-10-11 | Home MacBook M4 | Merged voice (Marathi speech-to-text, offline Marathi voice, wake word model). 1420 passed. Tavily key added; laptop compare rerun on Fable failed on check links (fix waiting for Sachin). Sachin tested the dashboard emergency stop (PASS) and downloaded Gemma 4 E4B. Removed unused models and the pip cache to free disk. Stage B agent still running |
 | 2026-10-10 | Home MacBook M4 | Small follow-ups: `connectors status --live`, `/repeat` and `/why` in the dashboard chat. 1379 passed |
 | 2026-10-10 | Home MacBook M4 | Smart home dropped (Sachin). Built and merged: missed-run alerts; Apple Notes connector (titles P2 by default); dashboard repeat drafts + trigger create/delete (structured confirm result); office files with receipts, previews and Writer prompt. 1375 passed |
 | 2026-10-10 | Home MacBook M4 | Merged dashboard India tab + event triggers (fixed a pending-approvals table race, added `GET /api/sessions/{id}/turns`, docs). Added `/why`. Fable final tests on the Mac (see Final testing). Fixed macOS TLS certificates and the memory-eval grader. 1230 passed |
