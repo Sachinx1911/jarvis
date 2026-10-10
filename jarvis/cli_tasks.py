@@ -21,6 +21,7 @@ def register(sub) -> dict[str, Callable]:
     task.add_argument("--priority", choices=["high", "normal", "low"], default="normal")
     task.add_argument("--deadline")
     task.add_argument("--workers", help="worker model profile (config/tasks.yaml), e.g. opus or sonnet")
+    task.add_argument("--budget-usd", type=float, help="notional cost limit for this task (default in config/tasks.yaml)")
     task.add_argument("--provider", choices=PROVIDERS, default=None)
     tasks = sub.add_parser("tasks", help="list tasks")
     tasks.add_argument("--all", action="store_true", help="include finished tasks")
@@ -46,10 +47,11 @@ def register(sub) -> dict[str, Callable]:
 
 
 def create_task(rt: Runtime, goal: str, project: str | None = None, priority: int = 2,
-                deadline: str | None = None) -> str:
+                deadline: str | None = None, budget_usd: float | None = None) -> str:
     if project and not ProjectStore(rt.paths.home).exists(project):
         ProjectStore(rt.paths.home).create(project)
-    return task_store(rt).create(goal, project=project, priority=priority, deadline=deadline).id
+    budget = {"max_notional_usd": budget_usd} if budget_usd else None
+    return task_store(rt).create(goal, project=project, priority=priority, deadline=deadline, budget=budget).id
 
 
 def run_task(rt: Runtime, task_id: str, out: TextIO, approver, workers: str | None = None,
@@ -81,12 +83,14 @@ def cmd_task(args: argparse.Namespace, out: TextIO, inp: TextIO, approver_factor
             return 0
         action = args.action
         if action == "add":
-            tid = create_task(rt, " ".join(args.text), args.project, PRIORITIES[args.priority], args.deadline)
+            tid = create_task(rt, " ".join(args.text), args.project, PRIORITIES[args.priority], args.deadline,
+                              args.budget_usd)
             print(f"Added {tid} to the backlog.", file=out)
             return 0
         if action == "run":
             text = " ".join(args.text)
-            tid = text if ts.get(text) else create_task(rt, text, args.project, PRIORITIES[args.priority], args.deadline)
+            tid = text if ts.get(text) else create_task(rt, text, args.project, PRIORITIES[args.priority],
+                                                        args.deadline, args.budget_usd)
             return run_task(rt, tid, out, approver_factory(), args.workers, args.provider)
         if action == "resume":
             pending = ts.resumable()

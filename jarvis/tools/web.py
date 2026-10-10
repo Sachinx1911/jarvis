@@ -21,7 +21,7 @@ from jarvis.privacy import redact_p3
 
 TIMEOUT = 20
 MAX_BYTES = 2_000_000
-MAX_PAGE_CHARS = 20000
+MAX_PAGE_CHARS = 60000  # store pages put menus and filters first; prices come later
 USER_AGENT = "Jarvis/0.1 (personal assistant)"
 
 TAVILY_URL = "https://api.tavily.com/search"
