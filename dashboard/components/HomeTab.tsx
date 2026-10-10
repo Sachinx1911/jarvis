@@ -267,6 +267,7 @@ export default function HomeTab({
             onVoice({ ...voice, on: true });
           }}
           onStop={() => onVoice({ ...voice, on: false })}
+          note={note}
           disabled={stopEngaged || sttMissing}
           disabledWhy={stopEngaged ? "Emergency stop is on" : stt && sttMissing ? notReadyText(stt) : ""}
         />

@@ -1659,3 +1659,4 @@ blockquote.evidence {
 
 /* short windows: keep the navigation usable */
 @media (max-height: 640px) { .side-card { display: none; } }
+.stage-note { margin: var(--s-2) auto 0; max-width: 560px; font-size: var(--fs-sm); color: var(--warn-fg); background: var(--warn-soft); border: 1px solid var(--warn-border); border-radius: var(--r-md); padding: 6px 12px; }

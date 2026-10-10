@@ -250,7 +250,9 @@ export function VoiceStage({
   onStop,
   disabled,
   disabledWhy,
+  note,
 }: {
+  note?: string;
   on: boolean;
   state: { word: string; tone: string };
   hint: string;
@@ -282,6 +284,7 @@ export function VoiceStage({
       <div className="stage-hint">
         {!on ? (disabled ? disabledWhy : hint) : armed ? "Yes? Say your request." : "Speak naturally. Tap to stop."}
       </div>
+      {on && note && <div className="stage-note">{note}</div>}
       {on && (
         <button className="stage-stop" onClick={onStop} aria-label="Stop hands-free and release the microphone">
           <span className="square" aria-hidden />

@@ -30,8 +30,11 @@ export function isCommand(text: string): boolean {
 }
 
 // "Jarvis, what's the weather?" -> "what's the weather?"; "Jarvis." -> ""; no wake word -> null.
-// Case- and punctuation-insensitive; Marathi spellings included.
-const WAKE = /^[\s\p{P}\p{S}]*(jarvis|जार्विस|जार्वीस|जारविस)(?=$|[\s\p{P}\p{S}])[\s\p{P}\p{S}]*/iu;
+// Case- and punctuation-insensitive. Accepts a greeting first ("hey/ok/hi Jarvis", "हे जार्विस")
+// and the spellings speech-to-text often writes for an Indian "Jarvis" (Jervis, Javis, जर्विस...).
+const NAME = "(?:jarvis|jarvice|jarviss|jarwis|jarves|jarbis|jervis|javis|jaarvis|जार्विस|जारविस|जर्विस|जार्वीस|जारवीस|जार्विज|जारवीज)";
+const FILLER = "(?:(?:hey|hi|hello|ok|okay|हे|ए|हाय|ओके)[\\s\\p{P}]+)?";
+const WAKE = new RegExp(`^[\\s\\p{P}\\p{S}]*${FILLER}${NAME}(?=$|[\\s\\p{P}\\p{S}])[\\s\\p{P}\\p{S}]*`, "iu");
 export function stripWakeWord(text: string): string | null {
   const m = text.match(WAKE);
   return m ? text.slice(m[0].length).trim() : null;
@@ -196,7 +199,11 @@ export function useHandsFree(opts: { enabled: boolean; mode: HandsFreeMode; paus
         if (o.mode === "wake") {
           const rest = stripWakeWord(text);
           if (rest === null) {
-            if (Date.now() > armedUntil) return; // not for Jarvis: ignore
+            if (Date.now() > armedUntil) {
+              // not for Jarvis: ignore it, but say what was heard so it is clear why nothing happened
+              o.onNote(`Heard “${text}”. Start with “Jarvis…” so I know it is for me (or switch to Conversation).`);
+              return;
+            }
           } else if (!rest) {
             armedUntil = Date.now() + ARMED_MS;
             setArmed(true);
