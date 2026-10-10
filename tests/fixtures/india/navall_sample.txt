@@ -1,0 +1,13 @@
+Scheme Code;ISIN Div Payout/ ISIN Growth;ISIN Div Reinvestment;Scheme Name;Plan;Option;Net Asset Value;Date
+
+Open Ended Schemes(Equity Scheme - Large Cap Fund)
+
+Example Mutual Fund
+
+900001;INF000X01AA1;-;Example Bluechip Fund;Direct Plan;Growth Option;105.4321;09-Oct-2026
+900002;INF000X01AB9;INF000X01AC7;Example Bluechip Fund;Direct Plan;IDCW Option;22.1000;09-Oct-2026
+900003;INF000X01AD5;-;Example Bluechip Fund;Regular Plan;Growth Option;N.A.;09-Oct-2026
+
+Sample Asset Management
+
+900010;INF000Y01ZZ0;-;Sample Nifty 50 Index Fund;Direct Plan;Growth Option;1,234.5678;09-Oct-2026

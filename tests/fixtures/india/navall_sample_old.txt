@@ -1,0 +1,7 @@
+Scheme Code;ISIN Div Payout/ ISIN Growth;ISIN Div Reinvestment;Scheme Name;Net Asset Value;Date
+
+Open Ended Schemes(Debt Scheme - Liquid Fund)
+
+Example Mutual Fund
+
+900020;INF000X01QQ1;-;Example Liquid Fund - Direct Plan - Growth;3456.7890;08-Oct-2026

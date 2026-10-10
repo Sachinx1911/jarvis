@@ -1,0 +1,87 @@
+# India daily-life features (jarvis/india/). Machine-specific or personal values go in
+# config/local.yaml under the key india_file (same shape), which is git-ignored:
+#
+#   india_file:
+#     nav:
+#       schemes:
+#         - {code: "123456", label: "My index fund"}
+#     alerts:
+#       districts:
+#         - {name: Pune, aliases: ["पुणे"]}
+#
+# Everything below is an example or a public source, never Sachin's real data.
+
+timezone: Asia/Kolkata
+
+nav:
+  enabled: true
+  # AMFI's public daily NAV file (semicolon-separated). amfiindia.com/spages/NAVAll.txt
+  # redirects here (checked 2026-10-10). AMFI uploads NAVs by 8-9 pm IST each business day.
+  url: https://portal.amfiindia.com/spages/NAVAll.txt
+  refresh_hours: 12          # fetch at most this often; otherwise the cached rows are used
+  schemes: []                # [{code: "<AMFI scheme code>", label: "<short name>"}], set in local.yaml
+
+alerts:
+  enabled: true
+  # NDMA Sachet CAP RSS, one feed per state. URL pattern read from sachet.ndma.gov.in/CapFeed
+  # and fetched on 2026-10-10 (rss_maharashtra.xml: RSS 2.0, Marathi/English titles).
+  sachet_url: https://sachet.ndma.gov.in/cap_public_website/rss/rss_{state}.xml
+  state: maharashtra
+  hours: 24                  # show alerts issued in the last N hours
+  districts: []              # [{name: Pune, aliases: ["पुणे"]}]; empty = show every state alert
+  max_items: 5
+
+imd:
+  # IMD API gateway (api.imd.gov.in/public/api_reference.html). Free for non-commercial use but
+  # needs onboarding by IMD: it answers 401 "API key missing" without a key, and also wants an
+  # Authorization Bearer JWT (probed 2026-10-10). Secrets: imd_api_key and imd_jwt (keyring).
+  enabled: false
+  base_url: https://api.imd.gov.in/api/v1/
+  district_ids: []           # IMD district ids for /districtwarning
+
+news:
+  # Optional Marathi headlines. BBC News Marathi publishes its own RSS feed (checked 2026-10-10).
+  # Headlines and links only, for personal reading. Off by default.
+  enabled: false
+  url: https://feeds.bbci.co.uk/marathi/rss.xml
+  source: BBC News Marathi
+  max_items: 5
+
+bills:
+  reminder_lead_days: 3      # remind this many days before a due date, and again on the day
+  reminder_hour: 9
+  privacy_class: P2          # bill details come from mail bodies: kept from the cloud model
+  gmail_query: 'newer_than:60d (bill OR invoice OR "due date" OR "amount due" OR subscription OR renewal OR "payment received" OR autopay OR बिल OR देयक)'
+  gmail_max: 25
+  # Known billers: name, words that identify them, category. Public company names only.
+  billers:
+    - {name: MSEDCL, match: [msedcl, mahavitaran, महावितरण], category: electricity}
+    - {name: Tata Power, match: [tata power], category: electricity}
+    - {name: Airtel, match: [airtel, एअरटेल], category: mobile}
+    - {name: Jio, match: [jio, जिओ], category: mobile}
+    - {name: Vi, match: [vodafone idea, "myvi"], category: mobile}
+    - {name: BSNL, match: [bsnl], category: broadband}
+    - {name: Mahanagar Gas, match: [mahanagar gas, mgl], category: gas}
+    - {name: LIC, match: [lic of india, "life insurance corporation", एलआयसी], category: insurance}
+    - {name: Netflix, match: [netflix], category: subscription}
+    - {name: Spotify, match: [spotify], category: subscription}
+    - {name: YouTube Premium, match: [youtube premium], category: subscription}
+    - {name: Amazon Prime, match: [amazon prime, prime video], category: subscription}
+    - {name: JioHotstar, match: [hotstar], category: subscription}
+
+wallet:
+  default_lead_days: 30      # remind this many days before a document expires
+  reminder_hour: 9
+  files_dir: workspace/documents   # files Sachin adds himself; records link to them
+  types: [passport, pan, aadhaar, driving_licence, insurance, vehicle_puc, vehicle_rc, warranty, other]
+
+tax:
+  # Statutory dates are NOT hard-coded in code. Check each year on incometaxindia.gov.in and
+  # edit here. From 1 April 2026 the Income-tax Act 2025 applies (advance tax: Section 408,
+  # instalments 15 Jun / 15 Sep / 15 Dec / 15 Mar, per incometaxindia.gov.in). The 31 July
+  # return date for non-audit individuals is from secondary sources (not verified officially).
+  lead_days: 7
+  deadlines:
+    - {name: "Advance tax instalment 3 (75%), tax year 2026-27", date: 2026-12-15}
+    - {name: "Advance tax instalment 4 (100%), tax year 2026-27", date: 2027-03-15}
+    - {name: "Income-tax return due (non-audit), tax year 2026-27 - verify on incometaxindia.gov.in", date: 2027-07-31}
