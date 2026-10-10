@@ -4,18 +4,24 @@ faster-whisper (local Whisper on CTranslate2) is the default: CPU wheels for Win
 macOS Apple Silicon on Python 3.12-3.14, no torch, int8 on CPU, Silero VAD bundled.
 https://github.com/SYSTRAN/faster-whisper  https://pypi.org/project/faster-whisper/
 
+Marathi: plain Whisper is weak at Marathi (FLEURS WER 38% for large-v2), so Marathi speech goes
+to AI4Bharat IndicConformer (MIT), run as ONNX int8 through onnx-asr (numpy + onnxruntime, no
+torch). LanguageRouter picks the engine per utterance: config `stt.language` en | mr | auto.
+
 Model weights are a separate download (hundreds of MB). They are fetched only by
-`jarvis voice setup`; loading never downloads (local_files_only).
+`jarvis voice setup`; loading never downloads (local_files_only / a local folder only).
 """
 
 from __future__ import annotations
 
 import math
 from collections import deque
+from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from jarvis.voice.base import SAMPLE_RATE, Audio, Transcript, VoiceUnavailable
+from jarvis.voice.models import INDICCONFORMER_MR, VoiceModel
 
 # Hugging Face repos used by faster_whisper.utils._MODELS, with sizes measured 2026-10-10
 # from the Hugging Face API (sum of the repo files).
@@ -82,15 +88,31 @@ class FasterWhisperSTT:
                                          compute_type=self.compute_type, local_files_only=True)
         return self._whisper
 
-    def transcribe(self, audio: Audio, language_hint: str | None = None) -> Transcript:
+    def _segments(self, audio: Audio, language: str | None) -> tuple[Any, Any]:
+        """Start a transcription. Language detection runs now; the segments decode lazily."""
         if audio.sample_rate != SAMPLE_RATE:
             raise ValueError(f"expected {SAMPLE_RATE} Hz audio, got {audio.sample_rate}")
         whisper = self._load()
-        import numpy as np  # installed with faster-whisper
+        samples = pcm_to_float(audio)
+        return whisper.transcribe(samples, language=language, beam_size=5, vad_filter=True)
 
-        samples = np.frombuffer(audio.pcm, dtype=np.int16).astype(np.float32) / 32768.0
-        segments, info = whisper.transcribe(samples, language=language_hint, beam_size=5, vad_filter=True)
+    def transcribe(self, audio: Audio, language_hint: str | None = None) -> Transcript:
+        segments, info = self._segments(audio, language_hint)
         return transcript_from_segments(list(segments), info.language, info.language_probability)
+
+    def transcribe_if_english(self, audio: Audio) -> tuple[Transcript | None, str, float]:
+        """Detect the language. English: transcribe it. Anything else: (None, language, p) without decoding."""
+        segments, info = self._segments(audio, None)
+        if info.language != "en":
+            return None, info.language, float(info.language_probability or 0.0)
+        t = transcript_from_segments(list(segments), info.language, info.language_probability)
+        return t, info.language, float(info.language_probability or 0.0)
+
+
+def pcm_to_float(audio: Audio) -> Any:
+    import numpy as np  # installed with faster-whisper and onnx-asr
+
+    return np.frombuffer(audio.pcm[: len(audio.pcm) // 2 * 2], dtype=np.int16).astype(np.float32) / 32768.0
 
 
 def transcript_from_segments(segments: list[Any], language: str | None, language_probability: float) -> Transcript:
@@ -110,18 +132,133 @@ def transcript_from_segments(segments: list[Any], language: str | None, language
     return Transcript(text, language, round(confidence, 3))
 
 
-class IndicSTT:
-    """Placeholder for Marathi speech (IndicConformer / IndicWhisper, PLAN.md 14).
+# ---- Marathi: IndicConformer (ONNX) ----
 
-    Plain Whisper is weak at Marathi. Choosing and measuring an Indic model is a later
-    evaluation (RAM, speed and word error rate on this Mac); nothing is downloaded now.
-    """
+ONNX_ASR_HINT = "pip install onnx-asr==0.12.0 (4 MB; uses numpy and onnxruntime from faster-whisper)"
 
-    name = "indic"
+
+def onnx_asr_installed() -> bool:
+    try:
+        import onnx_asr  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _load_onnx_asr(path: Path) -> Any:
+    import onnx_asr
+
+    # A local folder only (offline); CTC export, int8 weights, CPU.
+    model = onnx_asr.load_model("nemo-conformer-ctc", path, quantization="int8",
+                                providers=["CPUExecutionProvider"])
+    return model.with_timestamps()  # adds per-token log-probabilities, used for the confidence
+
+
+def transcript_from_ctc(text: str, logprobs: list[float] | None, language: str = "mr") -> Transcript:
+    """Map greedy-CTC token log-probabilities to one 0..1 confidence: exp(mean token logprob)."""
+    text = " ".join(text.split())
+    if not text:
+        return Transcript("", language, 0.0)
+    if not logprobs:
+        return Transcript(text, language, 0.5)  # no scores: neither sure nor unsure
+    mean = sum(logprobs) / len(logprobs)
+    return Transcript(text, language, round(math.exp(min(0.0, mean)), 3))
+
+
+class IndicConformerSTT:
+    """Local Marathi speech-to-text: AI4Bharat IndicConformer, ONNX int8. Loads lazily."""
+
+    name = "indicconformer"
     cloud = False
 
+    def __init__(self, home: Path, model: VoiceModel = INDICCONFORMER_MR,
+                 loader: Callable[[Path], Any] | None = None, installed: Callable[[], bool] | None = None):
+        self.home = home
+        self.model = model
+        self._loader = loader or _load_onnx_asr
+        self._installed = installed or onnx_asr_installed
+        self._asr: Any = None
+
+    def check(self) -> None:
+        if not self._installed():
+            raise VoiceUnavailable(f"onnx-asr is not installed (needed for Marathi speech): {ONNX_ASR_HINT}")
+        if not self.model.present(self.home):
+            raise VoiceUnavailable(f"the Marathi speech model is not downloaded: run `jarvis voice setup` "
+                                   f"({self.model.key}, {self.model.mb} MB)")
+
+    def _load(self) -> Any:
+        if self._asr is None:
+            self.check()
+            self._asr = self._loader(self.model.path(self.home))
+        return self._asr
+
     def transcribe(self, audio: Audio, language_hint: str | None = None) -> Transcript:
-        raise VoiceUnavailable("Marathi speech-to-text is not built yet (Indic model evaluation pending)")
+        asr = self._load()
+        result = asr.recognize(pcm_to_float(audio), sample_rate=audio.sample_rate)
+        return transcript_from_ctc(result.text, getattr(result, "logprobs", None))
+
+
+MARATHI_ENGINES = ("none", "indicconformer")
+
+
+def make_marathi_stt(cfg: dict[str, Any], home: Path):
+    engine = (cfg.get("stt", {}).get("marathi_engine") or "none").lower()
+    if engine == "none":
+        return None
+    if engine == "indicconformer":
+        return IndicConformerSTT(home)
+    raise ValueError(f"unknown Marathi stt engine {engine!r} (choose: {', '.join(MARATHI_ENGINES)})")
+
+
+# ---- language routing ----
+
+class LanguageRouter:
+    """One speech-to-text front for English and Marathi (config `stt.language`):
+
+    en   = Whisper, English only.
+    mr   = the Marathi engine only.
+    auto = Whisper detects the language (cheap: segments are never decoded for non-English);
+           English stays with Whisper, anything else goes to the Marathi engine. Jarvis expects
+           English or Marathi, and Whisper often labels Marathi speech as Hindi or another language.
+    A per-call language hint ("en" / "mr") overrides the mode.
+    """
+
+    cloud = False
+
+    def __init__(self, english: Any, marathi: Any, mode: str = "auto"):
+        mode = (mode or "auto").lower()
+        if mode not in ("auto", "en", "mr"):
+            raise ValueError(f"stt.language must be auto, en or mr, not {mode!r}")
+        self.english = english
+        self.marathi = marathi
+        self.mode = mode
+        self.name = f"{english.name}+{marathi.name}"
+
+    def check(self) -> None:
+        """Raise only when the engine this mode always needs is missing (English keeps working
+        in auto mode without the Marathi model; Marathi speech then says how to set it up)."""
+        needed = self.marathi if self.mode == "mr" else self.english
+        if hasattr(needed, "check"):
+            needed.check()
+
+    def marathi_ready(self) -> tuple[bool, str]:
+        try:
+            if hasattr(self.marathi, "check"):
+                self.marathi.check()
+        except VoiceUnavailable as e:
+            return False, str(e)
+        return True, "ready"
+
+    def transcribe(self, audio: Audio, language_hint: str | None = None) -> Transcript:
+        mode = (language_hint or self.mode).lower()
+        if mode == "en":
+            return replace(self.english.transcribe(audio, "en"), engine=self.english.name)
+        if mode == "mr":
+            return replace(self.marathi.transcribe(audio, "mr"), engine=self.marathi.name)
+        t, _, _ = self.english.transcribe_if_english(audio)
+        if t is not None:
+            return replace(t, engine=self.english.name)
+        return replace(self.marathi.transcribe(audio, "mr"), engine=self.marathi.name)
 
 
 class FakeSTT:
@@ -146,8 +283,12 @@ def make_stt(cfg: dict[str, Any], home: Path):
     stt = cfg.get("stt", {})
     engine = stt.get("engine", "faster_whisper")
     if engine == "faster_whisper":
-        return FasterWhisperSTT(home, stt.get("model", "small"), stt.get("device", "cpu"),
-                                stt.get("compute_type", "int8"))
+        whisper = FasterWhisperSTT(home, stt.get("model", "small"), stt.get("device", "cpu"),
+                                   stt.get("compute_type", "int8"))
+        marathi = make_marathi_stt(cfg, home)
+        if marathi is None:
+            return whisper  # no Marathi engine: Whisper handles every language itself
+        return LanguageRouter(whisper, marathi, stt.get("language", "auto"))
     if engine == "fake":
         return FakeSTT()
     raise ValueError(f"unknown stt engine {engine!r}")
