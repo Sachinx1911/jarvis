@@ -36,8 +36,8 @@ from jarvis.providers.base import ProviderError
 from jarvis.routing.policy import RoutingError
 from jarvis.secrets import get_secret
 from jarvis.tasks.store import FINAL, PRIORITIES, TransitionError
-from jarvis.web import (adapters, data, routes_india, routes_projects, routes_proactive, routes_setup, routes_teach,
-                        routes_trust, routes_voice)
+from jarvis.web import (adapters, data, routes_india, routes_projects, routes_proactive, routes_repeat, routes_setup,
+                        routes_teach, routes_trust, routes_voice)
 from jarvis.web.approvals import ApprovalBroker, ApprovalError
 from jarvis.web.context import WebContext
 from jarvis.web.jobs import Jobs
@@ -526,9 +526,9 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
         with runtime() as rt:
             return data.usage_json(rt, days)
 
-    # ---- everything else the terminal can do (projects, teach, schedules, setup, voice, India) ----
-    for module in (routes_projects, routes_teach, routes_proactive, routes_setup, routes_voice, routes_trust,
-                   routes_india):
+    # ---- everything else the terminal can do (projects, teach, schedules, repeat-this, setup, voice, India) ----
+    for module in (routes_projects, routes_teach, routes_proactive, routes_repeat, routes_setup, routes_voice,
+                   routes_trust, routes_india):
         api.include_router(module.build_router(ctx))
 
     app.include_router(api)

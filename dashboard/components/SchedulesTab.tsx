@@ -71,7 +71,32 @@ type Fire = {
   model_calls: number;
 };
 
+type TriggerDraft = {
+  draft_id: string | null;
+  question?: string;
+  show?: string;
+  draft?: {
+    source: string;
+    description: string;
+    condition: Record<string, unknown>;
+    action: string;
+    target: string;
+    input: string;
+    output: string;
+    every_s: number;
+    cooldown_s: number;
+    read_by: string;
+    private_hidden: boolean;
+  };
+};
+
 const short = (s: string | null) => (s ? s.replace("T", " ").slice(0, 16) : "-");
+
+function human(seconds: number): string {
+  if (seconds >= 3600 && seconds % 3600 === 0) return `${seconds / 3600} h`;
+  if (seconds % 60 === 0) return `${seconds / 60} min`;
+  return `${seconds} s`;
+}
 
 // Colour class for a status word; the word itself is always shown next to the colour.
 function tone(status: string | null): string {
@@ -355,10 +380,191 @@ function ScheduleList({ data, error, reload }: { data: SchedData | null; error: 
   );
 }
 
+function triggerAction(d: NonNullable<TriggerDraft["draft"]>): string {
+  if (d.action === "notify") return "send you a message (no AI model)";
+  if (d.action === "prompt") return `ask Jarvis: "${d.input}"`;
+  if (d.action === "skill") return `run skill ${d.target}` + (d.input ? ` with "${d.input}"` : "");
+  return `give agent ${d.target} the task "${d.input}"`;
+}
+
+function NewTrigger({ onSaved, onClose }: { onSaved: (msg: string) => void; onClose: () => void }) {
+  const [text, setText] = useState("");
+  const [kind, setKind] = useState("");
+  const [target, setTarget] = useState("");
+  const [output, setOutput] = useState("");
+  const [every, setEvery] = useState("");
+  const [cooldown, setCooldown] = useState("");
+  const [draft, setDraft] = useState<TriggerDraft | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function read(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setDraft(null);
+    if ([every, cooldown].some((v) => v.trim() && !Number.isFinite(Number(v)))) {
+      setError("Check every and cooldown are numbers of minutes (or leave them empty for the default).");
+      return;
+    }
+    setBusy(true);
+    try {
+      setDraft(
+        await post<TriggerDraft>("/api/triggers/draft", {
+          text,
+          kind: kind || null,
+          target,
+          output: output || null,
+          every_minutes: every.trim() ? Number(every) : null,
+          cooldown_minutes: cooldown.trim() ? Number(cooldown) : null,
+        }),
+      );
+    } catch (err) {
+      setError(errText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function save() {
+    if (!draft?.draft_id) return;
+    setBusy(true);
+    setError("");
+    try {
+      const r = await post<{ saved: { id: string; name: string } }>("/api/triggers/confirm", { draft_id: draft.draft_id });
+      setDraft(null);
+      setText("");
+      onSaved(`Saved as ${r.saved.id}: ${r.saved.name}.`);
+    } catch (err) {
+      setError(errText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function discard() {
+    const id = draft?.draft_id;
+    setDraft(null);
+    if (id) await post("/api/triggers/discard", { draft_id: id }).catch(() => undefined);
+  }
+
+  const d = draft?.draft;
+  return (
+    <div className="subpanel" aria-label="New trigger">
+      <h3>New trigger</h3>
+      <form onSubmit={read}>
+        <label className="field">
+          What to watch and what to do (English or Marathi)
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="when a new file arrives in workspace/inbox tell me"
+            maxLength={1000}
+          />
+        </label>
+        <div className="row">
+          <label className="field">
+            Then
+            <select value={kind} onChange={(e) => setKind(e.target.value)}>
+              <option value="">as the sentence says</option>
+              <option value="notify">just tell me</option>
+              <option value="prompt">ask Jarvis</option>
+              <option value="skill">run a skill</option>
+              <option value="agent">agent task</option>
+            </select>
+          </label>
+          {(kind === "skill" || kind === "agent") && (
+            <label className="field">
+              {kind === "skill" ? "Skill name" : "Agent name"}
+              <input value={target} onChange={(e) => setTarget(e.target.value)} maxLength={80} />
+            </label>
+          )}
+          <label className="field">
+            Send result to
+            <select value={output} onChange={(e) => setOutput(e.target.value)}>
+              <option value="">default</option>
+              <option value="telegram">Telegram</option>
+              <option value="file">file</option>
+              <option value="both">both</option>
+            </select>
+          </label>
+          <label className="field">
+            Check every (min)
+            <input value={every} onChange={(e) => setEvery(e.target.value)} placeholder="default" inputMode="decimal" style={{ width: 90 }} />
+          </label>
+          <label className="field">
+            Cooldown (min)
+            <input value={cooldown} onChange={(e) => setCooldown(e.target.value)} placeholder="default" inputMode="decimal" style={{ width: 90 }} />
+          </label>
+        </div>
+        <div className="row">
+          <button className="primary" disabled={busy || !text.trim()}>
+            Read it
+          </button>
+          <button type="button" onClick={onClose} disabled={busy}>
+            Close
+          </button>
+        </div>
+      </form>
+      {draft?.question && <div className="notice">{draft.question}</div>}
+      {d && (
+        <>
+          <dl className="kv">
+            <dt>Watches</dt>
+            <dd>
+              {SOURCE_TEXT[d.source] ?? d.source}: {d.description}
+            </dd>
+            <dt>Condition</dt>
+            <dd className="small">
+              {Object.entries(d.condition)
+                .filter(([, v]) => v !== "" && v !== null)
+                .map(([k, v]) => `${k}=${String(v)}`)
+                .join(", ")}
+            </dd>
+            <dt>Then</dt>
+            <dd>{triggerAction(d)}</dd>
+            <dt>Checks</dt>
+            <dd>
+              every {human(d.every_s)}; at most one run per {human(d.cooldown_s)}
+            </dd>
+            <dt>Output</dt>
+            <dd>{d.output}</dd>
+          </dl>
+          {d.private_hidden && (
+            <p className="small muted">
+              The sender and subject are private (P2) and are not shown again here or in the list; they are saved
+              exactly as you typed them above.
+            </p>
+          )}
+          <details>
+            <summary className="small">Full draft</summary>
+            <pre>{draft?.show}</pre>
+          </details>
+          <p className="small">
+            Runs unattended: only read-only work and new files; anything else waits for your approval. Nothing is saved
+            until you confirm.
+          </p>
+          <div className="row">
+            <button className="primary" onClick={save} disabled={busy}>
+              Save this trigger
+            </button>
+            <button onClick={discard} disabled={busy}>
+              Discard
+            </button>
+          </div>
+        </>
+      )}
+      {error && <div className="error">{error}</div>}
+    </div>
+  );
+}
+
 function Triggers() {
   const t = usePoll(() => api<TriggersData>("/api/triggers"), 10000);
   const [runs, setRuns] = useState<{ id: string; items: Fire[] } | null>(null);
   const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [deleting, setDeleting] = useState<Trigger | null>(null);
   const d = t.data;
   const items = d?.items ?? [];
 
@@ -366,6 +572,19 @@ function Triggers() {
     setErr("");
     try {
       await post(`/api/triggers/${encodeURIComponent(tr.id)}/${action}`);
+      t.reload();
+    } catch (e) {
+      setErr(errText(e));
+    }
+  }
+
+  async function remove(tr: Trigger) {
+    setErr("");
+    try {
+      await post(`/api/triggers/${encodeURIComponent(tr.id)}/delete`, { confirm: tr.id });
+      setDeleting(null);
+      if (runs?.id === tr.id) setRuns(null);
+      setMsg(`Deleted ${tr.id}.`);
       t.reload();
     } catch (e) {
       setErr(errText(e));
@@ -386,13 +605,48 @@ function Triggers() {
     <section className="panel" aria-label="Event triggers">
       <div className="row">
         <h2 className="grow">Event triggers</h2>
+        {!adding && (
+          <button
+            className="primary"
+            onClick={() => {
+              setAdding(true);
+              setMsg("");
+            }}
+          >
+            New trigger
+          </button>
+        )}
         <button onClick={t.reload}>Refresh</button>
       </div>
       <p className="small muted">
-        A trigger does something when something happens (a new file, a price drop, an email, a meeting soon). Add one
-        in a terminal: <code>jarvis trigger add &quot;when a new file arrives in workspace/inbox summarize it&quot;</code>.
-        Triggers run unattended: only read-only actions run; anything else waits above for your approval.
+        A trigger does something when something happens (a new file, a price drop on a store page, an email, a meeting
+        soon, new search results). Triggers run unattended: only read-only actions run; anything else waits above for
+        your approval.
       </p>
+      {adding && (
+        <NewTrigger
+          onClose={() => setAdding(false)}
+          onSaved={(m) => {
+            setMsg(m);
+            setAdding(false);
+            t.reload();
+          }}
+        />
+      )}
+      {msg && <div className="okbox small">{msg}</div>}
+      {deleting && (
+        <div className="notice" role="alertdialog" aria-label={`Delete ${deleting.id}`}>
+          <div>
+            Delete trigger <strong>{deleting.id}</strong> ({deleting.what})? It stops for good; pausing keeps it instead.
+          </div>
+          <div className="row">
+            <button className="danger" onClick={() => remove(deleting)}>
+              Yes, delete {deleting.id}
+            </button>
+            <button onClick={() => setDeleting(null)}>Keep it</button>
+          </div>
+        </div>
+      )}
       {d && !d.running_here && items.length > 0 && (
         <div className="notice small">
           Triggers are checked only while Jarvis runs in the background (the app or jarvis daemon).
@@ -450,6 +704,15 @@ function Triggers() {
                       <button onClick={() => act(tr, "resume")}>Resume</button>
                     )}
                     <button onClick={() => showRuns(tr.id)}>Runs</button>
+                    <button
+                      className="danger"
+                      onClick={() => {
+                        setDeleting(tr);
+                        setMsg("");
+                      }}
+                    >
+                      Delete
+                    </button>
                   </div>
                 </td>
               </tr>

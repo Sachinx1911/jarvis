@@ -4,6 +4,7 @@ import { useState } from "react";
 import { api, post } from "@/lib/api";
 import { errText, money, num, usePoll } from "@/lib/hooks";
 import Approvals, { ApprovalsData } from "./Approvals";
+import { PendingRepeatDrafts, RepeatThis } from "./RepeatDrafts";
 
 type Usage = { calls: number; input_tokens: number; output_tokens: number; notional_usd: number; billed_usd: number; models: string[] };
 type Task = {
@@ -50,6 +51,7 @@ export default function TasksTab({
   const tasks = usePoll(() => api<{ items: Task[]; running: string[] }>("/api/tasks"), 3000);
   const [selected, setSelected] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [draftsChanged, setDraftsChanged] = useState(0);
   const items = tasks.data?.items ?? [];
 
   async function resumeAll() {
@@ -67,6 +69,7 @@ export default function TasksTab({
   return (
     <>
       {approvals && <Approvals data={approvals} reload={reloadApprovals} />}
+      <PendingRepeatDrafts refresh={draftsChanged} />
       <NewTask
         onCreated={(id) => {
           setSelected(id);
@@ -108,7 +111,9 @@ export default function TasksTab({
           })}
         </div>
       </section>
-      {selected && <TaskView id={selected} onChange={tasks.reload} />}
+      {selected && (
+        <TaskView id={selected} onChange={tasks.reload} onDraftsChanged={() => setDraftsChanged((n) => n + 1)} />
+      )}
     </>
   );
 }
@@ -155,7 +160,15 @@ function NewTask({ onCreated }: { onCreated: (id: string) => void }) {
   );
 }
 
-function TaskView({ id, onChange }: { id: string; onChange: () => void }) {
+function TaskView({
+  id,
+  onChange,
+  onDraftsChanged,
+}: {
+  id: string;
+  onChange: () => void;
+  onDraftsChanged: () => void;
+}) {
   const t = usePoll(() => api<TaskDetail>(`/api/tasks/${id}`), 2500, [id]);
   const [error, setError] = useState("");
   const d = t.data;
@@ -189,6 +202,7 @@ function TaskView({ id, onChange }: { id: string; onChange: () => void }) {
         {!["COMPLETED", "FAILED", "CANCELLED"].includes(d.state) && <button onClick={() => act("cancel")}>Cancel</button>}
       </div>
       {error && <div className="error">{error}</div>}
+      {d.state === "COMPLETED" && <RepeatThis key={d.id} taskId={d.id} onChange={onDraftsChanged} />}
       <div className="split">
         <div>
           <dl className="kv">
