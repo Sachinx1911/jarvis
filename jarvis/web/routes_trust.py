@@ -99,6 +99,19 @@ def build_router(ctx: WebContext) -> APIRouter:
         with ctx.runtime() as rt:
             return {"session_id": session_id, "items": trust.session_lines(rt, session_id, around, n)}
 
+    @r.get("/sessions/{session_id}/turns")
+    def session_turns(session_id: str, limit: int = 20) -> dict[str, Any]:
+        """Recorded turns of any chat (web, terminal or Telegram), newest first, for the "why" panel."""
+        if not re.match(r"^[\w.:-]{1,80}$", session_id):
+            raise HTTPException(400, "invalid session id")
+        with ctx.runtime() as rt:
+            trust.ensure_turn_table(rt.store.conn)
+            rows = rt.store.conn.execute(
+                "SELECT id, ts, reply_message_id FROM turn_context WHERE session_id=? ORDER BY id DESC LIMIT ?",
+                (session_id, max(1, min(int(limit), 100)))).fetchall()
+        return {"session_id": session_id,
+                "items": [{"turn_id": r[0], "ts": r[1], "reply_message_id": r[2]} for r in rows]}
+
     @r.get("/chat/turns/{turn_id}")
     def chat_turn(turn_id: int) -> dict[str, Any]:
         with ctx.runtime() as rt:

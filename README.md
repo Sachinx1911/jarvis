@@ -40,21 +40,24 @@ Optional extras: `pip install -e ".[voice]"` (speech), `".[google]"` (Calendar, 
 ## Main commands
 
 Every command below also has a place in the app (`jarvis app`): Chat, Memory, Tasks & Approvals, Projects & Docs,
-Teach, Schedules & Reminders, Agents, Connectors, Setup, Settings & Usage.
+Teach, Schedules & Reminders (with event triggers), India, Agents, Connectors, Setup, Settings & Usage.
 
 | Command | What it does |
 |---|---|
 | `jarvis app` | One click: dashboard + scheduler + Telegram (if set up), opens the browser. `--install-shortcut`, `--autostart on\|off` (off by default), `--no-browser`, `--port` |
-| `jarvis chat` | Chat. `/remember`, `/memory`, `/task`, `/project`, `/record`, `/help` |
+| `jarvis chat` | Chat. `/remember`, `/memory`, `/task`, `/repeat`, `/why`, `/project`, `/record`, `/help` |
 | `jarvis task run "<goal>"` | Plan, run (team, operator or coder), verify, receipt |
 | `jarvis tasks`, `jarvis receipt <id>` | Task board and receipts |
-| `jarvis memory list|search|show|archive|export` | Long-term memory |
+| `jarvis memory list|search|show|archive|export|conflicts` | Long-term memory; `conflicts` lists memories about the same subject that disagree |
+| `jarvis task repeat <id> "<when>"`, `jarvis task draft <id>` | Turn a finished task into a skill + schedule (saved only after your yes); read a pending draft in full |
 | `jarvis record start|stop|draft|approve` | Teach a task once; Jarvis turns it into a skill |
 | `jarvis docs index|search` | Project document library with citations |
 | `jarvis schedule …`, `jarvis brief`, `jarvis daemon` | Schedules, morning brief, Telegram bot |
 | `jarvis voice`, `jarvis say` | Push-to-talk voice |
 | `jarvis dashboard` | Dashboard only, without the scheduler (127.0.0.1, token) |
 | `jarvis connectors status` | Tools, risk tiers, health checks |
+| `jarvis nav`, `jarvis bills`, `jarvis wallet` | India: AMFI NAVs, bills and subscriptions (never pays), document wallet with masked numbers |
+| `jarvis backup create|list|restore-check` | Dated local backups of personal data (default `~/JarvisBackups`, never inside the repo, not encrypted yet) |
 | `jarvis stop` / `jarvis resume` | Emergency stop for every model and tool call |
 | `jarvis eval` | Evaluation suite (for comparing models) |
 

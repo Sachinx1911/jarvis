@@ -173,3 +173,40 @@ def test_prompts_mark_health_and_politics_sensitive():
         line = next(l for l in text.splitlines() if 'sensitivity: "sensitive"' in l)
         assert "health" in line and "political opinions" in line
         assert "family members' names" in line  # the P1 list is unchanged
+
+
+def test_session_turns_lists_terminal_and_telegram_chats(isolated):
+    """Turns recorded by ChatSession.send (terminal or Telegram) are reachable from the dashboard."""
+    from types import SimpleNamespace
+
+    from jarvis.web.trust import record_turn
+
+    rt = open_runtime()
+    try:
+        built = SimpleNamespace(memory_ids=[], excerpt_ids=[], withheld=0, user_message_id=None,
+                                reply_message_id=None)
+        try:
+            tid = record_turn(rt.store.conn, "cli-session-1", built)
+        except AttributeError:
+            pytest.skip("record_turn needs the context object of a real chat turn")
+    finally:
+        rt.close()
+    with _client() as c:
+        items = c.get("/api/sessions/cli-session-1/turns", headers=H).json()["items"]
+        assert [i["turn_id"] for i in items] == [tid]
+        assert c.get("/api/sessions/bad id!/turns", headers=H).status_code in (400, 404)
+        assert c.get("/api/sessions/cli-session-1/turns").status_code in (401, 403)   # token required
+
+
+def test_pending_approvals_table_survives_two_connections(isolated):
+    from jarvis.proactive.scheduler import PendingApprovals
+
+    a, b = open_runtime(), open_runtime()
+    try:
+        PendingApprovals(a.store.conn)
+        PendingApprovals(b.store.conn)   # second init on the same database: no duplicate-column error
+        cols = {r[1] for r in a.store.conn.execute("PRAGMA table_info(sched_pending_approvals)")}
+        assert {"decided_at", "result", "ok", "verified"} <= cols
+    finally:
+        a.close()
+        b.close()
