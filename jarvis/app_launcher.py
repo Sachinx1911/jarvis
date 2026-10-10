@@ -24,7 +24,7 @@ import sys
 import threading
 import time
 import webbrowser
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Callable, TextIO
 
 from jarvis.control.audit import AuditLog
@@ -136,7 +136,8 @@ def _windows_shortcut(folder: str, args: str, remove: bool = False, run: Callabl
                _PS_SHORTCUT], env=env, capture_output=True, text=True, timeout=60)
     if res.returncode != 0:
         raise RuntimeError((res.stderr or res.stdout or "PowerShell failed").strip()[:500])
-    return Path((res.stdout or "").strip().splitlines()[-1])
+    out = (res.stdout or "").strip().splitlines()[-1]
+    return Path(out) if os.name == "nt" else PureWindowsPath(out)  # PowerShell prints a Windows path
 
 
 def _mac_command_file(home: Path, python: Path) -> Path:

@@ -174,7 +174,7 @@ class ToolRegistry:
         notes = risk_notes(call.arguments, self.trusted_text(), self._untrusted)
         allowed, decision = self.gate.check(call.name, tool.tier, call.arguments, gate_tainted, task_id,
                                             force_reason=egress.reason if egress.action == "ask" else None,
-                                            notes=notes)
+                                            notes=notes, hostile=self.hostile)
         if not allowed:
             return self._finish(call, tool, task_id, f"Not run: {decision}.", decision, False)
         if sandboxed and self.tainted and decision == "auto":

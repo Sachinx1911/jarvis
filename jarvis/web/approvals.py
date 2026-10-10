@@ -40,6 +40,8 @@ class Pending:
     created: float
     expires: float
     args_sha256: str
+    preview: str = ""     # what will change (jarvis/control/preview.py)
+    scope: str = ""       # what else approving grants for this session (grouped approvals)
     event: threading.Event = field(default_factory=threading.Event, repr=False)
     approved: bool = False
     outcome: str = "pending"  # approved | denied | timeout | stopped
@@ -48,8 +50,9 @@ class Pending:
         return {"id": self.id, "source": self.source, "task_id": self.task_id, "tool": self.tool,
                 "tier": self.tier, "arguments": self.arguments, "reason": self.reason,
                 "created": self.created, "expires": self.expires, "args_sha256": self.args_sha256,
-                "outcome": self.outcome,
-                "describe": ApprovalRequest(self.tool, self.tier, self.arguments, self.reason).describe()}
+                "outcome": self.outcome, "preview": self.preview, "scope": self.scope,
+                "describe": ApprovalRequest(self.tool, self.tier, self.arguments, self.reason,
+                                            preview=self.preview, scope=self.scope).describe()}
 
 
 class ApprovalError(Exception):
@@ -74,7 +77,8 @@ class ApprovalBroker:
     def request(self, req: ApprovalRequest, source: str, task_id: str | None = None) -> bool:
         now = self.clock()
         p = Pending(next(self._ids), source, task_id, req.tool, req.tier, dict(req.arguments), req.reason,
-                    now, now + self.timeout_s, args_hash(req.arguments))
+                    now, now + self.timeout_s, args_hash(req.arguments), getattr(req, "preview", ""),
+                    getattr(req, "scope", ""))
         with self._lock:
             self._pending[p.id] = p
         self.audit.write("dashboard_approval_requested", id=p.id, source=source, tool=p.tool, tier=p.tier)

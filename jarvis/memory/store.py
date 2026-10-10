@@ -19,8 +19,9 @@ from __future__ import annotations
 
 import json
 import math
+import shutil
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from jarvis.db import Store
@@ -33,6 +34,7 @@ RRF_K = 60
 MIN_TRIGRAM_COVERAGE = 0.5   # fuzzy-only hits must share half of a query word's trigrams
 MEMORY_INDEX_MAX_LINES = 200
 AUTO = "auto"
+TRASH_DIR = ".trash"  # memory/.trash: deleted memories (never hard-deleted silently; restorable)
 
 # Very common words that carry no meaning for search (English + romanized Marathi).
 _STOP_RAW = {
@@ -132,6 +134,8 @@ class MemoryStore:
         self.db.execute("DELETE FROM memory_trigrams")
         count = 0
         for path in sorted(self.root.rglob("m-*.md")):
+            if TRASH_DIR in path.relative_to(self.root).parts:
+                continue  # deleted memories stay out of the index until restored
             try:
                 mem = Memory.from_markdown(path.read_text(encoding="utf-8"))
             except ValueError:
@@ -203,6 +207,55 @@ class MemoryStore:
             raise KeyError(memory_id)
         mem.status = "archived"
         self._write(mem)
+        self.write_memory_md()
+        return mem
+
+    # ---- trash (delete = move the file to memory/.trash and drop it from the index) ----
+
+    @property
+    def trash_dir(self) -> Path:
+        return self.root / TRASH_DIR
+
+    def trash(self, memory_id: str) -> Path:
+        """Delete a memory: its file moves to memory/.trash (restorable), the index forgets it.
+        Its id is never reused (_next_id also counts trashed files)."""
+        path = self._indexed_path(memory_id)
+        if not path or not path.exists():
+            raise KeyError(memory_id)
+        self.trash_dir.mkdir(parents=True, exist_ok=True)
+        dest = self.trash_dir / f"{path.stem}.{datetime.now():%Y%m%d-%H%M%S%f}.md"  # keeps the m-NNNN prefix
+        shutil.move(str(path), str(dest))
+        for table in ("memory_index", "memory_words", "memory_trigrams"):
+            self.db.execute(f"DELETE FROM {table} WHERE id=?", (memory_id,))
+        self.db.commit()
+        self.write_memory_md()
+        return dest
+
+    def trashed(self) -> list[tuple[str, Memory]]:
+        """(file name, memory) for every memory in the trash, newest first."""
+        if not self.trash_dir.exists():
+            return []
+        out = []
+        for path in sorted(self.trash_dir.glob("*.md"), key=lambda p: p.stem.rsplit(".", 1)[-1], reverse=True):
+            try:
+                out.append((path.name, Memory.from_markdown(path.read_text(encoding="utf-8"))))
+            except ValueError:
+                continue
+        return out
+
+    def restore(self, file_name: str) -> Memory:
+        """Bring a trashed memory back under its old id (refused if that id is in use again)."""
+        if Path(file_name).name != file_name or not file_name.endswith(".md"):
+            raise KeyError(file_name)
+        src = self.trash_dir / file_name
+        if not src.is_file():
+            raise KeyError(file_name)
+        mem = Memory.from_markdown(src.read_text(encoding="utf-8"))
+        if self._indexed_path(mem.id):
+            raise ValueError(f"{mem.id} is in use by another memory")
+        mem.validate()
+        self._write(mem)
+        src.unlink()
         self.write_memory_md()
         return mem
 
