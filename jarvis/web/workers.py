@@ -25,7 +25,7 @@ from jarvis.web.trust import TurnRecorder
 ChatFactory = Callable[[Runtime, object], ChatSession]  # (runtime, approver) -> session
 
 # Terminal chat commands that also work in the dashboard chat (jarvis/cli.py _slash).
-CHAT_COMMANDS = ("/memory", "/forget", "/help", "/project", "/record", "/note")
+CHAT_COMMANDS = ("/memory", "/forget", "/help", "/project", "/record", "/note", "/repeat")
 
 
 @dataclass
@@ -37,6 +37,7 @@ class _Chat:
     last_used: float = field(default_factory=time.time)
     busy: bool = False
     turns: TurnRecorder | None = None   # "Why did Jarvis say that?" (jarvis/web/trust.py)
+    last_turn_id: int | None = None     # for /why in the dashboard chat
 
 
 class ChatManager:
@@ -91,6 +92,10 @@ class ChatManager:
                     return {"reply": "Memory is not available.", "kind": "command"}
                 mem = chat.session.extractor.remember(rest.strip(), private=cmd == "/remember-private")
                 return {"reply": f"Remembered as {mem.id}: {mem.summary_en or mem.name}", "kind": "command"}
+            if cmd == "/why":
+                from jarvis.cli import why_text
+
+                return {"reply": why_text(chat.rt, chat.last_turn_id), "kind": "command"}
             if cmd == "/task":
                 return {"reply": "Run tasks from the Tasks tab (New task, then Run): the chat would wait "
                                  "for the whole task.", "kind": "command"}
@@ -108,6 +113,7 @@ class ChatManager:
                     turn_id = chat.turns.record(chat.rt.store.conn)
                 except Exception:  # the record is an extra; the reply must still arrive
                     turn_id = None
+            chat.last_turn_id = turn_id or getattr(chat.session, "last_turn_id", None)
             return {"reply": reply, "kind": "chat", "turn_id": turn_id}
 
         chat.busy = True
