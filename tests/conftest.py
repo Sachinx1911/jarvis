@@ -1,3 +1,7 @@
+import ipaddress
+import os
+import socket
+
 import keyring
 import pytest
 from keyring.backend import KeyringBackend
@@ -34,3 +38,53 @@ def isolated(tmp_path, monkeypatch):
     keyring.set_keyring(MemoryKeyring())
     yield tmp_path
     keyring.set_keyring(previous)
+
+
+def _is_local(host) -> bool:
+    if host in (None, "", "localhost") or str(host).startswith("/"):
+        return True
+    try:
+        return ipaddress.ip_address(str(host).split("%")[0]).is_loopback
+    except ValueError:
+        return False
+
+
+def _is_ip_literal(host) -> bool:
+    try:
+        ipaddress.ip_address(str(host).split("%")[0])
+        return True
+    except ValueError:
+        return False
+
+
+@pytest.fixture(autouse=True)
+def no_network(monkeypatch):
+    """Offline tests never reach the internet: only loopback connections are allowed.
+
+    Live tests (JARVIS_LIVE=1) keep real network access.
+    """
+    if os.environ.get("JARVIS_LIVE") == "1":
+        yield
+        return
+    real_connect, real_create, real_gai = socket.socket.connect, socket.create_connection, socket.getaddrinfo
+
+    def connect(self, address):
+        host = address[0] if isinstance(address, tuple) else address
+        if not _is_local(host):
+            raise OSError(f"network disabled in offline tests (tried {host})")
+        return real_connect(self, address)
+
+    def create_connection(address, *args, **kwargs):
+        if not _is_local(address[0]):
+            raise OSError(f"network disabled in offline tests (tried {address[0]})")
+        return real_create(address, *args, **kwargs)
+
+    def getaddrinfo(host, *args, **kwargs):
+        if not (_is_local(host) or _is_ip_literal(host)):
+            raise socket.gaierror(f"network disabled in offline tests (tried to resolve {host})")
+        return real_gai(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, "connect", connect)
+    monkeypatch.setattr(socket, "create_connection", create_connection)
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+    yield
