@@ -5,7 +5,9 @@ Ending a session: update this file and commit.
 
 ## Current status
 
-- **Phase:** Phase 3 in progress (task store, schema v3 done). Phase 2 built. Done-when met on Claude via subscription: 10/10 tool tasks verified, prompt-injection page blocked, no T4 action ran. Waiting for Sachin to review before Phase 3.
+- **Phase:** Phase 3 built (offline tests pass; live laptop-compare run with opus and sonnet workers in progress). Phases 4, 5, 6, 7 being built in parallel by agents in separate worktrees (`.claude/worktrees/`, git-ignored); the lead merges them.
+- **Phase 3 code:** `jarvis/tasks/` (store with states, budget, receipt), `jarvis/agents/` (team sub-loops, orchestrator), `jarvis/projects.py`, `jarvis/skills/recorder.py` (teach-by-demonstration), `jarvis/cli_tasks.py` (`task`, `tasks`, `receipt`, `project`, `record`, `skill`; chat `/task`, `/record`, `/note`), `config/tasks.yaml`, team routes in `config/routing.yaml`.
+- **Phase 2:** done-when met on Claude via subscription: 10/10 tool tasks verified, prompt-injection page blocked, no T4 action ran.
 - **AI provider now:** Claude through Sachin's Claude Max subscription, via the local Claude Code CLI (`claude -p`), adapter `jarvis/providers/claude_code.py`. No API key, no per-call billing; calls count against the plan's usage limits. Main chat: Opus 5.5 (medium). Memory enrichment/extraction: Haiku 5.5 (low). The Anthropic API adapter (`claude.py`) stays but is not approved in `config/routing.yaml`.
 - **Code:** Phase 0 (provider interface, fake + Claude Code + Claude API adapters, routing, SQLite, audit, keyring, CLI) plus Phase 1:
   - `jarvis/memory/`: markdown memory files + SQLite index (FTS5 unicode61 + trigram, RRF, gate, recency boost), `/remember`, two-step extractor (quote required, ADD/UPDATE/SUPERSEDE/NOOP/REJECT), MEMORY.md index.
@@ -35,7 +37,8 @@ Ending a session: update this file and commit.
 
 Parked items. Work that does not depend on them continues.
 
-- (none yet)
+- Pick the worker model (Researcher/Writer) after the opus vs sonnet laptop-compare comparison.
+- Push to GitHub: Phase 3 and later commits are local only until Sachin OKs a push.
 
 ## Next step
 
