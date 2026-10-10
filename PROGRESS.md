@@ -28,14 +28,22 @@ Ending a session: update this file and commit.
 ### Phase 3 live results
 
 - **First run (2026-10-10), before fixes:** both worker profiles FAILED verification twice. Opus workers: 4 min, 24 calls, $1.34 notional. Sonnet workers: 5 min, 30 calls, $1.10 notional. The pipeline and receipts worked; the causes were criteria nobody can prove online (live stock), researchers stopping at an aggregator, and revisions that could not add facts. Fixed in commit "Make team tasks pass on real research".
-- **Second run:** in progress.
+- **Second run (after fixes, still 1 fix round):** both FAILED, but closer: Opus workers 8 min, 44 calls, $2.90 notional, round 2 passed 4 of 5 criteria (one availability detail left). Sonnet workers 12 min, 45 calls, $2.03 notional; the checker caught a real error (one laptop at Rs 82,990, above the limit). Change made: 2 fix rounds, budget 90 calls / $5 notional.
+- **Demo -> skill replay (done-when part 2):** PASS on Opus (skill `create-weekly-plan-note` drafted, approved, replayed for a new week in a new session).
+- **Worker model comparison so far:** Opus workers cost more but got closer to passing; Sonnet workers were slower here. Recommendation: Opus (low) for now.
+
+### Final testing on Claude Fable (2026-10-10)
+
+- Live suites with `JARVIS_TEST_MODEL=claude-fable-5-1`: greeting PASS, memory test 10/10, tools 10/10 with injection blocked and 0 T4 runs, demo -> skill PASS (API-key test skipped: no key, by decision).
+- Eval suite: 12/12 (Marathi/English, memory, structured output, tool calling).
+- Laptop compare team task on Fable with 2 fix rounds: in progress.
 
 ## Waiting for Sachin
 
 Parked items. Work that does not depend on them continues.
 
 - **Push to GitHub:** Phases 3–8 are local only until Sachin OKs a push.
-- **Worker model:** pick opus or sonnet for Researcher/Writer after the Phase 3 rerun comparison.
+- **Worker model:** Claude recommends Opus (low) after the comparison (see Phase 3 live results). Default stays opus until Sachin decides.
 - **Telegram (Phase 4 live check):** create a bot with @BotFather, run `jarvis telegram set-token`, put your numeric Telegram user ID in `config/local.yaml` (`proactive_file: {telegram: {allowed_user_id: ...}}`) and a default weather place (`proactive_file: {brief: {place: "..."}}`). Then `jarvis telegram test` and `jarvis daemon`.
 - **Google (Phase 5 live check):** create a Google Cloud project, enable Calendar and Gmail APIs, create an OAuth "Desktop app" client, set the app to "In production" (Testing tokens expire in 7 days), put the client JSON path in `config/local.yaml` (`connectors_file: {google: {client_secret_file: ...}}`), `pip install -e ".[google]"`, run `jarvis google auth`.
 - **Open decision #19:** do email sender and subject count as P1 or P2? Default P2 (`gmail.header_class`).
@@ -43,7 +51,7 @@ Parked items. Work that does not depend on them continues.
 - **Voice (Phase 6 live check):** OK to install `faster-whisper` (~80 MB of packages) and download the Whisper `small` model (486 MB) with `jarvis voice setup`?
 - **Voice:** Marathi cloud voice (edge-tts) on or off (default off)? Wake word "hey jarvis" now or later (~100 MB, models CC BY-NC-SA)?
 - **Browser (Phase 8):** `jarvis browser setup` downloads Playwright Chromium (~150–200 MB) per machine; this laptop already has a cached copy.
-- **Dashboard (Phase 7):** `cd dashboard; npm install; npm run build` downloads the Next.js packages (one time).
+- **Dashboard (Phase 7):** on this laptop the built frontend is already in `dashboard/out/` (copied from the agent's build). On another machine: `cd dashboard; npm install; npm run build` (one-time download).
 - **Mac checks:** Rishi voice (`say -v '?'`), Whisper speed on the M4, microphone permission, EventKit (`pyobjc-framework-EventKit`, Reminders permission), browser profiles permissions, everything once on the Mac.
 
 ## Next step
