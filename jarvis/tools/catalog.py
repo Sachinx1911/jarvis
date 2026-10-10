@@ -22,6 +22,7 @@ from jarvis.control.egress import SEARCH_URL_PREFIX
 from jarvis.control.provenance import Provenance, untrusted_zones
 from jarvis.privacy import redact_p3
 from jarvis.tools.files import FileTools, PathPolicy
+from jarvis.tools.office import ANALYZE_PARAMS, DOCX_PARAMS, XLSX_PARAMS, OfficeTools
 from jarvis.tools.quarantine import Quarantine, sanitize_snippet
 from jarvis.tools.registry import TIERS, Tool, ToolRegistry
 from jarvis.tools.system import MEDIA_ACTIONS, SystemTools
@@ -155,6 +156,24 @@ def build_registry(reg: ToolRegistry, d: ToolDeps) -> ToolRegistry:
              writes=lambda args: [files.moved_to(args)]))
     add(Tool(ToolSpec("delete_file", f"Delete a file (kept in the workspace trash). {where}", _obj({"path": S}, ["path"])),
              "T3", files.delete_file, verify=files.verify_delete, precheck=paths("path")))
+
+    # ---- office files (jarvis/tools/office.py): new Word/Excel files, verified by re-opening them,
+    # and table analysis computed in code. The create tools return Jarvis's own confirmation text
+    # (path and counts), so they do not taint; analyze_table taints like read_file.
+    office = OfficeTools(policy)
+    add(Tool(ToolSpec("create_docx", "Create a NEW Word file (.docx, fails if it exists) from a title and blocks: "
+                      f"headings (levels 1-3), paragraphs, bullet and numbered lists, tables. {where}", DOCX_PARAMS),
+             "T1", office.create_docx, verify=office.verify_docx, precheck=paths("path"), writes=written("path"),
+             taints=False))
+    add(Tool(ToolSpec("create_xlsx", "Create a NEW Excel file (.xlsx, fails if it exists): sheets of rows (first row "
+                      "= header), optional number formats, formulas only when asked for, and native bar/line/pie "
+                      f"charts. {where}", XLSX_PARAMS),
+             "T1", office.create_xlsx, verify=office.verify_xlsx, precheck=paths("path"), writes=written("path"),
+             taints=False))
+    add(Tool(ToolSpec("analyze_table", "Row and column counts and per numeric column count, sum, mean, min and max "
+                      "of a CSV or XLSX file, with an optional group-by, computed exactly in code (Indian number "
+                      f"formats understood). Use it instead of doing the arithmetic yourself. {where}", ANALYZE_PARAMS),
+             "T0", office.analyze_table, precheck=paths("path"), taint_check=read_taint))
 
     # ---- web (output is untrusted: taints the session) ----
     def web_search(args: dict) -> str:

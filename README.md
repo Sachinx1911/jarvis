@@ -63,6 +63,8 @@ Teach, Schedules & Reminders (with event triggers), India, Agents, Connectors, S
 | `jarvis stop` / `jarvis resume` | Emergency stop for every model and tool call |
 | `jarvis eval` | Evaluation suite (for comparing models) |
 
+Office files, in chat: Jarvis creates new Word and Excel files (`create_docx`, `create_xlsx`: headings, lists, tables, number formats, native charts; never overwrites) and analyzes a CSV or XLSX in code (`analyze_table`: sums, averages, group-by; Indian number formats like `1,23,456.50` understood).
+
 ## Safety in short
 
 - Every tool has a risk tier: T0 read-only runs, T1 local writes run and are verified, T2/T3 always ask with the exact arguments, T4 (secrets, security bypass) never runs.

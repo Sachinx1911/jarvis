@@ -117,3 +117,17 @@ def test_target_folder_and_roots_for(tmp_path, monkeypatch):
         assert found and found[0] == tmp_path / "workspace"
     finally:
         store.close()
+
+
+def test_office_file_previews_show_counts_not_raw_arguments(tmp_path):
+    roots = _roots(tmp_path)
+    docx = preview("create_docx", {"path": "report.docx", "title": "Example report", "blocks": [
+        {"type": "heading", "text": "Summary", "level": 1}, {"type": "paragraph", "text": "x"},
+        {"type": "bullets", "items": ["a", "b"]}, {"type": "table", "header": ["A"], "rows": [["1"]]}]}, roots)
+    assert "Create new Word file: [[report.docx]]" in docx
+    assert "1 heading(s), 1 paragraph(s), 1 list(s), 1 table(s)" in docx
+    xlsx = preview("create_xlsx", {"path": "sales.xlsx", "sheets": [{"name": "Sales", "rows": [["M", "V"], ["Jan", 5]]}],
+                                   "charts": [{"type": "bar", "data": "B1:B2"}]}, roots)
+    assert "Create new Excel file: [[sales.xlsx]]" in xlsx and "Sales" in xlsx and "2 rows" in xlsx and "bar" in xlsx
+    (roots[0] / "report.docx").write_bytes(b"x")
+    assert "already exists" in preview("create_docx", {"path": "report.docx", "blocks": []}, roots)

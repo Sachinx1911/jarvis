@@ -13,7 +13,8 @@ dependencies = [
     "certifi>=2024",    # CA bundle when Python has none (python.org builds on macOS); see jarvis/netssl.py
     "pyyaml>=6",        # config/*.yaml
     "pypdf>=6",         # document library: text per PDF page, so answers can cite the page
-    "python-docx>=1.2", # document library: DOCX text and headings
+    "python-docx>=1.2", # document library: DOCX text and headings; create_docx
+    "openpyxl>=3.1",    # create_xlsx and analyze_table: Excel files with native charts, pure Python (jarvis/tools/office.py)
     "tzdata; sys_platform == 'win32'",  # Windows has no IANA time zones (Asia/Kolkata)
     "apscheduler>=3.10,<4",          # schedules: cron, misfire grace, coalesce, max_instances (v4 is pre-release)
     "python-telegram-bot>=21,<23",   # phone: long polling, inline Approve/Deny buttons

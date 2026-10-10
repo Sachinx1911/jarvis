@@ -8,9 +8,9 @@ Taint travels between agents (prompt-injection defense): an agent whose input is
 web text (the writer gets the researchers' findings, the checker reads the report) starts
 with a tainted registry, so it cannot be steered into T1 actions without approval and its
 links are egress-checked. The orchestrator can also mark any hand-off tainted with
-AgentEnv.tainted_input. Writers still work: write_file into the task folder is "sandboxed"
-(the path policy confines it there) and every file it writes is recorded as tainted
-provenance, so whoever reads it later is tainted too.
+AgentEnv.tainted_input. Writers still work: write_file, create_docx and create_xlsx into the
+task folder are "sandboxed" (the path policy confines them there) and every file they write is
+recorded as tainted provenance, so whoever reads it later is tainted too.
 """
 
 from __future__ import annotations
@@ -49,11 +49,13 @@ class AgentSpec:
 
 RESEARCHER = AgentSpec("researcher", "researcher", "researcher.md",
                        frozenset({"web_search", "web_fetch", "web_extract", "memory_search", "doc_search"}))
-WRITER = AgentSpec("writer", "writer", "writer.md", frozenset({"write_file", "read_file", "list_folder"}), "task",
-                   starts_tainted=True)
+WRITER = AgentSpec("writer", "writer", "writer.md",
+                   frozenset({"write_file", "read_file", "list_folder", "create_docx", "create_xlsx", "analyze_table"}),
+                   "task", starts_tainted=True)
 CHECKER = AgentSpec("checker", "checker", "checker.md", frozenset({"read_file", "list_folder", "web_fetch"}), "task",
                     starts_tainted=True)
-SANDBOXED_WRITES = frozenset({"write_file"})  # T1 writes allowed while tainted, task folder only
+# T1 new-file writes allowed while tainted, task folder only (agents whose files_root is "task")
+SANDBOXED_WRITES = frozenset({"write_file", "create_docx", "create_xlsx"})
 
 
 def prepare_taint(registry: ToolRegistry, spec: AgentSpec, order: "WorkOrder", env: "AgentEnv", name: str) -> None:
