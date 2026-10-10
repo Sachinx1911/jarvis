@@ -14,10 +14,8 @@ Ending a session: update this file and commit.
 
 ## Next step
 
-1. **Sachin:** Get a Claude API key (Anthropic Console) and decide the monthly API budget.
-2. **Sachin:** Store it: `jarvis secret set anthropic_api_key` (typed into a hidden prompt, never in chat or files).
-3. **Claude:** Run the live test (`JARVIS_LIVE=1 pytest -m live`) and `jarvis chat`, then close Phase 0.
-4. **Sachin:** Say "Start Phase 1".
+1. **Sachin:** Decide how to continue without the Claude API (see 2026-10-10 decision): build Phase 1 against the fake provider, or bring local-model work forward.
+2. Later, when the API is wanted: store the key with `jarvis secret set anthropic_api_key`, run `JARVIS_LIVE=1 pytest -m live`, and tick the last Phase 0 done-when item.
 
 Phase 1 notes: add Claude `stream()`/`structured()` with adapter contract tests; consider server-side refusal `fallbacks` (Claude-only, logged in receipts).
 
@@ -41,6 +39,7 @@ Phase 1 notes: add Claude `stream()`/`structured()` with adapter contract tests;
 | 2026-10-10 | Build cross-platform (Windows office laptop + Mac). Mac-only features stay in later phases. Secrets via keyring: Keychain on Mac, Credential Manager on Windows |
 | 2026-10-10 | Python 3.12 on the office laptop; code supports 3.12+ (Mac keeps 3.13) |
 | 2026-10-10 | Phase 0 started without an API key, using the fake provider; live Claude check after the key arrives |
+| 2026-10-10 | Do not use the Claude API for now. The live Claude check is deferred; the Claude adapter stays in the code but is not called |
 
 ## Open decisions
 
