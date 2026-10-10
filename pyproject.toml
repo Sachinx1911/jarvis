@@ -27,6 +27,9 @@ voice-cloud = ["edge-tts>=7.2.8"]   # optional Marathi cloud voice, off by defau
 wakeword = ["openwakeword==0.6.0"]  # optional "hey jarvis", off by default
 # Google Calendar + Gmail connectors (Phase 5): official API client and installed-app OAuth.
 google = ["google-api-python-client>=2.201", "google-auth-oauthlib>=1.5"]
+# Isolated browser (Phase 8): Playwright's own Chromium; the browser itself (~150-200 MB) is
+# downloaded by `jarvis browser setup`, never automatically.
+browser = ["playwright>=1.63"]
 
 [project.scripts]
 jarvis = "jarvis.cli:main"

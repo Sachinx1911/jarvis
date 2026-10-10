@@ -163,6 +163,9 @@ class Recorder:
             out += [f"- `{c}`" for c in cmds] or ["- none"]
         else:
             out.append("- not recorded")
+        from jarvis.browser import browser_steps_evidence  # Phase 8: steps from the isolated browser
+
+        out += ["", browser_steps_evidence(rec.folder)]
         out += ["", "## User's notes"]
         out += [f"- {n}" for n in rec.meta.get("notes", [])] or ["- none"]
         return "\n".join(out) + "\n"
