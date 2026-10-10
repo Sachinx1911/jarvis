@@ -30,3 +30,10 @@ gmail:
 
 eventkit:
   enabled: true                 # macOS only; ignored on other systems
+
+notes:
+  enabled: true                 # Apple Notes through osascript; macOS only, ignored on other systems
+  body_class: P2                # note text: private, withheld from routes below P2 (like email bodies)
+  title_class: P1               # note titles and folder names; set P2 to withhold them from the cloud model too
+  folder: Jarvis                # notes_create makes NEW notes only, in this folder (created if missing)
+  max_results: 10
