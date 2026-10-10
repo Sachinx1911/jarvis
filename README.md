@@ -35,7 +35,7 @@ jarvis secret set tavily_api_key    # web search (stored in Keychain / Credentia
 jarvis chat
 ```
 
-Optional extras: `pip install -e ".[voice]"` (speech), `".[google]"` (Calendar, Gmail), `".[browser]"` (isolated browser), `".[voice-cloud]"`, `".[wakeword]"`. Dashboard frontend: `cd dashboard && npm install && npm run build`.
+Optional extras: `pip install -e ".[voice]"` (local speech in English and Marathi; then `jarvis voice setup` downloads the models), `".[google]"` (Calendar, Gmail), `".[browser]"` (isolated browser), `".[voice-cloud]"`, `".[wakeword]"`. Dashboard frontend: `cd dashboard && npm install && npm run build`.
 
 Apple Notes (Mac only, no extra install): `python -m jarvis.connectors.applenotes` asks for the Automation permission and checks it; Jarvis can search and read notes and create new ones in its own `Jarvis` folder, never edit or delete.
 
@@ -55,7 +55,7 @@ Teach, Schedules & Reminders (with event triggers), India, Agents, Connectors, S
 | `jarvis record start|stop|draft|approve` | Teach a task once; Jarvis turns it into a skill |
 | `jarvis docs index|search` | Project document library with citations |
 | `jarvis schedule …`, `jarvis brief`, `jarvis daemon` | Schedules, morning brief, Telegram bot |
-| `jarvis voice`, `jarvis say` | Push-to-talk voice |
+| `jarvis voice`, `jarvis say` | Push-to-talk voice, English and Marathi, all local. `jarvis voice setup` downloads what `config/voice.yaml` uses: Whisper small (486 MB), Marathi speech-to-text IndicConformer (138 MB), offline Marathi voice MMS-TTS (115 MB, non-commercial license); `--model hey_jarvis` adds the wake word (9 MB, off by default) |
 | `jarvis dashboard` | Dashboard only, without the scheduler (127.0.0.1, token) |
 | `jarvis connectors status` | Tools, risk tiers, health checks |
 | `jarvis nav`, `jarvis bills`, `jarvis wallet` | India: AMFI NAVs, bills and subscriptions (never pays), document wallet with masked numbers |
