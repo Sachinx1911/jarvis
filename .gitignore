@@ -1,0 +1,29 @@
+# Secrets: never commit (repo is public)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Jarvis personal data: never commit (repo is public)
+/memory/
+/profile/
+/projects/
+/skills/
+/data/
+/connectors/registry.yaml
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node (dashboard, later)
+node_modules/
+
+# macOS
+.DS_Store
