@@ -5,49 +5,52 @@ Ending a session: update this file and commit.
 
 ## Current status
 
-- **Phase:** Phase 3 built (offline tests pass; live laptop-compare run with opus and sonnet workers in progress). Phase 6 (voice) merged: Windows speech works (System.Speech), push-to-talk loop, voice approvals default to deny; speech-to-text waits for the Whisper download. Phases 4, 5, 7, 8 being built in parallel by agents in separate worktrees (`.claude/worktrees/`, git-ignored); the lead merges them.
-- **Phase 3 code:** `jarvis/tasks/` (store with states, budget, receipt), `jarvis/agents/` (team sub-loops, orchestrator), `jarvis/projects.py`, `jarvis/skills/recorder.py` (teach-by-demonstration), `jarvis/cli_tasks.py` (`task`, `tasks`, `receipt`, `project`, `record`, `skill`; chat `/task`, `/record`, `/note`), `config/tasks.yaml`, team routes in `config/routing.yaml`.
-- **Phase 2:** done-when met on Claude via subscription: 10/10 tool tasks verified, prompt-injection page blocked, no T4 action ran.
-- **AI provider now:** Claude through Sachin's Claude Max subscription, via the local Claude Code CLI (`claude -p`), adapter `jarvis/providers/claude_code.py`. No API key, no per-call billing; calls count against the plan's usage limits. Main chat: Opus 5.5 (medium). Memory enrichment/extraction: Haiku 5.5 (low). The Anthropic API adapter (`claude.py`) stays but is not approved in `config/routing.yaml`.
-- **Code:** Phase 0 (provider interface, fake + Claude Code + Claude API adapters, routing, SQLite, audit, keyring, CLI) plus Phase 1:
-  - `jarvis/memory/`: markdown memory files + SQLite index (FTS5 unicode61 + trigram, RRF, gate, recency boost), `/remember`, two-step extractor (quote required, ADD/UPDATE/SUPERSEDE/NOOP/REJECT), MEMORY.md index.
-  - `jarvis/core/`: context builder (SOUL, rules, memory index, hard rules, skill index, relevant memories, local time), Jarvis-owned agent loop with step limit, chat session (memories extracted at /exit).
-  - `jarvis/privacy.py`: P0–P3 classes, P3 filters (keys, passwords, OTP, cards with Luhn, Aadhaar, PAN); P3 redacted from every outbound payload; P2 memories withheld from cloud routes.
-  - `jarvis/tools/registry.py` (T0 only in Phase 1): `memory_search`, `session_search`, `load_skill`. `jarvis/skills/loader.py` (SKILL.md). `jarvis/control/stop.py` (emergency stop file).
-  - `jarvis/evals/runner.py` + `tests/evals/migration/tasks.yaml` (8 synthetic tasks).
-  - CLI: `chat` (/remember, /remember-private, /memory, /forget), `memory list|search|show|archive|export|reindex|add`, `sessions search`, `interview`, `eval`, `stop`, `resume`.
-- **Phase 2 code:**
-  - `jarvis/control/approvals.py`: T0 runs; T1 runs then verified (asks once the session is tainted); T2/T3 ask with exact arguments; T4 never runs and is logged. Decisions go to the `approvals` table and the audit log (with output hash).
-  - `jarvis/tools/registry.py`: schema check -> path pre-check (secret paths are T4) -> gate -> run -> verify -> log. Taint flag set by web tools.
-  - `jarvis/tools/files.py`: read/list (T0), write new (T1), overwrite/move (T2), delete to `.trash` (T3); only inside `workspace/` (config `config/tools.yaml`).
-  - `jarvis/tools/web.py` + `quarantine.py`: Tavily search, page fetch (public http(s) only, redirects checked), weather (Open-Meteo, no key). Pages are read by a quarantined Haiku call with no tools.
-  - `jarvis/tools/system.py`: open_app (allowlist, T1), notify (T1), media keys (T1), open_url (T2), brightness (T2, Windows). Windows and macOS.
-  - `jarvis/tools/catalog.py`: all built-in tools and the private registry `connectors/registry.yaml` (disable or raise a tier; lowering is ignored). `jarvis connectors status`.
-  - Chat asks for approval in the terminal; one-shot `chat -m` denies anything that needs approval.
-- **Tests:** 125 pass offline, 4 live tests opt-in (`JARVIS_LIVE=1 pytest -m live -s`). Live on 2026-10-10: memory 10/10, tools 10/10 + injection blocked, eval baseline 8/8.
-- **Not live-tested on purpose:** media keys, notifications, open_app, brightness (they change the computer). Covered by unit tests only; Sachin can try them in chat.
-- **Tavily:** key stored in Windows Credential Manager on the office laptop (2026-10-10); live search and a chat news question work. The Mac needs its own `jarvis secret set tavily_api_key`.
-- **Not built (deferred):** news via RSS (Tavily `topic: news` covers news and cricket), traffic (needs a maps API), Do Not Disturb (no simple Windows API), vector search (decided), automatic extraction 10–30 min after a quiet session (needs the Phase 4 scheduler; now runs at /exit), weekly memory cleanup, query rewrite as a separate model call (summary_en + keywords saved with each memory cover romanized Marathi for now).
-- **Needs on each machine:** Claude Code CLI 2.1.280 or newer, logged in with the Claude subscription. `jarvis health` checks this.
-- **Half-done work:** None.
+- **Phase:** All phases 0–8 are built and merged into `main` (2026-10-10). 494 offline tests pass. Live checks on Claude (subscription) passed for Phases 0–2; Phase 3 live checks are being rerun after quality fixes (see "Phase 3"). Phases 4–8 are tested offline with fakes; their live checks wait for items in "Waiting for Sachin". Final testing on Claude Fable comes last (Sachin's rule).
+- **How the work was done:** Phase 3 by the lead session; Phases 4, 5, 6, 7, 8 by parallel agents in git worktrees (`.claude/worktrees/`, git-ignored), each owning its own files, then merged and wired in by the lead.
+- **AI provider now:** Claude through Sachin's Claude Max subscription, via the local Claude Code CLI (`claude -p`), adapter `jarvis/providers/claude_code.py`. No API key, no per-call billing; calls count against the plan's usage limits. Main chat Opus 5.5 (medium); memory, quarantine, summaries Haiku 5.5 (low); planner and checker Opus 5.5 (high); workers per profile (`config/tasks.yaml`). The Anthropic API adapter (`claude.py`) stays but is not approved in `config/routing.yaml`.
+- **Needs on each machine:** Python 3.12+, `pip install -e ".[dev]"`, Claude Code CLI 2.1.280 or newer logged in with the subscription (`jarvis health`), Tavily key (`jarvis secret set tavily_api_key`). Optional extras: `[voice]`, `[voice-cloud]`, `[wakeword]`, `[google]`, `[browser]`. Dashboard frontend: `cd dashboard; npm install; npm run build`.
+- **Half-done work:** Phase 3 live rerun (laptop compare with opus and sonnet workers; demo-to-skill replay) — results to be recorded below.
 - **Last update:** 2026-10-10, office laptop (Windows 11, Python 3.12).
-- **GitHub:** Pushed to `main` on 2026-10-10 (up to Phase 2) with Sachin's OK.
+- **GitHub:** Pushed to `main` on 2026-10-10 up to Phase 2 with Sachin's OK. Everything after that is local until he OKs a push.
+
+### What each phase delivered
+
+- **Phase 0 — setup:** provider interface (`jarvis/providers/base.py`), fake provider, adapters, routing policy, SQLite (migrations), audit log, keyring secrets, CLI, setup scripts.
+- **Phase 1 — brain + memory:** markdown memories + SQLite FTS5 (words + trigrams, RRF), `/remember`, two-step extractor with quotes, context builder, Jarvis-owned agent loop, privacy gate v1 (P0–P3, P3 filters), skills loader, session search, emergency stop, interview, eval scaffold. Live: memory test 10/10, eval baseline 8/8.
+- **Phase 2 — tools + safety:** T0–T4 gate with approvals, taint flag, quarantine for web pages, workspace-only file tools, Tavily search, page fetch, weather, apps/notify/media/brightness, verifiers, private tool registry. Live: 10/10 tasks, injection blocked, 0 T4 runs.
+- **Phase 3 — tasks + agent team:** task queue and states, planner, parallel researchers, writer, deterministic link-grounding check + independent checker, follow-up research and one revision, receipts from logs, budgets (calls, tokens, notional USD), checkpoints and resume, projects, teach-by-demonstration (chat, tool runs, file changes, terminal transcript, browser steps, notes → SKILL.md draft → approval), worker profiles opus/sonnet.
+- **Phase 4 — Telegram + proactive:** APScheduler schedules (missed runs, no overlap, unattended = T0/T1 only), heartbeat, morning brief (weather, calendar, reminders, goals, tasks, schedules), reminders, Telegram bot (only Sachin's user ID, Approve/Deny buttons, `/stop`, `/cloud off`), `jarvis daemon`.
+- **Phase 5 — connectors:** document library (md/txt/pdf/docx, page citations, P2 by default), `doc_search`, active project context, Google Calendar + Gmail via OAuth desktop flow (create event T2 with read-back verify, send T3), time parser (English + Marathi), EventKit (Mac only), connector health.
+- **Phase 6 — voice:** push-to-talk loop, Windows System.Speech and macOS `say`, faster-whisper speech-to-text (model download pending), optional Marathi cloud voice and wake word (off), voice approvals default to deny.
+- **Phase 7 — dashboard:** FastAPI on 127.0.0.1 with a token, strict origin checks, approvals queue with argument hash, emergency stop; Next.js static export with Chat, Memory, Tasks & Approvals, Agents, Connectors, Schedules, Settings & Usage. `jarvis dashboard`.
+- **Phase 8 — extras:** isolated Playwright browser (domain allowlist, fresh context, T3 submit with exact fields, passwords never logged, download checks), browser step recording, Operator and Coder agents, `run_tests` allowlist. Not built: OCR, smart home, signed .app, meeting notes, magic search.
+
+### Phase 3 live results
+
+- **First run (2026-10-10), before fixes:** both worker profiles FAILED verification twice. Opus workers: 4 min, 24 calls, $1.34 notional. Sonnet workers: 5 min, 30 calls, $1.10 notional. The pipeline and receipts worked; the causes were criteria nobody can prove online (live stock), researchers stopping at an aggregator, and revisions that could not add facts. Fixed in commit "Make team tasks pass on real research".
+- **Second run:** in progress.
 
 ## Waiting for Sachin
 
 Parked items. Work that does not depend on them continues.
 
-- Pick the worker model (Researcher/Writer) after the opus vs sonnet laptop-compare comparison.
-- Push to GitHub: Phase 3 and later commits are local only until Sachin OKs a push.
-- Voice: OK to install `faster-whisper` (~80 MB of packages) and download the Whisper `small` model (486 MB) with `jarvis voice setup`? Needed for speech-to-text and the "5 voice commands" check.
-- Voice: turn the Marathi cloud voice (edge-tts, `mr-IN-ManoharNeural`) on or keep it off? Off by default.
-- Voice: wake word "hey jarvis" (openWakeWord, ~100 MB, models CC BY-NC-SA) now or later? Off by default.
-- Voice on the Mac: check the Rishi voice (`say -v '?'`), Whisper speed on the M4, microphone permission.
+- **Push to GitHub:** Phases 3–8 are local only until Sachin OKs a push.
+- **Worker model:** pick opus or sonnet for Researcher/Writer after the Phase 3 rerun comparison.
+- **Telegram (Phase 4 live check):** create a bot with @BotFather, run `jarvis telegram set-token`, put your numeric Telegram user ID in `config/local.yaml` (`proactive_file: {telegram: {allowed_user_id: ...}}`) and a default weather place (`proactive_file: {brief: {place: "..."}}`). Then `jarvis telegram test` and `jarvis daemon`.
+- **Google (Phase 5 live check):** create a Google Cloud project, enable Calendar and Gmail APIs, create an OAuth "Desktop app" client, set the app to "In production" (Testing tokens expire in 7 days), put the client JSON path in `config/local.yaml` (`connectors_file: {google: {client_secret_file: ...}}`), `pip install -e ".[google]"`, run `jarvis google auth`.
+- **Open decision #19:** do email sender and subject count as P1 or P2? Default P2 (`gmail.header_class`).
+- **Confirm tiers:** `parse_time` set to T0 (pure local computation); EventKit tools kept at T2.
+- **Voice (Phase 6 live check):** OK to install `faster-whisper` (~80 MB of packages) and download the Whisper `small` model (486 MB) with `jarvis voice setup`?
+- **Voice:** Marathi cloud voice (edge-tts) on or off (default off)? Wake word "hey jarvis" now or later (~100 MB, models CC BY-NC-SA)?
+- **Browser (Phase 8):** `jarvis browser setup` downloads Playwright Chromium (~150–200 MB) per machine; this laptop already has a cached copy.
+- **Dashboard (Phase 7):** `cd dashboard; npm install; npm run build` downloads the Next.js packages (one time).
+- **Mac checks:** Rishi voice (`say -v '?'`), Whisper speed on the M4, microphone permission, EventKit (`pyobjc-framework-EventKit`, Reminders permission), browser profiles permissions, everything once on the Mac.
 
 ## Next step
 
-1. **Sachin:** Try Phase 2 in chat (weather, files in `workspace/`, volume, open notepad), then review.
-2. **Sachin:** Say "Start Phase 3" (Tasks + Agent team).
+1. **Claude:** Record the Phase 3 rerun results; compare opus vs sonnet workers.
+2. **Claude:** Final testing on Claude Fable across all phases (live suites, eval suite, laptop compare), then record results.
+3. **Sachin:** Work through "Waiting for Sachin".
 
 ## Decisions made by Sachin
 
@@ -68,23 +71,32 @@ Parked items. Work that does not depend on them continues.
 | 2026-10-10 | Sensitive (P2) data: nothing sent to the cloud at the start |
 | 2026-10-10 | Build cross-platform (Windows office laptop + Mac). Mac-only features stay in later phases. Secrets via keyring: Keychain on Mac, Credential Manager on Windows |
 | 2026-10-10 | Python 3.12 on the office laptop; code supports 3.12+ (Mac keeps 3.13) |
-| 2026-10-10 | Phase 0 started without an API key, using the fake provider; live Claude check after the key arrives |
 | 2026-10-10 | Do not use the Claude API for now. The Claude API adapter stays in the code but is not approved |
 | 2026-10-10 | Use Sachin's Claude Max subscription instead, through the Claude Code CLI as a provider adapter (`claude_code`). Claude Code CLI updated to 2.1.296 on the office laptop |
-| 2026-10-10 | Start Phase 1 now, built and tested against the fake provider plus the subscription provider. Vector search deferred (keyword + trigram first) |
-| 2026-10-10 | (Confirmed by Sachin) P2 "sensitive" in memory prompts = health, money, ID document contents/numbers, other people's phone/email/address. Family names, where things are kept, schedules and preferences are P1. The first live run marked a daughter's name and a document location as P2, which withheld them from Claude |
-| 2026-10-10 | Start Phase 2. Web search stays Tavily (compared with Brave, Claude search via Max, Google CSE, DuckDuckGo, SearXNG; Tavily: no card, AI-ready content, provider-independent) |
-| 2026-10-10 | Tavily MCP server not used for now: Jarvis already calls the Tavily REST API directly; MCP client comes with connectors (Phases 4–5) |
-| 2026-10-10 | (Claude) Voice engines: faster-whisper for local speech-to-text (no torch, 4x faster than openai-whisper on CPU per its README); System.Speech on Windows and `say` on macOS for speech; edge-tts only as an optional, off-by-default Marathi cloud voice that never gets P2/P3 text |
+| 2026-10-10 | Vector search deferred (keyword + trigram first) |
+| 2026-10-10 | P2 "sensitive" in memory prompts = health, money, ID document contents/numbers, other people's phone/email/address. Family names, where things are kept, schedules and preferences are P1 |
+| 2026-10-10 | Web search stays Tavily (compared with Brave, Claude search via Max, Google CSE, DuckDuckGo, SearXNG; Tavily: no card, AI-ready content, provider-independent). Tavily MCP server not used for now |
 | 2026-10-10 | File tools start with the Jarvis `workspace/` folder only; more folders can be added one at a time in `config/local.yaml` |
+| 2026-10-10 | Keep working through all phases without stopping; park items that need Sachin's confirmation; use parallel agents; final testing on Claude Fable (CLAUDE.md updated) |
+| 2026-10-10 | Researcher/Writer model: test both opus (low) and sonnet (medium), then choose |
+
+## Decisions made by Claude (for Sachin to review)
+
+| Date | Decision |
+|---|---|
+| 2026-10-10 | Voice: faster-whisper for local speech-to-text (no torch; 4x faster than openai-whisper on CPU per its README); System.Speech on Windows, `say` on macOS; edge-tts only as an optional, off-by-default Marathi cloud voice that never gets P2/P3 text |
+| 2026-10-10 | Unattended schedules run agent tasks with no approver: only T0/T1 actions; anything else is refused and shows in the receipt |
+| 2026-10-10 | Telegram `/cloud off` writes an override file that applies to every route; it can only switch cloud off, never loosen `routing.yaml` |
+| 2026-10-10 | The morning brief shows calendar titles and times (P1) but no email until decision #19 |
+| 2026-10-10 | Dashboard: localhost only, token in keyring, no cookie auth; lowering a tool's tier or re-enabling it only by editing the private registry file |
 
 ## Open decisions
 
 See "Open decisions" in PLAN.md. Most important:
-- 5 things Jarvis should do every day (before Phase 1)
-- Whether email sender and subject count as P1 or P2 (before Phase 5)
-- Claude API key and monthly budget (for Phase 0)
+- 5 things Jarvis should do every day
+- Whether email sender and subject count as P1 or P2 (#19)
 - Where to keep the private backup of Jarvis's personal data
+- Worker model choice (after the Phase 3 comparison)
 
 ## Session log
 
@@ -95,7 +107,7 @@ See "Open decisions" in PLAN.md. Most important:
 | 2026-10-10 | MacBook M4 | PLAN v3.3: AI provider layer, privacy classes P0–P3, migration roadmap Stages A–D, migration evaluation suite. Brain-loop recommendation changed to a Jarvis-owned loop. No code |
 | 2026-10-10 | MacBook M4 | Sachin decided: own loop, Tavily, no P2 to cloud at start (PLAN v3.4) |
 | 2026-10-10 | MacBook M4 | PLAN v3.5: migration path for every AI-dependent component, rule for moving a component local. CLAUDE.md rule added |
-| 2026-10-10 | Office laptop (Windows) | Cloned repo. Built Phase 0 cross-platform: provider interface, fake + Claude adapters, routing, SQLite, audit, keyring, CLI, setup scripts, 26 tests passing |
-| 2026-10-10 | Office laptop (Windows) | Added the Claude Code CLI adapter (subscription login, isolated, JSON reply/action mode). Live greeting test passed. Phase 0 complete. Phase 1 plan approved |
-| 2026-10-10 | Office laptop (Windows) | Built Phase 2: tiers and approvals, taint flag, quarantine, file/web/weather/system/media tools, verifier, connector registry. Live: 10/10 tasks, injection blocked, 0 T4 runs |
-| 2026-10-10 | Office laptop (Windows) | Built Phase 1: memory store/search, write path, context builder, agent loop, privacy gate v1, tools, skills, session search, emergency stop, interview, eval scaffold. Live memory test 10/10, eval baseline 8/8 |
+| 2026-10-10 | Office laptop (Windows) | Cloned repo. Built Phase 0 cross-platform, then the Claude Code CLI adapter (subscription). Live greeting test passed |
+| 2026-10-10 | Office laptop (Windows) | Built Phase 1 (memory, loop, privacy gate, evals). Live memory test 10/10, eval baseline 8/8 |
+| 2026-10-10 | Office laptop (Windows) | Built Phase 2 (tiers, approvals, taint, quarantine, tools). Live: 10/10 tasks, injection blocked, 0 T4 runs. Pushed to GitHub |
+| 2026-10-10 | Office laptop (Windows) | Built Phase 3 (tasks, team, receipts, projects, teach-by-demo). Five parallel agents built Phases 4–8; all merged and wired in. 494 offline tests pass. First live laptop compare failed verification; quality fixes made; rerun started |
