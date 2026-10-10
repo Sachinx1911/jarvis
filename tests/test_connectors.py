@@ -1,4 +1,6 @@
-"""Connector registry entries, default tiers, health checks, EventKit guard and the Phase 5 CLI."""
+"""Connector registry entries, default tiers, health checks, EventKit guard and the Phase 5 CLI.
+
+Apple Notes has its own file (test_applenotes.py)."""
 
 import argparse
 import io
@@ -13,6 +15,7 @@ import yaml
 
 from jarvis import cli_connectors
 from jarvis.connectors import eventkit
+from jarvis.connectors.applenotes import FakeNotesRunner
 from jarvis.connectors.config import get_tz, load_connectors_config
 from jarvis.connectors.google import auth
 from jarvis.connectors.google.fake import FakeGoogleClient
@@ -35,7 +38,7 @@ def deps(tmp_path):
     cfg = load_connectors_config()
     d = ConnectorDeps(tmp_path, store, AuditLog(tmp_path / "data" / "audit.jsonl"), "P1", cfg,
                       google_client=lambda: FakeGoogleClient(), eventkit_client=lambda: eventkit.FakeEventKitClient(),
-                      now=lambda: NOW)
+                      notes_runner=FakeNotesRunner(), now=lambda: NOW)
     yield d
     store.close()
 
@@ -48,11 +51,13 @@ def test_shipped_config_defaults_are_safe():
     assert cfg["timezone"] == "Asia/Kolkata"
 
 
-def test_connector_tools_and_tiers(deps):
+def test_connector_tools_and_tiers(deps, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")  # Apple Notes registers only on macOS
     tiers = {t.spec.name: t.tier for t in connector_tools(deps)}
     assert tiers == {"doc_search": "T0", "parse_time": "T0", "calendar_list": "T0", "calendar_create_event": "T2",
                      "gmail_search": "T0", "gmail_read": "T0", "gmail_draft": "T1", "gmail_send": "T3",
-                     "reminders_list": "T2", "reminder_create": "T2"}
+                     "reminders_list": "T2", "reminder_create": "T2",
+                     "notes_search": "T0", "notes_read": "T0", "notes_create": "T1"}
 
 
 def test_unclassified_tools_default_to_t2_and_no_agents():
@@ -65,8 +70,9 @@ def test_unclassified_tools_default_to_t2_and_no_agents():
     assert _with_declared_tier(t3).tier == "T3"
 
 
-def test_google_and_eventkit_can_be_disabled(deps):
-    cfg = dict(deps.cfg, google={"enabled": False}, eventkit={"enabled": False})
+def test_google_eventkit_and_notes_can_be_disabled(deps, monkeypatch):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    cfg = dict(deps.cfg, google={"enabled": False}, eventkit={"enabled": False}, notes={"enabled": False})
     names = {t.spec.name for t in connector_tools(replace(deps, cfg=cfg))}
     assert names == {"doc_search"}
 
