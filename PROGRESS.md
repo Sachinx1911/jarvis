@@ -53,10 +53,10 @@ Ending a session: update this file and commit.
 
 Built on 2026-10-10 (Mac): office files (`create_docx`, `create_xlsx` with native charts, `analyze_table`), missed-run alerts, dashboard repeat drafts and trigger create/delete, Apple Notes connector.
 
-Can be built now (no decision or download needed):
-- `/repeat` inside the dashboard's own chat (repeat the last chat action).
-- A `--live` flag for `jarvis connectors status` (runs the Apple Notes live check).
-- Adding a UPI payee in the app with an explicit "I checked this ID" step (needs Sachin's OK).
+Also built on 2026-10-10: `jarvis connectors status --live`, `/repeat` and `/why` in the dashboard chat.
+
+Can be built after Sachin's OK:
+- Adding a UPI payee in the app with an explicit "I checked this ID" step.
 
 Need Sachin's OK for a download or a decision first:
 - Marathi speech-to-text (IndicConformer or IndicWhisper, local; today only a placeholder) and the English Whisper model download.
@@ -171,6 +171,7 @@ See "Open decisions" in PLAN.md. Most important:
 | 2026-10-10 | Office laptop (Windows) | Built Phase 2 (tiers, approvals, taint, quarantine, tools). Live: 10/10 tasks, injection blocked, 0 T4 runs. Pushed to GitHub |
 | 2026-10-10 | Office laptop (Windows) | Research fixes merged (security, prices, memory), one-click app, triggers, standing approvals and previews. 902 tests pass. Pushed. India features and verify/repeat stopped mid-work on wip branches; handoff to home |
 | 2026-10-10 | Office laptop (Windows) | Fable final tests (live suites pass, evals 12/12; laptop compare fails on retailer-price verification). Planner modes, task cancel, chat browser, memory upkeep, approval replay, migration lock fix, README, research on 5 topics, TESTING.md |
+| 2026-10-10 | Home MacBook M4 | Small follow-ups: `connectors status --live`, `/repeat` and `/why` in the dashboard chat. 1379 passed |
 | 2026-10-10 | Home MacBook M4 | Smart home dropped (Sachin). Built and merged: missed-run alerts; Apple Notes connector (titles P2 by default); dashboard repeat drafts + trigger create/delete (structured confirm result); office files with receipts, previews and Writer prompt. 1375 passed |
 | 2026-10-10 | Home MacBook M4 | Merged dashboard India tab + event triggers (fixed a pending-approvals table race, added `GET /api/sessions/{id}/turns`, docs). Added `/why`. Fable final tests on the Mac (see Final testing). Fixed macOS TLS certificates and the memory-eval grader. 1230 passed |
 | 2026-10-10 | Home MacBook M4 | Merged why-panel recording for every chat and sensitive enforcement; fixed two privacy gaps found by the agent (Devanagari-digit P3, sensitive memories in the extractor's decide step). 1186 passed |
