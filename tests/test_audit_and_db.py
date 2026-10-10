@@ -40,3 +40,34 @@ def test_messages_stored_neutral_with_adapter_state(tmp_path):
     parts = json.loads(store.conn.execute("SELECT parts FROM messages WHERE id=?", (mid,)).fetchone()[0])
     assert parts == [{"type": "ToolCall", "id": "t1", "name": "read_file", "arguments": {"path": "a.txt"}}]
     assert store.conn.execute("SELECT provider FROM adapter_state WHERE message_id=?", (mid,)).fetchone() == ("anthropic",)
+
+
+def test_concurrent_first_open_migrates_once(tmp_path):
+    """Several threads opening an old database at once (the dashboard does this) must not fail."""
+    import sqlite3
+    import threading
+
+    path = tmp_path / "j.db"
+    old = sqlite3.connect(path)
+    from jarvis.db import _SCHEMA_V1
+    old.executescript(_SCHEMA_V1)
+    old.execute("PRAGMA user_version = 1")
+    old.commit()
+    old.close()
+    errors = []
+
+    def open_it():
+        try:
+            Store(path).close()
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    threads = [threading.Thread(target=open_it) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    s = Store(path)
+    assert s.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    s.close()

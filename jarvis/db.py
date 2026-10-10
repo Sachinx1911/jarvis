@@ -131,19 +131,44 @@ def _part_to_json(part: TextPart | ToolCall | ToolResult) -> dict:
     return {"type": type(part).__name__, **asdict(part)}
 
 
+def _statements(script: str) -> list[str]:
+    out, buf = [], ""
+    for line in script.splitlines(keepends=True):
+        buf += line
+        if sqlite3.complete_statement(buf):
+            out.append(buf.strip())
+            buf = ""
+    return [s for s in out if s]
+
+
 class Store:
     def __init__(self, path: Path):
+        # timeout: wait for another writer (e.g. a migration in another thread) instead of failing
         path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(path)
+        self.conn = sqlite3.connect(path, timeout=30)
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.migrate()
 
     def migrate(self) -> None:
-        version = self.conn.execute("PRAGMA user_version").fetchone()[0]
-        for target in range(version + 1, SCHEMA_VERSION + 1):
-            self.conn.executescript(_MIGRATIONS[target])
-            self.conn.execute(f"PRAGMA user_version = {target}")
-            self.conn.commit()
+        """Each step runs in one write-locked transaction: two processes or threads opening the
+        database at once cannot both apply it, and a crash mid-step leaves nothing half-done."""
+        if self.conn.execute("PRAGMA user_version").fetchone()[0] >= SCHEMA_VERSION:
+            return
+        self.conn.isolation_level = None  # manage the transaction ourselves
+        try:
+            self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                version = self.conn.execute("PRAGMA user_version").fetchone()[0]  # re-read under the lock
+                for target in range(version + 1, SCHEMA_VERSION + 1):
+                    for statement in _statements(_MIGRATIONS[target]):
+                        self.conn.execute(statement)
+                    self.conn.execute(f"PRAGMA user_version = {target}")
+                self.conn.execute("COMMIT")
+            except BaseException:
+                self.conn.execute("ROLLBACK")
+                raise
+        finally:
+            self.conn.isolation_level = ""
 
     def tables(self) -> set[str]:
         rows = self.conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'view')")
