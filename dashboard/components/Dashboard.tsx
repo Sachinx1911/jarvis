@@ -15,6 +15,7 @@ import ConnectorsTab from "./ConnectorsTab";
 import SchedulesTab from "./SchedulesTab";
 import SettingsTab from "./SettingsTab";
 import GrantsTab from "./GrantsTab";
+import IndiaTab from "./IndiaTab";
 
 const TABS = [
   ["chat", "Chat"],
@@ -24,6 +25,7 @@ const TABS = [
   ["projects", "Projects & Docs"],
   ["teach", "Teach"],
   ["schedules", "Schedules & Reminders"],
+  ["india", "India"],
   ["agents", "Agents"],
   ["connectors", "Connectors"],
   ["setup", "Setup"],
@@ -180,6 +182,7 @@ function Main() {
       {tab === "agents" && <AgentsTab />}
       {tab === "connectors" && <ConnectorsTab />}
       {tab === "schedules" && <SchedulesTab />}
+      {tab === "india" && <IndiaTab />}
       {tab === "projects" && (
         <ProjectsTab
           onUseInChat={(name) => {

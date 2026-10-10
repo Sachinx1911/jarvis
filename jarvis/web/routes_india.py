@@ -40,8 +40,8 @@ from jarvis.web.localconfig import LocalConfigError, update_local
 MONTH = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 MAX_SCHEMES = 30
 DUE_SOON_DAYS = 7
-NO_PAY = ("Jarvis does not pay. Open the link (or scan the QR code) in your own UPI app, check the payee and the "
-          "amount there, and enter your PIN yourself.")
+NO_PAY = ("Jarvis does not pay. Open the link in your own UPI app (or scan the QR code, if shown), check the payee "
+          "and the amount there, and enter your PIN yourself.")
 
 
 class SchemeItem(BaseModel):
