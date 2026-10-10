@@ -1,0 +1,14 @@
+# Isolated browser (PLAN.md 11.4). Machine-specific changes go in config/local.yaml under browser_file.
+# Playwright's own Chromium only; never the user's Chrome profile, cookies or passwords.
+headless: true
+navigation_timeout_seconds: 30
+max_page_chars: 20000          # page text handed to the quarantine model
+
+# Sites every task may use on top of the ones fixed for that task. Keep this empty or short:
+# a task's allowlist is normally the domains in the user's own request.
+default_allowed_domains: []
+
+downloads:
+  max_mb: 25
+  # Extensions accepted; the file's first bytes must match the type as well.
+  allowed_types: [pdf, csv, txt, json, md, png, jpg, jpeg, gif, zip, docx, xlsx, pptx]
