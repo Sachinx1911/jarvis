@@ -8,9 +8,10 @@ and the attempt is logged. Deleting moves the file into the workspace .trash fol
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 MAX_READ_CHARS = 20000
 MAX_WRITE_CHARS = 200_000
@@ -28,6 +29,15 @@ class PathDenied(PermissionError):
     """Outside the allowed folders."""
 
 
+def is_foreign_windows_path(raw: str) -> bool:
+    """True on Mac/Linux for Windows-style absolute paths (C:\\..., C:/..., \\\\server\\share).
+    POSIX would treat them as relative names inside the workspace; refuse them instead,
+    so the same path is denied on every platform."""
+    if os.name == "nt":
+        return False
+    return bool(PureWindowsPath(raw).drive) or raw.startswith("\\\\")
+
+
 def is_secret_path(path: Path) -> bool:
     parts = [p.lower() for p in path.parts]
     if any(p in _BLOCKED_NAMES for p in parts):
@@ -41,6 +51,8 @@ class PathPolicy:
         self.roots = [r.expanduser().resolve() for r in roots]
 
     def resolve(self, raw: str) -> Path:
+        if is_foreign_windows_path(raw):
+            raise PathDenied(f"{raw} is outside the allowed folders (a Windows path on this computer)")
         candidate = Path(raw).expanduser()
         if not candidate.is_absolute():
             candidate = self.roots[0] / candidate  # relative paths are inside the workspace

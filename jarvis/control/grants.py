@@ -27,7 +27,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from jarvis.control.egress import suspicious_url
-from jarvis.tools.files import MAX_WRITE_CHARS, PathBlocked, PathDenied, PathPolicy, is_secret_path
+from jarvis.tools.files import (MAX_WRITE_CHARS, PathBlocked, PathDenied, PathPolicy, is_foreign_windows_path,
+                                is_secret_path)
 
 GRANTABLE_TIERS = ("T1", "T2")
 KINDS = ("glob", "domain", "max_chars", "equals", "one_of", "any")
@@ -161,6 +162,8 @@ class GrantStore:
         pattern = pattern.strip().replace("\\", "/")
         if not pattern or ".." in pattern.split("/"):
             raise GrantError("a path rule must not be empty or contain '..'")
+        if is_foreign_windows_path(pattern):
+            raise GrantError(f"path rule {pattern!r} is not inside an allowed folder (a Windows path on this computer)")
         raw = Path(pattern).expanduser()
         full = raw if raw.is_absolute() else self.policy.roots[0] / raw
         fixed = []  # the part before the first wildcard must be inside an allowed folder
