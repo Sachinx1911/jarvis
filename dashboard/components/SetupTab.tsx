@@ -35,6 +35,32 @@ type Setup = {
   can_quit: boolean;
 };
 type Check = { name: string; ok: boolean; detail: string };
+// One voice part from GET /api/voice/status (jarvis/voice/status.py). Cheap checks only.
+type VoicePart = {
+  engine: string | null;
+  enabled?: boolean;
+  model?: string;
+  model_mb?: number;
+  package?: string;
+  package_installed?: boolean;
+  model_present?: boolean;
+  ready: boolean;
+  detail: string;
+  install_hint?: string;
+  setup?: string;
+};
+type VoiceStatus = {
+  stt_language: string;
+  stt_language_detail: string;
+  english_stt: VoicePart;
+  marathi_stt: VoicePart;
+  local_voice: VoicePart;
+  offline_marathi_voice: VoicePart;
+  cloud_marathi_voice: { enabled: boolean; engine: string; voice: string; max_privacy: string; detail: string };
+  wake_word: VoicePart;
+  setup_needed: boolean;
+  setup_command: string;
+};
 
 const SECRETS: [string, string, string][] = [
   ["tavily_api_key", "Tavily API key", "Web search and news. From tavily.com (free plan)."],
@@ -246,24 +272,135 @@ function Google({ d, reload }: { d: Setup; reload: () => void }) {
   );
 }
 
+// "ready", or what is missing with the command that fixes it.
+function VoicePartState({ p, name }: { p: VoicePart; name: string }) {
+  if (p.enabled === false) return <>{p.detail}</>;
+  const size = p.model_mb ? ` (${p.model_mb} MB)` : "";
+  const noPackage = !!p.package && p.package_installed === false;
+  const noModel = p.model_present === false && !!p.setup;
+  return (
+    <>
+      <span className={`badge ${p.ready ? "" : "alert"}`}>{p.ready ? "ready" : "not ready"}</span> {name}
+      {size}
+      {!p.ready && (
+        <>
+          {noPackage && (
+            <>
+              {" "}· {p.package} not installed: <code>{p.install_hint}</code>
+            </>
+          )}
+          {noModel && (
+            <>
+              {" "}· model not downloaded: <code>{p.setup}</code>
+            </>
+          )}
+          {!noPackage && !noModel && <> · {p.detail}</>}
+        </>
+      )}
+    </>
+  );
+}
+
 function Downloads({ d }: { d: Setup }) {
   const v = d.voice;
+  const vs = usePoll(() => api<VoiceStatus>("/api/voice/status"), 0);
+  const s = vs.data;
   return (
     <section className="panel">
       <h2>Optional downloads</h2>
       <p className="small muted">Jarvis never downloads these by itself. Run the commands in the repo folder when you want them.</p>
+      {vs.error && <div className="error">Voice status: {vs.error}</div>}
+      {s?.setup_needed && (
+        <div className="notice small">
+          Something the voice settings use is missing. Run <code>{s.setup_command}</code>: it shows the sizes and asks
+          before downloading.
+        </div>
+      )}
       <h3>Speech-to-text (microphone in Chat)</h3>
       <dl className="kv small">
         <dt>Package</dt>
         <dd>{v.stt_package ? "installed" : <>not installed: <code>{v.install_hint}</code> ({v.stt_package_hint})</>}</dd>
-        <dt>Whisper model</dt>
+        {s && (
+          <>
+            <dt>Language</dt>
+            <dd>
+              {s.stt_language}: {s.stt_language_detail}
+            </dd>
+          </>
+        )}
+        <dt>English</dt>
         <dd>
-          {v.stt_model} ({v.stt_model_mb} MB):{" "}
-          {v.stt_model_present ? "downloaded" : <>not downloaded: <code>{v.stt_setup}</code></>}
+          {s ? (
+            <VoicePartState p={s.english_stt} name={`Whisper ${s.english_stt.model ?? ""}`} />
+          ) : (
+            <>
+              Whisper {v.stt_model} ({v.stt_model_mb} MB):{" "}
+              {v.stt_model_present ? "downloaded" : <>not downloaded: <code>{v.stt_setup}</code></>}
+            </>
+          )}
         </dd>
-        <dt>Other sizes</dt>
+        {s && (
+          <>
+            <dt>Marathi</dt>
+            <dd>
+              <VoicePartState p={s.marathi_stt} name="IndicConformer" />
+            </dd>
+          </>
+        )}
+        <dt>Other Whisper sizes</dt>
         <dd>{v.models.map((m) => `${m.name} ${m.mb} MB`).join(" · ")}</dd>
       </dl>
+      {s && (
+        <>
+          <h3>Jarvis&apos;s voice (speaking)</h3>
+          <dl className="kv small">
+            <dt>System voice</dt>
+            <dd>{s.local_voice.engine ?? s.local_voice.detail}</dd>
+            <dt>Offline Marathi voice</dt>
+            <dd>
+              <VoicePartState p={s.offline_marathi_voice} name="MMS-TTS" />
+            </dd>
+            <dt>Cloud Marathi voice</dt>
+            <dd>
+              {s.cloud_marathi_voice.enabled
+                ? `on (${s.cloud_marathi_voice.engine}, ${s.cloud_marathi_voice.voice}): ${s.cloud_marathi_voice.detail}`
+                : s.cloud_marathi_voice.detail}
+            </dd>
+          </dl>
+          <h3>Wake word (&quot;hey Jarvis&quot;)</h3>
+          <dl className="kv small">
+            <dt>Status</dt>
+            <dd>
+              {s.wake_word.enabled ? (
+                <VoicePartState p={s.wake_word} name={s.wake_word.model ?? ""} />
+              ) : (
+                <>off (turn on with wake_word.enabled in config/voice.yaml)</>
+              )}
+            </dd>
+            {!s.wake_word.enabled && (
+              <>
+                <dt>Model</dt>
+                <dd>
+                  {s.wake_word.model_present ? (
+                    "downloaded"
+                  ) : s.wake_word.setup ? (
+                    <>
+                      not downloaded: <code>{s.wake_word.setup}</code>
+                    </>
+                  ) : (
+                    "not found"
+                  )}
+                  {s.wake_word.package_installed === false && (
+                    <>
+                      {" "}· package not installed: <code>{s.wake_word.install_hint}</code>
+                    </>
+                  )}
+                </dd>
+              </>
+            )}
+          </dl>
+        </>
+      )}
       <h3>Isolated browser</h3>
       <dl className="kv small">
         <dt>Package</dt>

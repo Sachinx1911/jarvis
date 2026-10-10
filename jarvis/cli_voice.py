@@ -15,15 +15,18 @@ from jarvis.control.stop import StopSwitch
 from jarvis.paths import default_paths
 from jarvis.voice.base import VoiceUnavailable
 from jarvis.voice.config import load_voice_config
-from jarvis.voice.stt import WHISPER_MODELS, faster_whisper_installed, language_hint, make_stt, model_present
-from jarvis.voice.tts import local_engine_name, make_local_tts, make_speech
+from jarvis.voice.models import VOICE_MODELS
+from jarvis.voice.stt import WHISPER_MODELS, language_hint, make_stt
+from jarvis.voice.tts import make_local_tts, make_speech
 
 
 def register(sub: Any) -> None:
     v = sub.add_parser("voice", help="talk to Jarvis (push-to-talk), set up speech models, list audio devices")
     v.add_argument("action", nargs="?", default="run", choices=["run", "setup", "devices"])
     v.add_argument("--provider", default=None, help="reasoning provider override (e.g. fake)")
-    v.add_argument("--model", default=None, help=f"setup: Whisper model ({', '.join(WHISPER_MODELS)})")
+    v.add_argument("--model", default=None,
+                   help=f"setup: download one model only: a Whisper size ({', '.join(WHISPER_MODELS)}) "
+                        f"or a voice model ({', '.join(VOICE_MODELS)}); default: everything voice.yaml uses")
     v.add_argument("--yes", action="store_true", help="setup: do not ask before downloading")
 
     s = sub.add_parser("say", help="speak a sentence with Jarvis's voice")
@@ -58,11 +61,14 @@ def cmd_say(args: argparse.Namespace, out: TextIO, speech: Any = None) -> int:
     return 0
 
 
-def cmd_devices(out: TextIO, sd: Any = None) -> int:
+def cmd_devices(out: TextIO, sd: Any = None, cfg: dict[str, Any] | None = None, home: Any = None,
+                tts: Any = None, packages: Any = None) -> int:
+    """Audio devices, then the state of every voice part (no model is loaded, nothing downloaded)."""
     from jarvis.voice.recorder import list_devices
+    from jarvis.voice.status import status_lines, voice_status
 
-    cfg = load_voice_config()
-    home = default_paths().home
+    cfg = cfg if cfg is not None else load_voice_config()
+    home = home if home is not None else default_paths().home
     try:
         devices = list_devices(sd)
         print("Microphones:", file=out)
@@ -75,24 +81,16 @@ def cmd_devices(out: TextIO, sd: Any = None) -> int:
                 print(f"  [{d['index']}] {d['name']}", file=out)
     except VoiceUnavailable as e:
         print(f"Audio devices: {e}", file=out)
-    tts = make_local_tts(cfg)
-    print(f"Voice (text-to-speech): {local_engine_name(cfg) or 'none on this platform'}", file=out)
+    for line in status_lines(voice_status(cfg, home, packages)):
+        print(line, file=out)
+    tts = tts if tts is not None else make_local_tts(cfg)
     if tts is not None and hasattr(tts, "voices"):
+        print("System voices (tts.voice in config/voice.yaml):", file=out)
         try:
             for name in tts.voices():
                 print(f"  {name}", file=out)
         except Exception as e:  # noqa: BLE001 (listing is informational)
             print(f"  could not list voices: {e}", file=out)
-    marathi = cfg["tts"]["marathi"]
-    print(f"Marathi cloud voice ({marathi['engine']}, {marathi['voice']}): "
-          f"{'ON' if marathi.get('cloud_enabled') else 'off'}", file=out)
-    stt = cfg["stt"]
-    print(f"Speech-to-text: {stt['engine']} model {stt['model']!r}: "
-          f"package {'installed' if faster_whisper_installed() else 'NOT installed'}, "
-          f"model {'downloaded' if model_present(home, stt['model']) else 'NOT downloaded (jarvis voice setup)'}",
-          file=out)
-    ww = cfg["wake_word"]
-    print(f"Wake word: {'ON' if ww.get('enabled') else 'off'} ({ww['engine']} {ww['model']})", file=out)
     return 0
 
 
