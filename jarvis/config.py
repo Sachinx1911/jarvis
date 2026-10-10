@@ -37,6 +37,7 @@ class Config:
     models: dict[str, Any]
     routing: dict[str, Any]
     tools: dict[str, Any] = field(default_factory=dict)
+    tasks: dict[str, Any] = field(default_factory=dict)
 
 
 def load_config(config_dir: Path = CONFIG_DIR) -> Config:
@@ -45,9 +46,11 @@ def load_config(config_dir: Path = CONFIG_DIR) -> Config:
     models = _merge(_read_yaml(config_dir / "models.yaml"), local.get("models_file", {}))
     routing = _merge(_read_yaml(config_dir / "routing.yaml"), local.get("routing_file", {}))
     tools = _merge(_read_yaml(config_dir / "tools.yaml"), local.get("tools_file", {}))
+    tasks = _merge(_read_yaml(config_dir / "tasks.yaml"), local.get("tasks_file", {}))
     return Config(
         providers=providers.get("providers", {}),
         models=models.get("models", {}),
         routing=routing,
         tools=tools,
+        tasks=tasks,
     )

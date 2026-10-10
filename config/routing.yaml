@@ -24,3 +24,41 @@ routes:
     needs: [structured_output]
     max_privacy: P1
     cloud_fallback: never
+  # Phase 3: task planner and agent team (PLAN.md section 9). Worker models can be
+  # switched per task with --workers (profiles in config/tasks.yaml).
+  planner:
+    candidates:
+      - {provider: claude_code, model: claude-opus-5-5, effort: high}
+    needs: [structured_output]
+    max_privacy: P1
+    cloud_fallback: never
+  researcher:
+    candidates:
+      - {provider: claude_code, model: claude-opus-5-5, effort: low}
+    needs: [tools]
+    max_privacy: P1
+    cloud_fallback: never
+  writer:
+    candidates:
+      - {provider: claude_code, model: claude-opus-5-5, effort: low}
+    needs: [tools]
+    max_privacy: P1
+    cloud_fallback: never
+  checker:                   # never weaker than the workers
+    candidates:
+      - {provider: claude_code, model: claude-opus-5-5, effort: high}
+    needs: [tools]
+    max_privacy: P1
+    cloud_fallback: never
+  task_summary:
+    candidates:
+      - {provider: claude_code, model: claude-haiku-5-5, effort: low}
+    needs: [structured_output]
+    max_privacy: P1
+    cloud_fallback: never
+  skill_draft:
+    candidates:
+      - {provider: claude_code, model: claude-opus-5-5, effort: medium}
+    needs: [structured_output]
+    max_privacy: P1
+    cloud_fallback: never

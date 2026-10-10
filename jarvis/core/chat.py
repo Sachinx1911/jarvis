@@ -59,6 +59,7 @@ class ChatSession:
         self.extractor = extractor
         self.session_id = uuid.uuid4().hex[:12]
         self.history: list[Message] = []
+        self.approver_for_tasks = approver
         max_privacy = config.routing.get("routes", {}).get(decision.route, {}).get("max_privacy", "P1")
         self.context = ContextBuilder(home, memory, skills, max_privacy)
         self.stop = StopSwitch(home / "data")

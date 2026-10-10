@@ -199,7 +199,8 @@ class MemoryStore:
 
     # ---- search ----
 
-    def search(self, query: str, k: int = 5, include_sensitive: bool = True) -> list[SearchHit]:
+    def search(self, query: str, k: int = 5, include_sensitive: bool = True, scope: str | None = None) -> list[SearchHit]:
+        """scope (e.g. "project:laptop"): memories in that scope rank first (PLAN.md 7)."""
         words = _words(query)
         if not words:
             return []
@@ -233,7 +234,8 @@ class MemoryStore:
             mem = self.get(mid)
             if not mem or (not include_sensitive and mem.sensitivity in ("sensitive", "secret")):
                 continue
-            hits.append(SearchHit(mem, score * self._recency(mem)))
+            boost = 1.5 if scope and mem.scope == scope else 1.0
+            hits.append(SearchHit(mem, score * self._recency(mem) * boost))
         hits.sort(key=lambda h: h.score, reverse=True)
         return hits[:k]
 

@@ -30,6 +30,8 @@ CHAT_HELP = """Commands:
   /remember-private <text>  save a sensitive memory (kept local, never sent to the cloud)
   /memory <words>           search memories
   /forget <id>              archive a memory
+  /task <goal>              run a task now (plan, team, check, receipt)
+  /record start <name>      record a demonstration (/record stop, /note <why>)
   /exit                     end the chat (Jarvis then saves what it learned)"""
 
 
@@ -78,7 +80,8 @@ def _slash(session: ChatSession, rt: Runtime, text: str, out: TextIO) -> bool:
     if cmd == "/help":
         print(CHAT_HELP, file=out)
         return True
-    return False
+    from jarvis import cli_tasks
+    return cli_tasks.chat_command(session, rt, cmd, rest, out)
 
 
 def terminal_approver(out: TextIO, inp: TextIO):
@@ -331,6 +334,18 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def build_parser_with_extensions():
+    """Core commands plus the command groups from other modules (each has register())."""
+    from jarvis import cli_tasks
+
+    parser = build_parser()
+    sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    extra: dict = {}
+    for module in (cli_tasks,):
+        extra.update(module.register(sub))
+    return parser, extra
+
+
 def main(argv: list[str] | None = None, out: TextIO | None = None, inp: TextIO | None = None) -> int:
     if out is None:
         for stream in (sys.stdout, sys.stdin):
@@ -338,7 +353,10 @@ def main(argv: list[str] | None = None, out: TextIO | None = None, inp: TextIO |
                 stream.reconfigure(encoding="utf-8")  # Marathi on Windows consoles
     out = out or sys.stdout
     inp = inp or sys.stdin
-    args = build_parser().parse_args(argv)
+    parser, extra = build_parser_with_extensions()
+    args = parser.parse_args(argv)
+    if args.command in extra:
+        return extra[args.command](args, out, inp, lambda: terminal_approver(out, inp))
     handlers = {
         "init": lambda: cmd_init(args, out),
         "chat": lambda: cmd_chat(args, out, inp),

@@ -58,9 +58,14 @@ def load_tasks(path: Path = TASKS_FILE) -> list[dict[str, Any]]:
     return yaml.safe_load(path.read_text(encoding="utf-8"))["tasks"]
 
 
-def check(task: dict[str, Any], output: str, extracted: int | None) -> tuple[bool, str]:
+def check(task: dict[str, Any], output: str, extracted: int | None, tools: list[str] | None = None) -> tuple[bool, str]:
     c = task.get("checks", {})
     low = output.lower()
+    if "tools_any" in c and not set(c["tools_any"]) & set(tools or []):
+        return False, f"expected a call to one of {c['tools_any']}, got {tools or 'none'}"
+    bad_tools = set(c.get("tools_none", [])) & set(tools or [])
+    if bad_tools:
+        return False, f"must not call {sorted(bad_tools)}"
     if "contains_any" in c and not any(s.lower() in low for s in c["contains_any"]):
         return False, f"missing any of {c['contains_any']}"
     bad = [s for s in c.get("not_contains", []) if s.lower() in low]
@@ -107,7 +112,8 @@ def run_task(task: dict[str, Any], config, provider_name: str | None) -> TaskRes
             output = ""
             for text in task["input"]:
                 output = session.send(text)
-            ok, detail = check(task, output, None)
+            tools = [r[0] for r in store.conn.execute("SELECT tool FROM tool_runs WHERE ok=1 ORDER BY id")]
+            ok, detail = check(task, output, None, tools)
             return TaskResult(task["id"], task["category"], task["language"], ok, detail, output)
         except ProviderError as e:
             return TaskResult(task["id"], task["category"], task["language"], False, f"provider error: {e}")

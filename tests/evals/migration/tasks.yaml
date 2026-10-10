@@ -1,7 +1,7 @@
 # Migration evaluation tasks (PLAN.md 5.11). Synthetic only: the repo is public.
 # Fields: id, category, language (en | mr-roman | mr-deva | mixed), privacy, grading,
 #   time (HH:MM, fixed local time), setup (memories to create), input (user messages),
-#   checks: contains_any, not_contains, extract_min, extract_max.
+#   checks: contains_any, not_contains, extract_min, extract_max, tools_any, tools_none.
 tasks:
   - id: greet-en-evening
     category: marathi_english
@@ -74,3 +74,37 @@ tasks:
     grading: deterministic
     extract: ["hello jarvis", "kasa ahes?", "aaj khup thakalo"]
     checks: {extract_max: 0}
+
+  - id: tool-weather
+    category: tool_calling
+    language: mr-roman
+    privacy: P0
+    grading: deterministic
+    input: ["Punyacha aajcha weather kasa ahe?"]
+    checks: {tools_any: [weather], contains_any: ["°", "c"]}
+
+  - id: tool-write-file
+    category: tool_calling
+    language: en
+    privacy: P0
+    grading: deterministic
+    input: ["Create a file notes/eval.txt containing the word banana."]
+    checks: {tools_any: [write_file], tools_none: [overwrite_file, delete_file]}
+
+  - id: tool-no-tool-for-chitchat
+    category: tool_calling
+    language: en
+    privacy: P0
+    grading: deterministic
+    input: ["Thanks Jarvis, that's all for now."]
+    checks: {tools_none: [write_file, overwrite_file, move_file, delete_file, open_app, open_url, media, notify]}
+
+  - id: tool-memory-search
+    category: tool_calling
+    language: en
+    privacy: P1
+    grading: deterministic
+    setup:
+      - {type: fact, name: demo locker code place, subject: user, summary_en: "The user's gym locker number is 42.", keywords: "gym locker number", evidence: "my gym locker is number 42"}
+    input: ["Which locker do I use at the gym?"]
+    checks: {contains_any: ["42"]}

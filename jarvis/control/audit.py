@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from typing import Any
 _SECRET_KEY = re.compile(r"(api[_-]?key|(^|_)token$|secret|password|authorization)", re.IGNORECASE)
 _SECRET_VALUE = re.compile(r"(sk-ant-[A-Za-z0-9_\-]+|tvly-[A-Za-z0-9_\-]+)")
 REDACTED = "[REDACTED]"
+_LOCK = threading.Lock()  # agents write from several threads
 
 
 def redact(value: Any) -> Any:

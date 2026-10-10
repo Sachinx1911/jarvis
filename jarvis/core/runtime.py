@@ -79,3 +79,25 @@ def make_chat(rt: Runtime, provider_override: str | None = None, approver: Appro
     )
     write_registry(session.tools, registry_path(rt.paths.home))
     return session
+
+
+def task_store(rt: Runtime):
+    from jarvis.tasks.store import TaskStore
+
+    return TaskStore(rt.store, rt.paths.data / "tasks")
+
+
+def make_task_runner(rt: Runtime, provider_override: str | None = None, approver: Approver | None = None,
+                     workers: str | None = None, progress=None, web: WebClient | None = None):
+    from jarvis.agents.orchestrator import TaskRunner
+
+    cache: dict[str, object] = {}
+
+    def provider_for(decision):
+        if decision.provider not in cache:
+            cache[decision.provider] = make_provider(decision.provider, rt.config)
+        return cache[decision.provider]
+
+    return TaskRunner(rt.config, rt.paths.home, rt.paths.db, rt.store, task_store(rt), rt.audit, provider_for,
+                      approver=approver, workers=workers, provider_override=provider_override, web=web,
+                      progress=progress or (lambda m: None))
