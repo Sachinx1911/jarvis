@@ -12,6 +12,7 @@ from jarvis.config import _merge, _read_yaml
 from jarvis.paths import CONFIG_DIR
 
 DEFAULTS: dict[str, Any] = {
+    "core": {"enabled": True, "user_chars": 1375, "memory_chars": 2200, "write_approval": False},
     "quiet_extract": {
         "enabled": True, "every_minutes": 10, "quiet_minutes": 20, "max_age_hours": 24,
         "max_sessions_per_run": 5, "max_failures": 3, "output": "file",

@@ -102,6 +102,45 @@ def build_registry(reg: ToolRegistry, d: ToolDeps) -> ToolRegistry:
         add(Tool(ToolSpec("memory_search", "Search the user's long-term memory. Use English keywords and the user's own words.",
                           _obj({"query": S}, ["query"])), "T0", memory_search))
 
+        # Core memory (Hermes-style USER.md + MEMORY.md, always in the prompt). T1: it asks
+        # in a session that read outside content (taint), or always with write_approval.
+        from jarvis.memory.core import CoreMemoryError, core_from_settings, core_settings
+        from jarvis.memory.upkeep_settings import load_memory_settings
+
+        mem_settings = load_memory_settings()
+        core = core_from_settings(d.home, mem_settings)
+        if core is not None:
+            def core_memory(args: dict) -> str:
+                action, target = args.get("action", ""), args.get("target", "")
+                try:
+                    if action == "add":
+                        msg = core.add(target, args.get("content", ""))
+                    elif action == "replace":
+                        msg = core.replace(target, args.get("old_text", ""), args.get("content", ""))
+                    elif action == "remove":
+                        msg = core.remove(target, args.get("old_text", ""))
+                    else:
+                        return "Error: action must be add, replace or remove."
+                except CoreMemoryError as e:
+                    d.audit.write("core_memory", action=action, target=target, ok=False, reason=str(e)[:120])
+                    return f"Not saved: {e}"
+                d.audit.write("core_memory", action=action, target=target, ok=True,
+                              chars=len(args.get("content", "")), used=core.used(target))
+                return msg
+
+            tier = "T2" if core_settings(mem_settings).get("write_approval") else "T1"
+            add(Tool(ToolSpec(
+                "core_memory",
+                "Change your core memory, which is in every prompt. target 'user' = the user's profile "
+                "(preferences, communication style, habits); target 'memory' = your notes (important facts, "
+                "conventions, lessons learned, active project). action add (content), replace (old_text = a "
+                "short unique piece of the entry, content = the whole new entry) or remove (old_text). Keep "
+                "entries short and specific. Never save sensitive or secret things here.",
+                _obj({"action": {"type": "string", "enum": ["add", "replace", "remove"]},
+                      "target": {"type": "string", "enum": ["user", "memory"]},
+                      "content": S, "old_text": S}, ["action", "target"])),
+                tier, core_memory, taints=False))
+
     def session_search(args: dict) -> str:
         from jarvis.memory import session_facts  # cross-script, time-aware, fact-augmented search
 

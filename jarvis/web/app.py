@@ -110,6 +110,10 @@ class ToolEdit(BaseModel):
     enabled: bool | None = None
 
 
+class CoreBody(BaseModel):
+    text: str = ""
+
+
 class StopBody(BaseModel):
     engaged: bool
     reason: str = Field(default="", max_length=200)
@@ -297,6 +301,32 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
                                   if keep(h.memory)]}
             mems = rt.memory.list(type=type or None, status=None if all else "active")
             return {"items": [data.memory_json(m) for m in mems if keep(m)]}
+
+    # Core memory: profile/USER.md + profile/MEMORY.md (always in the prompt).
+    def _core():
+        from jarvis.memory.core import core_from_settings
+        from jarvis.memory.upkeep_settings import load_memory_settings
+
+        core = core_from_settings(default_paths().home, load_memory_settings(config_dir))
+        if core is None:
+            raise HTTPException(409, "core memory is turned off (config/memory.yaml: core.enabled)")
+        return core
+
+    @api.get("/core-memory")
+    def core_memory_show() -> dict[str, Any]:
+        return _core().status()
+
+    @api.put("/core-memory/{target}")
+    def core_memory_save(target: str, body: CoreBody) -> dict[str, Any]:
+        from jarvis.memory.core import CoreMemoryError
+
+        core = _core()
+        try:
+            msg = core.set_all(target, body.text)
+        except CoreMemoryError as e:
+            raise HTTPException(400, str(e))
+        audit.write("core_memory", source="dashboard", action="edit", target=target, ok=True, used=core.used(target))
+        return {"saved": msg, **core.status()}
 
     @api.get("/memory/{memory_id}")
     def memory_show(memory_id: str) -> dict[str, Any]:

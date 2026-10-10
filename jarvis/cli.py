@@ -207,6 +207,20 @@ def cmd_memory(args: argparse.Namespace, out: TextIO) -> int:
                     print(f"  {m.id} (from {m.valid_from}): {m.summary_en or m.name}: {m.body.strip()[:200]}", file=out)
             if found:
                 print("Keep the right one; archive the other with `jarvis memory archive <id>`.", file=out)
+        elif args.action == "core":
+            from jarvis.memory.core import core_from_settings
+            from jarvis.memory.upkeep_settings import load_memory_settings
+
+            core = core_from_settings(rt.paths.home, load_memory_settings())
+            if core is None:
+                print("Core memory is turned off (config/memory.yaml: core.enabled).", file=out)
+                return 0
+            for target, st in core.status().items():
+                print(f"{st['file']} ({st['used']}/{st['limit']} characters):", file=out)
+                for e in st["entries"]:
+                    print(f"  - {e}", file=out)
+                if not st["entries"]:
+                    print("  (empty)", file=out)
         elif args.action == "add":
             saved = make_extractor(rt, args.provider).remember(" ".join(args.text), private=args.private)
             print(f"Remembered as {saved.id}: {saved.summary_en or saved.name}", file=out)
@@ -350,7 +364,8 @@ def build_parser() -> argparse.ArgumentParser:
     chat.add_argument("-m", "--message", help="send one message and exit")
 
     mem = sub.add_parser("memory", help="list, search, show, archive, export, reindex or add memories")
-    mem.add_argument("action", choices=["list", "search", "show", "archive", "export", "reindex", "add", "conflicts"])
+    mem.add_argument("action", choices=["list", "search", "show", "archive", "export", "reindex", "add", "conflicts",
+                                        "core"])
     mem.add_argument("text", nargs="*")
     mem.add_argument("--type", choices=["fact", "preference", "procedure", "constraint", "episode"])
     mem.add_argument("--all", action="store_true", help="include superseded and archived")
