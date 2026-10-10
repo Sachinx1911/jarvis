@@ -62,7 +62,11 @@ Parked items. Work that does not depend on them continues.
    - Prices: verifier source tiers (A retailer/brand page or official API, B aggregator = labelled estimate, C rejected); a page with no Rs amount counts as a failed fetch; Amazon/Flipkart only as links for Sachin to confirm (their terms forbid automated price collection).
    - Memory: date-range step before retrieval, index past chats with extracted facts, raw excerpts plus memories in the answer context, notes-before-answer with "I don't know", Devanagari + romanized keywords.
    - Add the 14-case prompt-injection eval set from the research notes.
-3. **Later (Stage B, needs the Mac):** llama.cpp `llama-server` with Qwen3.5-9B / Gemma 4 E4B / Qwen3.5-4B for query rewrite, labels, schema-forced extraction and quarantine; Marathi chat stays on Claude. Marathi voice: IndicWhisper (faster-whisper) vs IndicConformer for STT, Indic Parler-TTS for TTS.
+3. **Automation (Sachin, 2026-10-10: "everything I tell it must get done, and be automated"):** after the security, prices, memory and app work merges:
+   - Event triggers: run a skill/task when something happens (new email from X, new file in a folder, a price below a limit, a calendar event soon), with polling intervals and dedupe.
+   - Standing approvals: Sachin pre-approves one exact routine action pattern (tool + argument limits + expiry) so it runs without asking; never for T3 (send, pay, delete) or T4.
+   - "Do this every time": after a task, Jarvis offers to turn it into a skill plus a schedule or trigger (saved only after Sachin confirms).
+4. **Later (Stage B, needs the Mac):** llama.cpp `llama-server` with Qwen3.5-9B / Gemma 4 E4B / Qwen3.5-4B for query rewrite, labels, schema-forced extraction and quarantine; Marathi chat stays on Claude. Marathi voice: IndicWhisper (faster-whisper) vs IndicConformer for STT, Indic Parler-TTS for TTS.
 
 ## Decisions made by Sachin
 
@@ -91,6 +95,7 @@ Parked items. Work that does not depend on them continues.
 | 2026-10-10 | File tools start with the Jarvis `workspace/` folder only; more folders can be added one at a time in `config/local.yaml` |
 | 2026-10-10 | Keep working through all phases without stopping; park items that need Sachin's confirmation; use parallel agents; final testing on Claude Fable (CLAUDE.md updated) |
 | 2026-10-10 | Researcher/Writer model: test both opus (low) and sonnet (medium), then choose |
+| 2026-10-10 | Everything should be usable from the app (one-click start, all features in the dashboard) and tasks should be automatable (triggers, standing approvals, repeat-this) |
 
 ## Decisions made by Claude (for Sachin to review)
 
