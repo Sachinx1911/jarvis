@@ -13,7 +13,7 @@ Ending a session: update this file and commit.
   - On `main` and tested (902 pass): everything through Phases 0–8, research fixes (prompt-injection hardening, price tiers, memory retrieval), one-click app, event triggers, approval previews + grouped and standing approvals + memory sources/trash + "why" panel.
   - Stopped mid-work, saved on branches (pushed, NOT merged, not tested): `wip/india-features` (AMFI NAV, IMD/Sachet feeds, bills tracker, document wallet, UPI link; tests partly written) and `wip/verify-repeat` (verify-after-act, `/repeat`). Resume each: check out the branch, run the whole suite, finish the brief in this file's "Next step", then merge.
   - Done later on the Mac (2026-10-10): global daily cap, nightly review, backups, India features, verify/repeat, dashboard India tab and triggers.
-- **Last update:** 2026-10-11, home MacBook (Apple M4, macOS 26.5, Python 3.13): voice merged (local Marathi speech-to-text, offline Marathi voice, wake word model; 1420 passed). Laptop compare rerun on Fable (see Final testing). Stage B (local models) agent still running on `feature/stage-b-local`; Qwen3.5-9B and Gemma 4 E4B are downloaded and verified.
+- **Last update:** 2026-10-11, home MacBook (Apple M4, macOS 26.5, Python 3.13): voice merged (local Marathi speech-to-text, offline Marathi voice, wake word model; 1420 passed). Laptop compare rerun on Fable (see Final testing). Stage B (local models) merged: measurements only, no route uses a local model (1461 passed). Marathi voice: Sachin dislikes MMS-TTS; plan is IndicF5 with his own recorded voice (see Waiting for Sachin).
 - **Models on the home MacBook** (all under `data/models/`, git-ignored): Whisper small 484 MB, IndicConformer Marathi 138 MB, MMS-TTS Marathi 114 MB, openWakeWord 9 MB, Qwen3.5-9B Q4_K_M 5.7 GB (unsloth/Qwen3.5-9B-GGUF), Gemma 4 E4B Q4_K_M 5.0 GB (unsloth/gemma-4-E4B-it-GGUF, downloaded by Sachin in the browser, SHA-256 checked). Ollama and `gemma3:4b` on this Mac belong to another of Sachin's projects, not to Jarvis: leave them alone.
 - **GitHub:** `main` pushed on 2026-10-10 from the home MacBook (all Mac merges, fixes and Fable results) with Sachin's OK. The old branches `wip/india-features` and `wip/verify-repeat` on GitHub are merged and can be deleted.
 
@@ -69,7 +69,27 @@ Can be built after Sachin's OK:
 
 Built on 2026-10-11 (Mac): local Marathi speech-to-text, offline Marathi voice, wake word model (see Phase 6).
 
-In progress: Stage B, the local model runtime, local adapter and migration evals on this Mac (agent on `feature/stage-b-local`; measures only, routing changes need Sachin's OK).
+Built on 2026-10-11: Stage B (local adapter `jarvis/providers/local.py`, localhost only, listed in `providers.yaml` but NOT in `routing.yaml` approved_providers; `python -m jarvis.evals.local_run` runs the evals on a local model through an in-memory config copy; measured profiles in `config/models.yaml`; report `docs/stage-b/2026-10-10-local-models.md`). Runtime: Homebrew `llama.cpp` 0.6.0 (`llama-server`, Metal, about 29 MB, MIT).
+
+### Stage B results (2026-10-10/11, home MacBook M4 16 GB)
+
+| | Claude (Fable 5.1) | Qwen3.5-9B Q4_K_M | Gemma 4 E4B Q4_K_M |
+|---|---|---|---|
+| Migration suite | 12/12 | 10/12 | 12/12 (10/12 after review) |
+| Memory eval | 29/29 | 24/29 | 26/29 |
+| Memory: temporal | 6/6 | 3/6 | 3-4/6 |
+| JSON valid | - | 36/36 | 36/36 |
+| Extraction correct | - | 8/12 (misses Marathi facts) | 12/12 |
+| Right tool: English / Marathi | - | 22/22 / 9/18 | 22/22 / 14/18 |
+| Answers Marathi in Marathi | mostly | yes, poor romanized | 7/19 |
+| Injection harm | 0 | 0/5 | 0/5 |
+| Decode speed | - | 6-9 tok/s | 25-27 tok/s |
+| First token, chat turn (cold / cached) | - | 73 s / 0.7 s | 38-55 s / 0.6 s |
+| Peak RAM | - | 7.1 GB | 6.6 GB |
+
+- Verdict: no component is local-ready yet (no agreed thresholds, small samples, RAM borderline: free memory fell to 18-36% and swap was used). Closest: memory extraction and quarantined extraction on Gemma 4 E4B. Planner, query rewrite, labels, receipts and document Q&A have no eval tasks yet.
+- Qwen once invented weather data instead of calling the tool. Gemma's chat template puts tools after the changing system text, so every turn re-processes the whole prompt (memory eval 20 min vs 6 for Qwen).
+- Ollama and `gemma3:4b` on this Mac belong to another project; none of the reported runs overlapped Ollama's loaded model.
 
 Need Sachin's OK for a download or a decision first:
 - Backup encryption (deferred by Sachin; location decided: local).
@@ -91,6 +111,8 @@ Parked items. Work that does not depend on them continues.
 - **Confirm tiers:** `parse_time` set to T0 (pure local computation); EventKit tools kept at T2.
 - **Voice (Phase 6 live check):** models and packages are installed. Restart `jarvis app`, allow Chrome microphone access in macOS settings, say one English and one Marathi sentence and check the text; run `jarvis say --lang mr "..."` and rate the Marathi voice.
 - **Voice:** Marathi cloud voice (edge-tts) stays off unless Sachin turns it on. Wake word "hey jarvis" is downloaded but off: turn it on in `config/local.yaml` if wanted.
+- **Marathi voice (2026-10-11):** Sachin dislikes the MMS-TTS voice. Samples made in `data/voice/samples/` (MMS, Microsoft Aarohi/Manohar, SYSPIN female/male, macOS Lekha). He chose the ElevenLabs library voice "Bunty" but does not want the ElevenLabs API; Claude will not copy that voice without the voice artist's permission. Plan: IndicF5 (AI4Bharat, MIT, 1.4 GB, local, copies a voice from a short clip) with Sachin's own voice. Waiting for: (1) OK to install IndicF5's code from GitHub into a separate test venv (the install was blocked pending his OK); (2) accept the terms at huggingface.co/ai4bharat/IndicF5 and run `hf auth login`; (3) his recordings of the given Marathi (and optional Hindi) passage. If the Bunty artist gives written permission and a clean recording, the same engine can use it.
+- **Stage B decisions:** (1) pass thresholds per route; (2) keep a ~7 GB model loaded all the time or load on demand (~5 s); (3) a round 2 for Gemma 4 E4B with a bigger Marathi-heavy extraction/quarantine set after moving the stable prompt part first; (4) keep, delete or try Qwen once on MLX (5.7 GB on disk).
 - **Browser (Phase 8):** `jarvis browser setup` downloads Playwright Chromium (~150–200 MB) per machine; this laptop already has a cached copy.
 - **Dashboard (Phase 7):** on this laptop the built frontend is already in `dashboard/out/` (copied from the agent's build). On another machine: `cd dashboard; npm install; npm run build` (one-time download).
 - **Mac checks:** Rishi voice (`say -v '?'`), Whisper speed on the M4, microphone permission, EventKit (`pyobjc-framework-EventKit`, Reminders permission), browser profiles permissions, everything once on the Mac.
@@ -105,7 +127,8 @@ On a new machine first: `git clone`, run `scripts/setup.ps1` (Windows) or `scrip
 4. **Done 2026-10-10 (Mac):** dashboard triggers adapter and Event triggers panel, India tab, why-panel recording for every chat (CLI, Telegram) with `GET /api/sessions/{id}/turns` and `/why`, sensitive-topic enforcement in code.
 5. **Done 2026-10-10 (Mac):** laptop compare rerun on Fable: FAILED on "check yourself" links (see Final testing). Search links left out by Sachin for now. Small fixes that need no decision: keep prices out of the dropped-candidates table, find why the checker saw a cut-off report. Was: final testing on Claude Fable (`JARVIS_TEST_MODEL=claude-fable-5-1`): live suites, eval + memory eval (`jarvis eval --suite memory --live`), injection live set, laptop compare with price tiers; record results here.
 6. **Sachin:** the "Waiting for Sachin" list; hands-on testing with TESTING.md (section 9: the app).
-7. **Claude:** when the Stage B agent finishes, review `feature/stage-b-local` (local adapter is localhost-only and not approved in routing; import boundary), merge main into it, run the whole suite, merge, record the measurements here, and ask Sachin which components (if any) may move local (Stage C).
+7. **Done 2026-10-11:** Stage B merged and recorded (see Stage B results). Next: Sachin's Stage B decisions, then grader fixes the agent found (`tool-weather` accepts any "c"; the memory grader rejects the spelling बानेर; `tm-1` too strict; the Devanagari greeting check accepts an English reply).
+8. **Claude, after Sachin's OK and Hugging Face access:** IndicF5 voice engine with a reference clip folder (`data/voice/reference/`), speed measured on the M4, then Sachin's own voice as the Marathi voice.
 
 ## Decisions made by Sachin
 
@@ -142,6 +165,7 @@ On a new machine first: `git clone`, run `scripts/setup.ps1` (Windows) or `scrip
 | 2026-10-10 | No adding UPI payees from the app; payees stay terminal-only |
 | 2026-10-10 | Downloads approved: English Whisper model, Marathi speech models (STT/TTS), wake word, and Stage B local AI (runtime + models). Stage B measures only; live routing changes need Sachin's OK |
 | 2026-10-11 | Amazon/Flipkart search links as "check yourself" links in price reports: leave it for now |
+| 2026-10-11 | Marathi voice: no ElevenLabs API. Wants a "Bunty"-like voice; will use his own recorded voice with a local voice-copy model |
 | 2026-10-10 | Vetted the Hermes Agent Masterclass (Jack Roberts, hermes-masterclass.vercel.app). Taken: a global daily cap for unattended work (runaway-loop risk), a nightly review into `memory/episodes/` with memory conflicts in the brief, local dated backups (destination still open decision #10). Already in Jarvis: soul file, markdown memory + FTS, risk tiers/approvals/kill switch, Telegram allow-list, cron/heartbeat/brief, planner-worker-critic, budgets, dashboard. Dropped: VPS/Docker hosting (data leaves the laptop), OpenRouter (new key/cost), WhatsApp (banned for AI assistants), public webhooks (security), the selling/money module, the unproven "CLI uses 100x fewer tokens" claim |
 
 ## Decisions made by Claude (for Sachin to review)
@@ -190,6 +214,7 @@ See "Open decisions" in PLAN.md. Most important:
 | 2026-10-10 | Office laptop (Windows) | Built Phase 2 (tiers, approvals, taint, quarantine, tools). Live: 10/10 tasks, injection blocked, 0 T4 runs. Pushed to GitHub |
 | 2026-10-10 | Office laptop (Windows) | Research fixes merged (security, prices, memory), one-click app, triggers, standing approvals and previews. 902 tests pass. Pushed. India features and verify/repeat stopped mid-work on wip branches; handoff to home |
 | 2026-10-10 | Office laptop (Windows) | Fable final tests (live suites pass, evals 12/12; laptop compare fails on retailer-price verification). Planner modes, task cancel, chat browser, memory upkeep, approval replay, migration lock fix, README, research on 5 topics, TESTING.md |
+| 2026-10-11 | Home MacBook M4 | Merged Stage B (local adapter not approved, eval runner, measured profiles, report). 1461 passed. Marathi voice samples made; ElevenLabs engine started then stopped at Sachin's request; IndicF5 with Sachin's own voice planned |
 | 2026-10-11 | Home MacBook M4 | Merged voice (Marathi speech-to-text, offline Marathi voice, wake word model). 1420 passed. Tavily key added; laptop compare rerun on Fable failed on check links (fix waiting for Sachin). Sachin tested the dashboard emergency stop (PASS) and downloaded Gemma 4 E4B. Removed unused models and the pip cache to free disk. Stage B agent still running |
 | 2026-10-10 | Home MacBook M4 | Small follow-ups: `connectors status --live`, `/repeat` and `/why` in the dashboard chat. 1379 passed |
 | 2026-10-10 | Home MacBook M4 | Smart home dropped (Sachin). Built and merged: missed-run alerts; Apple Notes connector (titles P2 by default); dashboard repeat drafts + trigger create/delete (structured confirm result); office files with receipts, previews and Writer prompt. 1375 passed |
