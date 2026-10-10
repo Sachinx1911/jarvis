@@ -348,4 +348,7 @@ class Proactive:
         jobs = [(self.fire_reminders, every, "_reminders")]
         if self.trigger_settings.get("enabled", True):
             jobs.append((self.poll_triggers, int(self.trigger_settings.get("poll_seconds", 60)), "_triggers"))
-        return ScheduleService(self.runner(), self.settings.tz_name, sync, extra_jobs=jobs)
+        sched = self.settings.section("schedules")
+        quiet = tuple(sched.get("missed_alert_quiet_kinds") or ("heartbeat", "memory_extract"))
+        return ScheduleService(self.runner(), self.settings.tz_name, sync, extra_jobs=jobs,
+                               alert_missed=bool(sched.get("alert_missed", True)), quiet_kinds=quiet)
