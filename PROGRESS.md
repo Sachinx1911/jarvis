@@ -19,12 +19,12 @@ Ending a session: update this file and commit.
 - **Needs on each machine:** Claude Code CLI 2.1.280 or newer, logged in with the Claude subscription. `jarvis health` checks this.
 - **Half-done work:** None.
 - **Last update:** 2026-10-10, office laptop (Windows 11, Python 3.12).
-- **GitHub:** Pushed to `main` on 2026-10-10 with Sachin's OK.
+- **GitHub:** Pushed to `main` on 2026-10-10 (up to the Phase 1 commit) with Sachin's OK.
 
 ## Next step
 
 1. **Sachin:** Try it: `.venv\Scripts\jarvis.exe chat` (or `jarvis interview`), then review Phase 1.
-2. **Sachin:** Confirm the P2 definition used by the memory prompts (see decisions, 2026-10-10), and OK pushing to GitHub.
+2. **Sachin:** Confirm the P2 definition used by the memory prompts (see decisions, 2026-10-10).
 3. **Sachin:** Say "Start Phase 2" (Tools + Safety).
 
 ## Decisions made by Sachin
