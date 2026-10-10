@@ -7,5 +7,12 @@ providers:
   claude_code:
     kind: cloud       # same Claude models, reached through the local Claude Code CLI
     auth: subscription  # the user's Claude login (Max); no API key, no per-call billing
+  local:
+    # Stage B (2026-10-10): measured only, NOT approved. It is not in routing.yaml
+    # approved_providers, so no live route can use it. The adapter refuses any endpoint
+    # that is not localhost. Report: docs/stage-b/2026-10-10-local-models.md
+    kind: local
+    runtime: llama.cpp llama-server  # Homebrew llama.cpp 0.6.0 (build 11429), Metal
+    endpoint: http://127.0.0.1:8080
   fake:
     kind: test        # deterministic, offline; always allowed, sends nothing anywhere
