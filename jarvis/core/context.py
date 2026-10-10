@@ -129,6 +129,15 @@ class ContextBuilder:
         ctx = BuiltContext(system="")
         parts = [soul_text(self.home), (PROMPTS_DIR / "jarvis_system.md").read_text(encoding="utf-8").strip()]
 
+        # Core memory (profile/USER.md + profile/MEMORY.md): only P0/P1 text is ever saved there.
+        if allowed("P1", self.max_privacy):
+            from jarvis.memory.core import core_from_settings
+            from jarvis.memory.upkeep_settings import load_memory_settings
+
+            core = core_from_settings(self.home, load_memory_settings())
+            if core:
+                parts.append(core.block())
+
         if self.memory:
             index = (self.memory.root / "MEMORY.md")
             if index.exists():

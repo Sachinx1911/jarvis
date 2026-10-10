@@ -28,3 +28,12 @@ cleanup:
   borderline_similarity: 0.75 # between this and duplicate_similarity = listed in the report only
   archive_after_days: 90      # not used (or created, if never used) for this long = archived
   keep_types: [constraint, preference]   # never archived for age
+
+# Core memory (idea from Hermes Agent): profile/USER.md (the user's profile) and profile/MEMORY.md
+# (Jarvis's notes), always in the prompt, kept small. Jarvis edits them with the core_memory tool;
+# the user can edit them in the dashboard (Memory tab) or the files. Only P0/P1 text is accepted.
+core:
+  enabled: true
+  user_chars: 1375            # Hermes defaults
+  memory_chars: 2200
+  write_approval: false       # true = Jarvis asks before every core-memory change (T2)
