@@ -124,6 +124,10 @@ On a new machine first: `git clone`, run `scripts/setup.ps1` (Windows) or `scrip
 | 2026-10-10 | Researcher/Writer model: test both opus (low) and sonnet (medium), then choose |
 | 2026-10-10 | Everything should be usable from the app (one-click start, all features in the dashboard) and tasks should be automatable (triggers, standing approvals, repeat-this) |
 | 2026-10-10 | Smart home control (skill #24) is not wanted: dropped from the plan |
+| 2026-10-10 | #19 decided: email sender/subject and Apple Notes titles stay P2 (not sent to the cloud model) for now |
+| 2026-10-10 | #10 decided: backups stay local (`~/JarvisBackups`, never inside the repo) and must be encrypted |
+| 2026-10-10 | No adding UPI payees from the app; payees stay terminal-only |
+| 2026-10-10 | Downloads approved: English Whisper model, Marathi speech models (STT/TTS), wake word, and Stage B local AI (runtime + models). Stage B measures only; live routing changes need Sachin's OK |
 | 2026-10-10 | Vetted the Hermes Agent Masterclass (Jack Roberts, hermes-masterclass.vercel.app). Taken: a global daily cap for unattended work (runaway-loop risk), a nightly review into `memory/episodes/` with memory conflicts in the brief, local dated backups (destination still open decision #10). Already in Jarvis: soul file, markdown memory + FTS, risk tiers/approvals/kill switch, Telegram allow-list, cron/heartbeat/brief, planner-worker-critic, budgets, dashboard. Dropped: VPS/Docker hosting (data leaves the laptop), OpenRouter (new key/cost), WhatsApp (banned for AI assistants), public webhooks (security), the selling/money module, the unproven "CLI uses 100x fewer tokens" claim |
 
 ## Decisions made by Claude (for Sachin to review)
@@ -153,8 +157,6 @@ On a new machine first: `git clone`, run `scripts/setup.ps1` (Windows) or `scrip
 
 See "Open decisions" in PLAN.md. Most important:
 - 5 things Jarvis should do every day
-- Whether email sender and subject count as P1 or P2 (#19)
-- Where to keep the private backup of Jarvis's personal data
 - Worker model choice (after the Phase 3 comparison)
 
 ## Session log

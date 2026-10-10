@@ -1132,7 +1132,7 @@ These rules are already in the repo's `CLAUDE.md`.
 | 7 | Name | "Jarvis" |
 | 8 | OK to skip WhatsApp? | Yes, use Telegram |
 | 9 | Worker agent model | Opus 5.5 at low effort vs Sonnet 5.5; test both |
-| 10 | Backup and sync of Jarvis's personal data | Separate **private** GitHub repo (e.g. `jarvis-memory`) |
+| 10 | Backup and sync of Jarvis's personal data | **Decided 2026-10-10:** local only (`~/JarvisBackups`), encrypted |
 | 11 | Keep the code repo public? | Sachin's choice. Personal data never goes in it either way |
 | 12 | Which P2 (sensitive) categories may go to Claude in Stage A | **Decided 2026-10-10:** none at the start. Enable later one category at a time, only with Sachin's OK |
 | 13 | Web search provider for the Jarvis search tool | **Decided 2026-10-10:** Tavily |
@@ -1141,7 +1141,7 @@ These rules are already in the repo's `CLAUDE.md`.
 | 16 | Evaluation judge policy (cloud judge for evaluation only?) | Deterministic checks first, one fixed judge, human spot checks |
 | 17 | If local models fall short on this Mac: stay hybrid for some routes, or upgrade hardware | Decide after Stage B |
 | 18 | Offline Marathi voice for Stage D | Evaluate options in Stage B |
-| 19 | Do email sender and subject count as P1 or P2? | Decide before Phase 5 (affects the daily brief) |
+| 19 | Do email sender and subject count as P1 or P2? | **Decided 2026-10-10:** P2 for now (also Apple Notes titles) |
 
 ---
 
