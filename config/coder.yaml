@@ -1,0 +1,17 @@
+# Coder agent (PLAN.md 9.1, 11.2). Machine-specific changes go in config/local.yaml under coder_file.
+# The Coder works only in <JARVIS_HOME>/<root>/<project>/.
+root: workspace/code
+
+# The ONLY commands run_tests may run, matched exactly after shlex.split. No shell is used,
+# so pipes, redirects, ';', '&&' and variables are refused. Add commands one at a time.
+test_commands:
+  - pytest -q
+  - python -m pytest -q
+  - npm test
+
+timeout_seconds: 300           # the whole process tree is killed after this
+max_output_chars: 20000        # output beyond this is dropped (the count is reported)
+
+# Extra environment variable names passed to the test process. By default it gets only a
+# minimal environment (PATH, temp and home folders inside the project, locale) and no secrets.
+pass_env: []
