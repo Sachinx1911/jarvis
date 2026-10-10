@@ -13,7 +13,7 @@ Ending a session: update this file and commit.
   - On `main` and tested (902 pass): everything through Phases 0–8, research fixes (prompt-injection hardening, price tiers, memory retrieval), one-click app, event triggers, approval previews + grouped and standing approvals + memory sources/trash + "why" panel.
   - Stopped mid-work, saved on branches (pushed, NOT merged, not tested): `wip/india-features` (AMFI NAV, IMD/Sachet feeds, bills tracker, document wallet, UPI link; tests partly written) and `wip/verify-repeat` (verify-after-act, `/repeat`). Resume each: check out the branch, run the whole suite, finish the brief in this file's "Next step", then merge.
   - Done later on the Mac (2026-10-10): global daily cap, nightly review, backups, India features, verify/repeat, dashboard India tab and triggers.
-- **Last update:** 2026-10-11, home MacBook (Apple M4, macOS 26.5, Python 3.13): voice merged (local Marathi speech-to-text, offline Marathi voice, wake word model; 1420 passed). Laptop compare rerun on Fable (see Final testing). Stage B (local models) merged: measurements only, no route uses a local model (1461 passed). Marathi voice: Sachin dislikes MMS-TTS; plan is IndicF5 with his own recorded voice, parked by Sachin for now. Later the same day: grader fixes, voice status in the dashboard and CLI, accented-English routing fix, "Hey Jarvis" made to work on this Mac, and the dashboard redesign (Command Center, voice stage, hands-free chat) from Sachin's mockups. 1494 passed.
+- **Last update:** 2026-10-11, home MacBook (Apple M4, macOS 26.5, Python 3.13): voice merged (local Marathi speech-to-text, offline Marathi voice, wake word model; 1420 passed). Laptop compare rerun on Fable (see Final testing). Stage B (local models) merged: measurements only, no route uses a local model (1461 passed). Marathi voice: Sachin dislikes MMS-TTS; plan is IndicF5 with his own recorded voice, parked by Sachin for now. Later the same day: grader fixes, voice status in the dashboard and CLI, "Hey Jarvis" made to work on this Mac, the dashboard redesign (Command Center, voice stage, hands-free chat) from Sachin's mockups, core memory (USER.md + MEMORY.md), the Mac app (`Jarvis.app`), and **voice v2** (see "Voice v2" below). 1518 passed.
 - **Models on the home MacBook** (all under `data/models/`, git-ignored): Whisper small 484 MB, IndicConformer Marathi 138 MB, MMS-TTS Marathi 114 MB, openWakeWord 9 MB, Qwen3.5-9B Q4_K_M 5.7 GB (unsloth/Qwen3.5-9B-GGUF), Gemma 4 E4B Q4_K_M 5.0 GB (unsloth/gemma-4-E4B-it-GGUF, downloaded by Sachin in the browser, SHA-256 checked). Ollama and `gemma3:4b` on this Mac belong to another of Sachin's projects, not to Jarvis: leave them alone.
 - **GitHub:** `main` pushed on 2026-10-10 from the home MacBook (all Mac merges, fixes and Fable results) with Sachin's OK. The old branches `wip/india-features` and `wip/verify-repeat` on GitHub are merged and can be deleted.
 
@@ -57,6 +57,36 @@ Ending a session: update this file and commit.
 - Live suites with `JARVIS_TEST_MODEL=claude-fable-5-1`: greeting PASS, memory test 10/10, tools 10/10 with injection blocked and 0 T4 runs, demo -> skill PASS (API-key test skipped: no key, by decision).
 - Eval suite: 12/12 (Marathi/English, memory, structured output, tool calling).
 - Laptop compare team task on Fable: FAILED twice (first $5 budget hit; then 3 rounds, 62 calls, $11.65 notional): no price could be confirmed on an Indian retailer page. Research shows Amazon/Flipkart terms forbid automated price collection, so the verifier needs source tiers (see Next step).
+
+### Voice v2 (2026-10-11): one voice engine, Alexa-style
+
+Why: the Mac app's own recordings showed the real fault. Audio was clean, but Whisper's free language
+guess called an Indian-accent "hello hello hello" Arabic (0.28) and the clip was dropped as unclear;
+"Jarvis" was heard as "that was". Standards checked: Amazon's Alexa attention states (Idle / Listening /
+Thinking / Speaking) and Follow-Up Mode (5 s), Google's earcon guidance (few, brief, consistent), and
+current voice-agent endpointing practice (short confident-done delay, ~0.5-0.7 s silence; 8 s no-speech).
+
+- Speech-to-text: auto mode narrows Whisper's guess to English or Marathi (Hindi counts as Marathi); an
+  unsure guess is settled by one decode forced to Marathi (Devanagari = Marathi, Latin = English).
+  Whisper gets hotwords "Jarvis" and no carry-over context. `min_confidence` 0.35. Measured: all 12 test
+  clips route right; Sachin's own clip went from "ألو ألو ألو" (unclear) to "Hello, hello, hello" (0.72).
+- The page sends raw WAV at the microphone's rate (no MediaRecorder); the server resamples and evens
+  out the level. The microphone is opened without echo cancellation, so macOS stops ducking Jarvis's
+  spoken replies (the "volume goes up and down" complaint).
+- One state machine for push to talk, "Hey Jarvis" (judged from the sound by the wake-word model; the
+  server cuts the wake phrase off) and conversation mode: 0.5 s pre-roll, 0.7 s end silence, 15 s cap,
+  8 s no-speech timeout, 5 s follow-up listening, tap to interrupt (POST /api/voice/stop), the server
+  says when speech ends (GET /api/voice/speaking). Two earcons. A red "mic on" indicator. Voice never
+  approves and never sends "/" commands.
+- One Voice settings panel (mode, speak replies, auto-send, follow-up, sounds) on the Command Center
+  and in Chat; the scattered switches are gone. Sidebar regrouped: Home, Work, Jarvis learns, Life,
+  Settings. Memory tab has the Core memory editor.
+- Mac app `~/Applications/Jarvis.app` (mac/Jarvis, `scripts/build_mac_app.sh`): the dashboard in its
+  own window with the microphone; starts and stops Jarvis itself; watchdog restarts Jarvis if it
+  disappears. Rebuild after moving the repo (it stores the repo path and PATH).
+- Tests no longer read the developer's `config/local.yaml` (`JARVIS_LOCAL_CONFIG`, tests/conftest.py).
+- Not done yet: a real-microphone check of voice v2 by Sachin (the engine was verified on recorded
+  clips and in unit tests); Marathi voice quality (parked); Whisper on the GPU (MLX/whisper.cpp).
 
 ## Not built yet (as of 2026-10-10)
 
@@ -223,6 +253,7 @@ See "Open decisions" in PLAN.md. Most important:
 | 2026-10-10 | Office laptop (Windows) | Built Phase 2 (tiers, approvals, taint, quarantine, tools). Live: 10/10 tasks, injection blocked, 0 T4 runs. Pushed to GitHub |
 | 2026-10-10 | Office laptop (Windows) | Research fixes merged (security, prices, memory), one-click app, triggers, standing approvals and previews. 902 tests pass. Pushed. India features and verify/repeat stopped mid-work on wip branches; handoff to home |
 | 2026-10-10 | Office laptop (Windows) | Fable final tests (live suites pass, evals 12/12; laptop compare fails on retailer-price verification). Planner modes, task cancel, chat browser, memory upkeep, approval replay, migration lock fix, README, research on 5 topics, TESTING.md |
+| 2026-10-11 | Home MacBook M4 | Voice v2 (see above), core memory USER.md + MEMORY.md, the Mac app, menu regrouped, test isolation from local.yaml. 1518 passed. Hermes Agent memory vetted: core memory taken; vector index still deferred |
 | 2026-10-11 | Home MacBook M4 | Merged grader fixes, voice status (dashboard Setup tab, API, CLI), accented-English routing fix, dashboard redesign. Wake word tuned for Sachin's voice. Vetted a Google Drive skill (not installed; documents overview added to the later list). 1494 passed |
 | 2026-10-11 | Home MacBook M4 | Merged Stage B (local adapter not approved, eval runner, measured profiles, report). 1461 passed. Marathi voice samples made; ElevenLabs engine started then stopped at Sachin's request; IndicF5 with Sachin's own voice planned |
 | 2026-10-11 | Home MacBook M4 | Merged voice (Marathi speech-to-text, offline Marathi voice, wake word model). 1420 passed. Tavily key added; laptop compare rerun on Fable failed on check links (fix waiting for Sachin). Sachin tested the dashboard emergency stop (PASS) and downloaded Gemma 4 E4B. Removed unused models and the pip cache to free disk. Stage B agent still running |
