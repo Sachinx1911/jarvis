@@ -24,18 +24,17 @@ Ending a session: update this file and commit.
   - Chat asks for approval in the terminal; one-shot `chat -m` denies anything that needs approval.
 - **Tests:** 125 pass offline, 4 live tests opt-in (`JARVIS_LIVE=1 pytest -m live -s`). Live on 2026-10-10: memory 10/10, tools 10/10 + injection blocked, eval baseline 8/8.
 - **Not live-tested on purpose:** media keys, notifications, open_app, brightness (they change the computer). Covered by unit tests only; Sachin can try them in chat.
-- **Tavily:** code ready; key not stored yet, so `web_search` answers that it is not set up.
+- **Tavily:** key stored in Windows Credential Manager on the office laptop (2026-10-10); live search and a chat news question work. The Mac needs its own `jarvis secret set tavily_api_key`.
 - **Not built (deferred):** news via RSS (Tavily `topic: news` covers news and cricket), traffic (needs a maps API), Do Not Disturb (no simple Windows API), vector search (decided), automatic extraction 10–30 min after a quiet session (needs the Phase 4 scheduler; now runs at /exit), weekly memory cleanup, query rewrite as a separate model call (summary_en + keywords saved with each memory cover romanized Marathi for now).
 - **Needs on each machine:** Claude Code CLI 2.1.280 or newer, logged in with the Claude subscription. `jarvis health` checks this.
 - **Half-done work:** None.
 - **Last update:** 2026-10-10, office laptop (Windows 11, Python 3.12).
-- **GitHub:** Pushed to `main` on 2026-10-10 (up to the Phase 1 commit) with Sachin's OK.
+- **GitHub:** Pushed to `main` on 2026-10-10 (up to Phase 2) with Sachin's OK.
 
 ## Next step
 
-1. **Sachin:** Create a free Tavily account, then store the key: `.venv\Scripts\jarvis.exe secret set tavily_api_key`.
-2. **Sachin:** Try Phase 2 in chat (weather, files in `workspace/`, volume, open notepad), then review.
-3. **Sachin:** Say "Start Phase 3" (Tasks + Agent team).
+1. **Sachin:** Try Phase 2 in chat (weather, files in `workspace/`, volume, open notepad), then review.
+2. **Sachin:** Say "Start Phase 3" (Tasks + Agent team).
 
 ## Decisions made by Sachin
 
@@ -62,6 +61,7 @@ Ending a session: update this file and commit.
 | 2026-10-10 | Start Phase 1 now, built and tested against the fake provider plus the subscription provider. Vector search deferred (keyword + trigram first) |
 | 2026-10-10 | (Confirmed by Sachin) P2 "sensitive" in memory prompts = health, money, ID document contents/numbers, other people's phone/email/address. Family names, where things are kept, schedules and preferences are P1. The first live run marked a daughter's name and a document location as P2, which withheld them from Claude |
 | 2026-10-10 | Start Phase 2. Web search stays Tavily (compared with Brave, Claude search via Max, Google CSE, DuckDuckGo, SearXNG; Tavily: no card, AI-ready content, provider-independent) |
+| 2026-10-10 | Tavily MCP server not used for now: Jarvis already calls the Tavily REST API directly; MCP client comes with connectors (Phases 4–5) |
 | 2026-10-10 | File tools start with the Jarvis `workspace/` folder only; more folders can be added one at a time in `config/local.yaml` |
 
 ## Open decisions
