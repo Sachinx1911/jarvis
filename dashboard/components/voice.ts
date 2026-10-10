@@ -116,7 +116,8 @@ const FRAME = 2048; // samples per audio callback (about 43 ms at 48 kHz)
 const END_SILENCE_S = 0.9;
 const MIN_SPEECH_S = 0.3;
 const MAX_UTTERANCE_S = 30;
-const PREROLL_S = 0.3;
+const PREROLL_S = 0.5; // keep the start of the first word ("Jarvis")
+const WAKE_MIN_CONFIDENCE = 0.28; // an unsure transcript is still used when it starts with the wake word
 const ARMED_MS = 8000; // after a bare "Jarvis", the next utterance needs no wake word
 
 type Handlers = {
@@ -191,11 +192,17 @@ export function useHandsFree(opts: { enabled: boolean; mode: HandsFreeMode; paus
         const r = await transcribe(wav);
         if (cancelled) return;
         const o = optsRef.current;
-        if (!isClear(r.status)) {
-          if (r.status !== "no_audio") o.onNote(`Did not catch that${r.heard ? ` (heard "${r.heard}")` : ""}.`);
+        let text = (isClear(r.status) ? r.text : "").trim();
+        if (!text && r.status !== "no_audio" && r.heard && o.mode === "wake") {
+          // Short phrases often come back just under the server's confidence bar. When the
+          // unsure text still starts with the wake word, the user clearly meant Jarvis: use it.
+          const rest = stripWakeWord(r.heard);
+          if (rest && (r.confidence ?? 0) >= WAKE_MIN_CONFIDENCE) text = r.heard.trim();
+        }
+        if (!text) {
+          if (r.status !== "no_audio") o.onNote(`Did not catch that${r.heard ? ` (heard "${r.heard}")` : ""}. Please say it again, a little slower.`);
           return;
         }
-        let text = r.text.trim();
         if (o.mode === "wake") {
           const rest = stripWakeWord(text);
           if (rest === null) {
