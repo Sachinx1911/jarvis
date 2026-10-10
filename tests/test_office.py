@@ -521,3 +521,24 @@ def test_writer_creates_office_files_sandboxed_in_the_task_folder(isolated):
     rows = store.conn.execute("SELECT source, tainted FROM file_provenance ORDER BY id").fetchall()
     store.close()
     assert rows == [("writer:create_docx", 1), ("writer:create_xlsx", 1)]  # what a tainted writer makes stays tainted
+
+
+def test_receipt_lists_office_files_created_by_a_task(tmp_path):
+    from types import SimpleNamespace
+
+    from jarvis.db import Store
+    from jarvis.tasks.receipt import build_receipt
+    from jarvis.tasks.store import TaskStore
+
+    store = Store(tmp_path / "data" / "jarvis.db")
+    try:
+        tasks = TaskStore(store, tmp_path / "data" / "tasks")
+        t = tasks.create("make the example report", title="Example report")
+        for tool, path in (("create_docx", "report.docx"), ("create_xlsx", "table.xlsx"), ("write_file", "notes.md")):
+            store.conn.execute("INSERT INTO tool_runs (task_id, tool, tier, arguments, ok) VALUES (?, ?, 'T1', ?, 1)",
+                               (t.id, tool, f'{{"path": "{path}"}}'))
+        store.conn.commit()
+        text = build_receipt(SimpleNamespace(tasks=tasks, store=store), t.id)
+    finally:
+        store.close()
+    assert "created report.docx" in text and "created table.xlsx" in text and "created notes.md" in text

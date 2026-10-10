@@ -239,6 +239,30 @@ def _code_write(args: dict, files: _Files) -> str:
                       f"Size: {_size(len(content), content)}", "First lines:", _head(content)])
 
 
+def _new_office_file(args: dict, files: _Files, kind: str) -> str:
+    path, shown = files.resolve(str(args.get("path", "")))
+    lines = [f"Create new {kind} file: {mark(shown)}"]
+    if path is not None and path.exists():
+        lines.append("Note: this file already exists, so the write will be refused (nothing changes).")
+    if kind == "Word":
+        blocks = [b for b in args.get("blocks") or [] if isinstance(b, dict)]
+        counts = {t: sum(1 for b in blocks if b.get("type") == t) for t in ("heading", "paragraph", "table")}
+        lists = sum(1 for b in blocks if b.get("type") in ("bullets", "numbered"))
+        if args.get("title"):
+            lines.append(f"Title: {mark(str(args['title'])[:120])}")
+        lines.append(f"Content: {counts['heading']} heading(s), {counts['paragraph']} paragraph(s), "
+                     f"{lists} list(s), {counts['table']} table(s)")
+    else:
+        sheets = [s for s in args.get("sheets") or [] if isinstance(s, dict)]
+        lines.append("Sheets: " + (", ".join(f"{mark(str(s.get('name') or 'Sheet'))} ({len(s.get('rows') or [])} rows)"
+                                             for s in sheets) or "none"))
+        if args.get("formulas"):
+            lines.append(f"Formulas: {len(args['formulas'])}")
+        if args.get("charts"):
+            lines.append("Charts: " + ", ".join(str(c.get("type", "?")) for c in args["charts"] if isinstance(c, dict)))
+    return "\n".join(lines)
+
+
 def _reminder(args: dict, files: _Files) -> str:
     out = [f"New reminder: {mark(str(args.get('title', '')))}"]
     if args.get("due"):
@@ -257,6 +281,8 @@ _PREVIEWS: dict[str, Callable[[dict, _Files], str]] = {
     "gmail_draft": lambda a, f: _mail(a, send=False),
     "code_write": _code_write,
     "reminder_create": _reminder,
+    "create_docx": lambda a, f: _new_office_file(a, f, "Word"),
+    "create_xlsx": lambda a, f: _new_office_file(a, f, "Excel"),
 }
 
 

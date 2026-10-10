@@ -24,6 +24,9 @@ SUMMARY_SCHEMA: dict[str, Any] = {
 }
 
 
+# Tools that create a new file (the receipt lists each file they made).
+CREATING_TOOLS = ("write_file", "create_docx", "create_xlsx")
+
 def _minutes(start: str, end: str) -> str:
     try:
         a, b = datetime.fromisoformat(start), datetime.fromisoformat(end)
@@ -67,7 +70,8 @@ def build_receipt(runner: "TaskRunner", task_id: str, summary: str | None = None
         lines.append("- no tools used")
 
     files = [e["detail"] for e in events if e["kind"] == "output"]
-    created = [json.loads(a).get("path") for agent, tool, tier, ok, a in runs if tool == "write_file" and ok]
+    created = [json.loads(a).get("path") for agent, tool, tier, ok, a in runs
+               if tool in CREATING_TOOLS and ok]
     if created or files:
         lines += ["", "Files:"]
         lines += [f"- created {p} (task folder)" for p in created if p]
