@@ -410,3 +410,23 @@ def test_usage_agents_settings_schedules(client):
 def test_root_without_build_explains(client):
     r = client.get("/")
     assert r.status_code == 200 and "npm run build" in r.text
+
+
+def test_repeat_works_in_the_dashboard_chat_and_saves_only_after_yes(isolated):
+    """/repeat in the dashboard chat behaves like the terminal: a draft first, saved only on /repeat yes."""
+    with _client(Scripted(script=["No action yet."])) as client:
+        sid = client.post("/api/chat/sessions", headers=H).json()["id"]
+        r = client.post(f"/api/chat/sessions/{sid}/messages", headers=H, json={"text": "/repeat"}).json()
+        assert r["kind"] == "command" and "Usage: /repeat" in r["reply"]
+        r = client.post(f"/api/chat/sessions/{sid}/messages", headers=H, json={"text": "/repeat no"}).json()
+        assert r["kind"] == "command" and "Nothing is waiting" in r["reply"]
+
+
+def test_why_works_in_the_dashboard_chat(isolated):
+    with _client(Scripted(script=["Hello, sir."])) as client:
+        sid = client.post("/api/chat/sessions", headers=H).json()["id"]
+        r = client.post(f"/api/chat/sessions/{sid}/messages", headers=H, json={"text": "/why"}).json()
+        assert r["kind"] == "command" and "Nothing to explain yet" in r["reply"]
+        client.post(f"/api/chat/sessions/{sid}/messages", headers=H, json={"text": "hello"})
+        r = client.post(f"/api/chat/sessions/{sid}/messages", headers=H, json={"text": "/why"}).json()
+        assert r["kind"] == "command" and "Context Jarvis had for its last answer" in r["reply"]

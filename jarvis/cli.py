@@ -289,7 +289,9 @@ def cmd_connectors(args: argparse.Namespace, out: TextIO) -> int:
             h = make_provider(name, rt.config).health()
             print(f"  {name}: {'OK' if h.ok else 'NOT OK'} - {h.detail}", file=out)
         from jarvis.connectors.registry import ConnectorDeps, connector_health
-        for cname, ok, detail in connector_health(ConnectorDeps(rt.paths.home, rt.store, rt.audit)):
+        live = bool(getattr(args, "live", False))
+        for cname, ok, detail in connector_health(ConnectorDeps(rt.paths.home, rt.store, rt.audit),
+                                                  live=live, notes_live=live):
             print(f"  {cname}: {'OK' if ok else 'NOT OK'} - {detail}", file=out)
         return 0
     finally:
@@ -370,6 +372,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     con = sub.add_parser("connectors", help="tools, risk tiers and health checks")
     con.add_argument("action", choices=["status"])
+    con.add_argument("--live", action="store_true",
+                     help="also run the live checks: one small Google call and one Apple Event to Notes "
+                          "(Notes may show the macOS permission prompt; no note is read)")
 
     stop = sub.add_parser("stop", help="emergency stop: block all model and tool calls")
     stop.add_argument("reason", nargs="*")
