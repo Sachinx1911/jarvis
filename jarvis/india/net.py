@@ -11,6 +11,8 @@ import urllib.parse
 import urllib.request
 from typing import Protocol
 
+from jarvis.netssl import tls_context
+
 TIMEOUT = 25
 MAX_BYTES = 8_000_000  # NAVAll.txt was about 1.5 MB on 2026-10-10
 USER_AGENT = "Jarvis/0.1 (personal assistant)"
@@ -30,7 +32,7 @@ class UrlFetcher:
             raise FetchError("only https sources are fetched")
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, **(headers or {})})
         try:
-            with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:  # noqa: S310 - https only, fixed URLs
+            with urllib.request.urlopen(req, timeout=TIMEOUT, context=tls_context()) as resp:  # noqa: S310 - https only, fixed URLs
                 data = resp.read(MAX_BYTES + 1)
         except urllib.error.HTTPError as e:
             raise FetchError(f"HTTP {e.code} from {urllib.parse.urlparse(url).hostname}") from e
