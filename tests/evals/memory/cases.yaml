@@ -13,7 +13,10 @@
 # stale: ids holding an outdated answer (knowledge-update). Offline: counted when a stale
 #   session ranks above every gold session. Live: `stale_values` in the answer.
 # answer: checks for the opt-in live run (contains_any / not_contains); unanswerable
-#   questions pass only when the answer declines.
+#   questions pass only when the answer declines. contains_any lists the spellings a right
+#   answer may use (romanized and Devanagari, e.g. बाणेर and the common बानेर).
+# history_ok: true lets an answer name a not_contains value as history ("before that it was
+#   80 kilo"), as knowledge-update questions always may; presenting it as the answer still fails.
 
 today: "2026-10-10"          # a Saturday; "last week" = 2026-09-28 .. 2026-10-04
 
@@ -355,7 +358,7 @@ questions:
     query: majha office kuthe ahe?
     evidence: [[m-0005, a1b2c3d40005]]
     stale: [m-0004, a1b2c3d40004]
-    answer: {contains_any: [Baner, बाणेर], not_contains: [Hinjewadi, हिंजवडी]}
+    answer: {contains_any: [Baner, बाणेर, बानेर], not_contains: [Hinjewadi, हिंजवडी]}
     stale_values: [Hinjewadi, हिंजवडी]
   - id: ku-2
     category: knowledge-update
@@ -363,7 +366,7 @@ questions:
     query: माझं ऑफिस आता कुठे आहे?
     evidence: [[m-0005, a1b2c3d40005]]
     stale: [m-0004, a1b2c3d40004]
-    answer: {contains_any: [Baner, बाणेर], not_contains: [Hinjewadi, हिंजवडी]}
+    answer: {contains_any: [Baner, बाणेर, बानेर], not_contains: [Hinjewadi, हिंजवडी]}
     stale_values: [Hinjewadi, हिंजवडी]
   - id: ku-3
     category: knowledge-update
@@ -401,7 +404,7 @@ questions:
     query: माझी गाडी कोणती आणि ऑफिस कुठे आहे?
     evidence: [[m-0006, a1b2c3d40006], [m-0005, a1b2c3d40005]]
     stale: [m-0004, a1b2c3d40004]
-    answer: {contains_any: [Baner, बाणेर], not_contains: [Hinjewadi, हिंजवडी]}
+    answer: {contains_any: [Baner, बाणेर, बानेर], not_contains: [Hinjewadi, हिंजवडी]}
     stale_values: [Hinjewadi, हिंजवडी]
 
   # ---- temporal ----
@@ -410,6 +413,8 @@ questions:
     script: roman
     query: gelya athavdyat gym madhe kiti deadlift kela?
     evidence: [[a1b2c3d40021]]
+    # 80 kilo (8 Sep) is not last week's lift; naming it as the earlier lift is fine.
+    history_ok: true
     answer: {contains_any: ["100", "१००"], not_contains: ["80 kilo"]}
   - id: tm-2
     category: temporal
