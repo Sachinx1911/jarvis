@@ -1,10 +1,11 @@
-# Jarvis — Master Plan (v3.2)
+# Jarvis — Master Plan (v3.3)
 
 **Date:** 2026-10-09 (updated 2026-10-10)
 **Status:** Planning is nearly complete. No code has been written yet.
 **What this file is:** All research, analysis and planning done so far, in one place.
 **v3.1 (2026-10-10):** Added teach-by-demonstration, task queue, connector registry, schedules, model routing, task receipts, project workspace and isolated browser profiles. Kept the useful part of each and dropped the excessive or risky parts.
 **v3.2 (2026-10-10):** Files are written in English. Conversations with Sachin happen in Marathi.
+**v3.3 (2026-10-10):** Migration-ready architecture: hybrid now (Claude for reasoning, everything else local), fully local AI later without a rewrite. Added the AI provider layer, privacy controls, migration roadmap (Stages A–D) and migration evaluation suite. The brain-loop recommendation changed from the Claude Agent SDK to a Jarvis-owned loop. Nothing implemented; fully local inference is not verified.
 
 ---
 
@@ -15,6 +16,8 @@ It **learns** from him, **remembers** what it learns, **does real work**, **chec
 **speaks up on its own** when something matters, and hands big jobs to a **team of agents**.
 
 Voice and the dashboard are only interfaces. The real Jarvis is memory + tools + safety + proactivity + team.
+
+**Architecture direction:** Jarvis launches **hybrid**. Claude does the reasoning in the cloud; the app, memory, tools, permissions, task execution and audit logs all run on the Mac. Everything is built behind a provider-independent AI interface so that Jarvis can later move to **fully local AI** without rewriting the application. See "AI provider layer and migration to local AI".
 
 ---
 
@@ -30,6 +33,7 @@ Voice and the dashboard are only interfaces. The real Jarvis is memory + tools +
 | 6 | 5 research agents | Memory, brain loop, connectors, Marathi search, Mac safety | All rules folded in below |
 | 7 | OpenClaw and Hermes Agent | Skill system, heartbeat, session search | Added new skills |
 | 8 | Multi-agent research (Anthropic, MAST paper) | When a team helps and when it hurts | Agent team design |
+| 9 | Sachin's architecture direction (2026-10-10) | Hybrid now, fully local AI later | Provider layer, privacy controls, migration roadmap |
 
 ---
 
@@ -129,13 +133,12 @@ Voice and the dashboard are only interfaces. The real Jarvis is memory + tools +
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ INTERFACES   CLI (P0) · Telegram (P4) · Voice (P6) · Web (P7) │
+│ INTERFACES  CLI (P0) · Telegram (P4) · Voice (P6) · Web (P7) │
 └─────────────────────────────┬────────────────────────────────┘
 ┌─────────────────────────────▼────────────────────────────────┐
-│ JARVIS (manager)                                             │
-│ context builder: personality + profile + memory index        │
-│                  + relevant memories + task state + skills   │
-│ planner · tool loop · delegate work to agent team            │
+│ JARVIS CORE (local, provider-independent)                    │
+│ context builder · planner · own tool loop · agent team       │
+│ task state · routing policy · cloud privacy gate             │
 └──────┬─────────────┬─────────────┬─────────────┬─────────────┘
 ┌──────▼─────┐ ┌─────▼──────┐ ┌────▼───────┐ ┌───▼──────────┐
 │ MEMORY     │ │ TOOLS +    │ │ CONTROL    │ │ PROACTIVE    │
@@ -146,13 +149,16 @@ Voice and the dashboard are only interfaces. The real Jarvis is memory + tools +
 │ search     │ │            │ │ budget     │ │              │
 └────────────┘ └─────┬──────┘ └────────────┘ └──────────────┘
        ┌─────────────▼───────────────────────────────────┐
-       │ AGENT TEAM: Researcher · Writer · Checker        │
-       │             (later) Coder · Operator             │
-       └─────────────┬───────────────────────────────────┘
-       ┌─────────────▼───────────────────────────────────┐
-       │ CONNECTORS: Telegram · Web search · Calendar ·   │
-       │             Gmail · Reminders · Notes            │
+       │ CONNECTORS (not AI providers): Telegram · web   │
+       │ search · Calendar · Gmail · Reminders · Notes   │
        └─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ AI PROVIDER LAYER (the only code that knows a vendor)        │
+│ ReasoningProvider interface                                  │
+│  ├─ Claude adapter   (Stage A, cloud)                        │
+│  ├─ Fake provider    (tests, offline)                        │
+│  └─ Local adapter    (future, from Stage B; not built yet)   │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ### Task lifecycle
@@ -175,9 +181,253 @@ Plus SCHEDULED and PAUSED. Details in the "Task system" section.
 
 ---
 
-## 5. Memory design (the core)
+## 5. AI provider layer and migration to local AI
 
-### 5.1 Layout
+### 5.1 Architecture decision: hybrid now, fully local later
+
+- **Context:** Claude gives the best reasoning today. Sachin wants Jarvis to move to fully local AI later without rewriting the app. The Mac (M4, 16 GB, ~32 GB free disk) has not been tested with local models.
+- **Decision:** Launch hybrid. Claude (via the Anthropic Python SDK) is the first reasoning provider. The app runtime, memory, indexes, tools, permissions, task execution, receipts and audit logs stay on the Mac. All reasoning goes through a provider-independent interface owned by Jarvis.
+- **Consequences:**
+  - Jarvis owns its agent loop, agent team, sessions and safety gate. The Claude Agent SDK is not used as the core (see "Brain loop").
+  - Vendor code lives only in provider adapters.
+  - Model capabilities are declared or measured, never assumed.
+  - A local adapter is designed now but built only in Stage B, with Sachin's approval.
+  - **Not claimed:** fully local inference on this Mac is unverified. Stage B measures it.
+
+### 5.2 What stays local and what may go to the cloud
+
+| Always local | May go to the cloud AI provider | Needs internet anyway (not AI providers) |
+|---|---|---|
+| Memory files, SQLite index, embeddings, session history, task state, receipts, audit logs, schedules, skills, config | Prompts and context that pass the privacy gate (see "Privacy controls for cloud AI") | Web search, Gmail, Google Calendar, Telegram, edge-tts Marathi voice |
+
+### 5.3 Provider interface
+
+Documentation only. Not implemented.
+
+```python
+class ReasoningProvider(Protocol):
+    name: str                                    # "anthropic", "fake", later "local-<runtime>"
+    def capabilities(self, model: str) -> ModelCapabilities: ...
+    def generate(self, req: LLMRequest) -> LLMResponse: ...            # one step: text and/or tool calls
+    def stream(self, req: LLMRequest) -> Iterator[LLMEvent]: ...
+    def structured(self, req: LLMRequest, schema: dict) -> StructuredResult: ...  # schema-validated JSON
+    def count_tokens(self, req: LLMRequest) -> TokenCount: ...          # exact or estimated
+    def health(self) -> ProviderHealth: ...
+```
+
+**Neutral types:**
+
+| Type | Fields |
+|---|---|
+| Message | role (system / user / assistant / tool), parts: text, image, tool_call, tool_result |
+| ToolSpec | name, description, parameters as portable JSON Schema. The risk tier stays inside Jarvis and is never sent to a model |
+| ToolCall | id, name, arguments |
+| LLMRequest | route, model, system text, messages, tools, response schema, reasoning hint (low / medium / high), max output, task id, budget, privacy classes present |
+| LLMResponse | text, tool calls, stop reason (end / tool_use / max_tokens / refusal / error / cancelled), usage (input, output, cached tokens), cost estimate, latency, provider, model, adapter_state (opaque) |
+| ModelCapabilities | context window, max output, tool calling (none / single / parallel), structured output (none / JSON mode / JSON schema / grammar), vision, streaming, prompt caching, reasoning control, languages verified (en, mr-roman, mr-deva), source (documented / measured). Local models add RAM at load and tokens per second |
+
+**Rules:**
+- The core validates every structured output and every tool argument against its schema itself, whatever the provider claims.
+- An unknown capability counts as unsupported.
+- For a model without native tool calling, an optional "JSON action mode" uses structured output to pick tools. It is enabled per model only if that model passes the tool-calling evaluation in that mode.
+
+### 5.4 Adapters
+
+**Claude adapter (Stage A, built in Phase 1):**
+- Anthropic Python SDK, Messages API, one loop step per call. Anthropic's docs recommend a manual tool loop when approval gates are needed, which matches our T0–T4 gate.
+- Translates neutral types to Claude messages, tools and tool_use / tool_result blocks, and back.
+- Handles Claude-only features internally: prompt caching, effort and adaptive thinking, refusal stop reason, server-side refusal fallbacks (to other Claude models only), strict tool schemas, structured outputs, thinking-block replay within the same model.
+- Converts usage to cost from the price table in config.
+
+**Fake provider (Phase 0):** a deterministic test double. The whole test suite runs offline against it, which proves the core does not depend on Claude.
+
+**Local adapter (future, Stage B only):**
+- Not implemented until Stage B is approved.
+- Expected to call a local inference server on localhost. Many local runtimes expose an OpenAI-style HTTP API; this is to be verified per runtime in Stage B.
+- Accepts **localhost endpoints only**, so it can never quietly turn into a cloud provider.
+- Must pass the same adapter contract tests as the Claude adapter.
+- Capability profile comes from measurement on this Mac, not from model cards.
+
+### 5.5 Isolation rules and planned code layout
+
+- Only `jarvis/providers/` may import vendor SDKs (`anthropic`, any local runtime client). An import-boundary test enforces this.
+- Core, memory, tools, control and connectors depend only on the neutral types in `providers/base.py`.
+- Provider-specific data (thinking blocks, cache details, response IDs) lives only in `adapter_state`. It is never required to resume a task.
+- Prompts live in `prompts/` as provider-neutral text. Adapters may add provider-specific framing but no business logic.
+
+```
+jarvis/
+├── core/          orchestrator, own tool loop, planner, agent team
+├── providers/
+│   ├── base.py    ReasoningProvider protocol, neutral types, capabilities
+│   ├── claude.py  Claude adapter (Stage A)
+│   ├── fake.py    deterministic test double
+│   └── local.py   future local adapter (Stage B only, not created before)
+├── routing/       provider and model routing policy, cloud privacy gate
+├── memory/        store, search, extractor (calls providers via the interface)
+├── tools/         registry, typed tools, verifiers, portable schemas
+├── control/       T0–T4, approvals, audit, emergency stop, budgets
+├── connectors/    telegram, google, eventkit, search (not AI providers)
+└── evals/         migration evaluation runner
+prompts/           provider-neutral prompts
+config/
+├── providers.yaml approved providers and endpoints (no secrets)
+├── models.yaml    capability profiles (documented or measured)
+└── routing.yaml   routes, candidates, privacy limits, fallback rules
+tests/evals/       synthetic evaluation tasks (no personal data; repo is public)
+```
+
+Machine-specific overrides go in `config/local.yaml`, which Phase 0 adds to `.gitignore`.
+
+### 5.6 Claude-specific dependencies
+
+| Claude feature | Where the plan used it | Portability risk | Plan |
+|---|---|---|---|
+| Claude Agent SDK (loop, built-in tools, hooks, subagents, session files) | Brain loop, agent team, permissions | High | Replaced by a Jarvis-owned loop. Not in the core |
+| Tool-use wire format, strict tools | Every tool call | Medium | Adapter translates from neutral ToolSpec. Strict mode is a capability |
+| Structured outputs (`output_config.format`) | Extractor, receipts, labels | Medium | `structured()` in the interface. Core always validates |
+| Adaptive thinking, effort, model-bound thinking blocks | Routing table | Medium | Neutral reasoning hint mapped per provider. Thinking blocks stay in adapter_state |
+| Prompt caching | Cost control | Low (cost only) | Adapter applies it. The core keeps a stable prompt prefix, which also suits local prefix caching |
+| Server-side web search and fetch | Connectors | High | Replaced by Jarvis search and fetch tools. Anthropic's tool is an optional Claude-only extra |
+| Refusal stop reason, server-side fallbacks | Fallback rules | Medium | Neutral `refusal` stop reason. Fallback per routing policy |
+| 1M-token context window | Context builder | High for local models | Context budget sized from each model's capability profile |
+| Files API, PDF blocks, citations | Document library | Medium | Text extraction and chunking stay local. Only text chunks are sent |
+| Vision (screenshots) | Vision skill | Medium | Capability flag. Screenshots are P2 by default |
+| Message quirks (no prefill, no forced tool choice, mid-conversation system messages) | Prompts | Low | Adapter only |
+| Token counting endpoint | Budgets | Low | `count_tokens()` with estimate fallback |
+| Model IDs, prices, budgets in USD | Routing, cost | Low | Config files. Local cost tracked as time and resources |
+| MCP | Connectors | Low (open protocol) | Jarvis is the MCP client. Tools merge into the registry |
+| Agent Skills (SKILL.md) | Skill system | Low (open standard) | Jarvis loads skills itself |
+
+### 5.7 Portability rules
+
+- **Tools:** One registry. Parameters use a portable JSON Schema subset: object, string, number, integer, boolean, enum, array, required, descriptions. Avoid oneOf/anyOf, regex patterns and deep nesting, because local constrained decoders may not support them. Keep descriptions short for smaller context windows. MCP tools are imported into the same registry.
+- **Task state:** SQLite tables owned by Jarvis: tasks, task_events, messages (neutral form), tool_runs, approvals, model_usage (with a provider column), and an optional adapter_state table. A paused task can resume on a different provider from the neutral history; provider-only data is dropped.
+- **Memory:** A MemoryStore interface (save, search, get, supersede, list, export) independent of any provider. The extractor and query rewrite are prompts with JSON schemas sent through the provider interface. Embeddings run locally behind an Embedder interface.
+- **Skills:** Jarvis puts the skill index in the prompt and provides a `load_skill` tool, so skills work with any provider.
+- **Context budget:** The context builder sizes injected memories and document chunks from the model's context window. The "context fit" evaluation checks this.
+- **Evaluation:** Test tasks are stored provider-neutral, and the same suite runs against every provider.
+
+### 5.8 Privacy controls for cloud AI
+
+| Class | Examples | Cloud AI in Stage A | Stored in memory |
+|---|---|---|---|
+| P0 Public | General questions, public web pages | Allowed | Yes |
+| P1 Personal | Preferences, project names, schedule outlines, Jarvis's own notes | Allowed | Yes |
+| P2 Sensitive | Email and message bodies, contacts' details, health, money, private documents, screenshots | Withheld by default. Allowed per category only after Sachin opts in | Yes, marked sensitive |
+| P3 Secret | Passwords, API keys, tokens, OTPs, card numbers, government ID numbers | Never | Never |
+
+- Every context item carries a class: memory `sensitivity`, a class set when a document is approved, a class per tool output, P2 by default for screenshots and for untrusted email or web content.
+- The privacy gate runs in the core before the adapter. The adapter never sees withheld items.
+- Deterministic P3 filters (key and token patterns, card numbers, OTP-like codes, ID formats) scan every outbound payload, even items labeled lower.
+- When something is withheld, Jarvis says so instead of guessing. From Stage C the task may run on the local model instead.
+- Untrusted content goes through the quarantined extraction step; only the extracted fields are sent.
+- Audit log per cloud call: time, route, provider, model, classes included, number of items withheld, token counts, payload hash (never the payload).
+- The receipt lists what was withheld from the cloud.
+- Global `cloud_allowed` switch, also as a Telegram `/cloud off` command.
+- Anthropic's API data retention and training terms must be checked before Stage A goes live. Nothing is assumed here.
+
+### 5.9 Migration roadmap
+
+**Stage A — Hybrid MVP** (Phases 0–7)
+
+- **Goal:** Claude is the primary reasoning provider. The core application stays local.
+- **Work:** Provider interface, fake provider, Claude adapter, routing config in `cloud_primary` mode with `anthropic` as the only approved provider, privacy gate, import-boundary test, adapter contract tests, migration evaluation suite with a Claude baseline.
+- **Acceptance criteria:**
+  - No vendor SDK is imported outside `jarvis/providers/`.
+  - The full automated test suite passes offline with the fake provider.
+  - The Claude adapter passes the adapter contract suite.
+  - Planted P3 test strings never appear in any outbound payload.
+  - Every cloud call appears in the audit log with its privacy classes.
+  - A Claude baseline of the migration evaluation suite is recorded (summary committed, no personal data).
+  - Memory, task state, audit logs, receipts and indexes exist only on the Mac.
+- **Risks:** More code than the Agent SDK path. Claude-only features creeping into the core. P2 leaks through mislabeled data. API cost.
+- **Dependencies:** Anthropic Python SDK, API key, monthly budget, Sachin's P2 opt-in choices.
+- **Tests:** Import-boundary, adapter contract, fake-provider end-to-end, privacy gate, evaluation baseline.
+
+**Stage B — Local model evaluation** (a separate, approved step; earliest after Phase 3)
+
+- **Goal:** Measure local models on this Mac. Do not adopt them yet.
+- **Work:** Pick candidate runtimes and models at that time, based on license, size that fits in 16 GB while Jarvis runs, documented tool-calling and structured-output support, and Marathi claims. Install them only with Sachin's approval. Build the local adapter. Measure capability profiles. Run the migration evaluation suite.
+- **Acceptance criteria:**
+  - The local adapter passes the contract suite, or each failing capability is documented.
+  - An evaluation report exists for every candidate: all categories against the Claude baseline, with model, version, quantization, runtime, context size, hardware, date and git commit.
+  - Capability profiles are written from measurements.
+  - Each route gets a verdict: local-ready or not ready.
+  - Live routing does not change.
+- **Risks:** RAM contention on 16 GB, low free disk (~32 GB), weak tool calling or structured output, weak Marathi, slow output or thermal throttling, model license limits, judge bias in the evaluation.
+- **Dependencies:** Stage A baseline, Sachin's approval for downloads, disk space, a resource-measurement library.
+- **Tests:** Migration evaluation suite, adapter contract suite, resource measurements while Jarvis runs.
+
+**Stage C — Local-first**
+
+- **Goal:** Supported tasks run on the local model by default.
+- **Work:** Switch to `local_first` mode. Routes that passed Stage B use the local provider. Other routes use the cloud only as configured and as privacy rules allow. Each route sets `cloud_fallback` to never, ask or allowed. Add offline detection and a weekly regression run of the evaluation suite.
+- **Acceptance criteria:**
+  - Routes marked local make zero cloud calls (checked in the audit log).
+  - Live quality (sampled receipts plus the weekly evaluation) stays within the agreed thresholds.
+  - With `cloud_allowed: false`, cloud-only routes pause with a clear message instead of failing silently.
+  - Every local-to-cloud fallback is allowed by config or approved by Sachin, and logged.
+- **Risks:** Quality regressions nobody notices, slower answers, less agent-team parallelism with one local model, RAM pressure from other apps.
+- **Dependencies:** Stage B verdicts, Sachin's approval of the new routing.
+- **Tests:** Weekly evaluation run, routing-policy tests, offline tests for local routes.
+
+**Stage D — Fully local AI**
+
+- **Goal:** The core reasoning path has no mandatory cloud AI dependency.
+- **Work:** Every route has an approved local provider. The Claude adapter becomes an optional extra or is removed. Replace the edge-tts Marathi voice with an offline voice, or record an explicit exception. Document what still needs internet (web search, Gmail, Calendar, Telegram).
+- **Acceptance criteria:**
+  - Jarvis starts and runs supported tasks with no API key and no internet.
+  - The offline suite (network disabled) passes at the agreed thresholds.
+  - `anthropic` is not a required runtime dependency.
+  - Features that need internet are listed in the docs and shown in the app.
+- **Risks:** This hardware may not handle some routes (long context, complex planning, the agent team). Ongoing model maintenance. Quality below Claude.
+- **Dependencies:** Stable Stage C, possibly new hardware (Sachin's decision).
+- **Tests:** Offline suite, full migration evaluation, fake-provider suite.
+
+### 5.10 Migration evaluation suite
+
+- **Location:** `tests/evals/migration/`. Synthetic tasks only, because the repo is public. Results with any personal data stay in `data/evals/`.
+- **Each task records:** id, category, language (en / mr-roman / mr-deva / mixed), input, available tools, expected tool calls or acceptance checks, grading method (deterministic, rubric or human), privacy class.
+
+| Category | What it covers | Metric |
+|---|---|---|
+| Reasoning and planning | Multi-step plans, task breakdown | Rubric score from a fixed judge plus human spot checks; plan validity |
+| Tool calling | Right tool, valid arguments, multi-step sequences, no invented tools, no T4 attempts | Tool-selection accuracy, schema-valid argument rate |
+| Structured output | Extractor output, receipts, routing labels | JSON-schema valid rate over repeated runs |
+| Marathi and English | Romanized Marathi, Devanagari, code-mixed | Intent accuracy, answer rubric, query-rewrite recall |
+| Memory retrieval | Teach and probe, supersede, abstain, act probes | Extraction precision and recall, top-5 hit rate, act-probe pass rate |
+| Latency | First token, whole task | p50 and p95 seconds |
+| Resources | RAM and CPU while Jarvis runs | Peak memory, average CPU, model load time |
+| Task success | End-to-end tasks with acceptance checks | Verified completion rate |
+| Safety | Prompt injection, approval compliance | Violations (target 0) |
+| Context fit | Long memory or document tasks under small windows | Success rate by context size |
+
+- **Baseline:** Run on Claude during Stage A. This is the reference for every later stage.
+- **Pass thresholds:** Set per route after the baseline exists (open decision). Tool calling and structured output need near-perfect reliability, because errors there become wrong actions.
+- **Judge:** Deterministic checks first. Rubric judging uses one fixed judge model and prompt version across all runs, never the candidate being tested, plus human spot checks.
+- **Reproducibility:** Record provider, model, version, quantization, runtime, context size, hardware, date and git commit. Use fixed seeds where supported, and repeat stochastic tests several times.
+
+### 5.11 Unresolved technical decisions
+
+1. Confirm the brain loop: a Jarvis-owned loop with a Claude adapter (recommended) or the Claude Agent SDK.
+2. Which P2 categories may go to Claude in Stage A.
+3. Web search provider for the Jarvis search tool.
+4. When to run Stage B, and approval to download local runtimes and models.
+5. Pass thresholds per route.
+6. Evaluation judge policy, including whether a cloud judge is acceptable for evaluation only.
+7. Local runtime and model choice (only after Stage B measurements).
+8. Hardware upgrade if Stage B shows this Mac is not enough.
+9. Offline Marathi voice for Stage D.
+10. Anthropic API data-retention terms, to be checked before Stage A goes live.
+
+These are also listed in "Open decisions".
+
+---
+
+## 6. Memory design (the core)
+
+### 6.1 Layout
 
 **Source of truth = markdown files.** Sachin can read, edit and delete them. Keep the folder in git, but in a **separate private repo**. The code repo is public and never contains memory.
 **SQLite = index.** Keyword search (FTS5), vectors (numpy BLOBs), tasks, audit. One file, no server.
@@ -205,10 +455,10 @@ data/
 └── audit.jsonl        log (chmod 600)
 ```
 
-**In the code repo:** code, PLAN.md, PROGRESS.md, CLAUDE.md, examples.
+**In the code repo:** code, PLAN.md, PROGRESS.md, CLAUDE.md, examples, config defaults (no secrets), synthetic evaluation tasks.
 **Never in the code repo:** `memory/`, `profile/`, `projects/`, `skills/` (learned), `data/`, `connectors/registry.yaml`, `.env`. All of these are in `.gitignore`.
 
-### 5.2 One memory file
+### 6.2 One memory file
 
 ```markdown
 ---
@@ -224,7 +474,7 @@ keywords: college project run start make chalav
 evidence: "maza college project ~/Projects/college madhe ahe, make run ne chalto" (session s-17)
 source: user-said          # user-said | inferred | imported
 confidence: high           # inferred memories stay at or below 0.6
-sensitivity: normal
+sensitivity: normal        # public | normal | sensitive | secret  (privacy classes P0–P3)
 valid_from: 2026-10-09
 valid_until:
 superseded_by:
@@ -236,7 +486,7 @@ Folder: ~/Projects/college
 Command: make run
 ```
 
-### 5.3 Write path (how memories get saved)
+### 6.3 Write path (how memories get saved)
 
 **Risks found in research:**
 
@@ -259,7 +509,7 @@ Command: make run
 9. **On save** the LLM adds an English summary and keywords. This is the biggest win for romanized Marathi search.
 10. **Never saved:** passwords, API keys, card numbers (regex filter). Content from emails or web pages is never saved automatically.
 
-### 5.4 Read path (how memories get used)
+### 6.4 Read path (how memories get used)
 
 1. MEMORY.md and constraints.md are always in the prompt.
 2. Rewrite Sachin's message into English keywords (query rewrite).
@@ -272,7 +522,7 @@ Command: make run
 6. Small recency boost for newer memories.
 7. If nothing is found, **search past conversations** (session search, as in Hermes).
 
-### 5.5 Search facts checked
+### 6.5 Search facts checked
 
 | Item | Result |
 |---|---|
@@ -284,17 +534,18 @@ Command: make run
 **Embedding model:** start with multilingual-e5-small (small, MIT). Compare against granite-97m-multilingual-r2 and e5-large on 30–50 of Sachin's real queries.
 **Hosted embeddings:** not needed unless our own test shows a big gap.
 
-### 5.6 Other memory features
+### 6.6 Other memory features
 
 - **Save anything:** forward a link or file on Telegram and it goes to memory.
 - **Curiosity:** when Jarvis sees something unknown, it asks. "You get many emails from this company. Is it your workplace?"
 - **Weekly cleanup:** merge duplicates, turn relative dates ("tomorrow") into absolute dates, archive memories unused for 90 days, keep MEMORY.md under 200 lines.
 - **Memory commands:** list, search, edit, delete, export.
 - **Learning ≠ training:** the model never changes. Its diary grows.
+- **Provider-independent:** the extractor and query rewrite are prompts with JSON schemas sent through the provider interface. Embeddings and search run locally. Changing the AI provider changes no memory code or data.
 
 ---
 
-## 6. Project workspace and document library
+## 7. Project workspace and document library
 
 All information about one project lives in one place, so every agent gets the same approved context.
 
@@ -316,7 +567,7 @@ projects/<project-name>/
 
 ---
 
-## 7. Skill system
+## 8. Skill system
 
 - Each skill = a folder + `SKILL.md` (name, description, instructions, scripts).
 - This is Anthropic's open standard (December 2025). By September 2026 more than 40 tools support it.
@@ -324,6 +575,7 @@ projects/<project-name>/
 - **Jarvis learns new skills:** after a big job succeeds, Jarvis proposes a skill. **It is saved only after Sachin approves.**
 - **Why approval:** research shows agents can turn failed attempts into bad skills. Model-written skills add little; human-reviewed skills work much better.
 - Review any third-party skill before installing it. It can contain dangerous code.
+- Jarvis loads skills itself (skill index in the prompt plus a `load_skill` tool), so skills work with any AI provider.
 
 ### Teach-by-demonstration
 
@@ -351,9 +603,9 @@ Sachin does a task once. Jarvis captures the steps and turns them into an editab
 
 ---
 
-## 8. Agent team
+## 9. Agent team
 
-### 8.1 Team
+### 9.1 Team
 
 | Agent | Job | Permissions |
 |---|---|---|
@@ -364,9 +616,9 @@ Sachin does a task once. Jarvis captures the steps and turns them into an editab
 | Coder (later) | Code, tests | Separate folder |
 | Operator (later) | Apps, files, browser | Per safety tiers |
 
-All agents use Claude models; each agent's model is set by "Model routing". Instructions, tools and skills differ per agent.
+Agents are sub-loops run by Jarvis's own orchestrator through the provider interface. Each agent's provider and model come from the routing policy. Instructions, tools and skills differ per agent.
 
-### 8.2 Flow (example: "laptop under ₹80,000, compare 3 options")
+### 9.2 Flow (example: "laptop under ₹80,000, compare 3 options")
 
 1. Understand; ask 1–2 questions if needed.
 2. Plan: 3 researchers + writer + checker. Show the estimated cost.
@@ -376,7 +628,7 @@ All agents use Claude models; each agent's model is set by "Model routing". Inst
 6. Jarvis builds the report and sends it on Telegram.
 7. On success, propose a skill.
 
-### 8.3 Research figures
+### 9.3 Research figures
 
 | Fact | Figure |
 |---|---|
@@ -387,7 +639,7 @@ All agents use Claude models; each agent's model is set by "Model routing". Inst
 | Team failures: inter-agent misalignment | 36.9% |
 | Team failures: weak verification | 21.3% |
 
-### 8.4 Rules
+### 9.4 Rules
 
 - Jarvis works alone first. The team is only for big, splittable jobs.
 - Simple question: 1 agent. Comparison: 2–4. Big research: more.
@@ -402,9 +654,9 @@ All agents use Claude models; each agent's model is set by "Model routing". Inst
 
 ---
 
-## 9. Task system: queue, receipts and scheduling
+## 10. Task system: queue, receipts and scheduling
 
-### 9.1 Mission / task queue
+### 10.1 Mission / task queue
 
 **States:**
 
@@ -435,11 +687,11 @@ VERIFYING is deliberate. No task becomes COMPLETED without verification.
 
 **Queue rules:**
 - "Do this later" puts a task in BACKLOG.
-- At first, at most 2 big tasks run at once, because of 16 GB RAM and ~1 GiB per Agent SDK session.
+- At first, at most 2 big tasks run at once, because of 16 GB RAM. From Stage B a local model would share that memory too.
 - Ordered by priority and deadline.
 - After a crash, RUNNING tasks resume from their last checkpoint.
 
-### 9.2 Task receipt
+### 10.2 Task receipt
 
 A readable receipt for every finished task.
 
@@ -459,7 +711,7 @@ Models: opus-5-5 (Jarvis), workers (per routing)
 Remaining: nothing
 ```
 
-### 9.3 Skill and agent scheduling
+### 10.3 Skill and agent scheduling
 
 Not just the heartbeat and daily brief. Any skill or agent can be scheduled.
 
@@ -488,9 +740,9 @@ Examples:
 
 ---
 
-## 10. Safety
+## 11. Safety
 
-### 10.1 Risk tiers
+### 11.1 Risk tiers
 
 | Tier | Actions | Policy |
 |---|---|---|
@@ -500,7 +752,7 @@ Examples:
 | T3 External / irreversible | Send email, post, pay, delete | Always ask, show full details |
 | T4 Prohibited | Security bypass, passwords, rm -rf | Never; log the attempt |
 
-### 10.2 Practical rules on macOS (from research)
+### 11.2 Practical rules on macOS (from research)
 
 - No raw shell; use **typed tools** (open_app, read_file). If a shell tool exists: `shlex.split`, `shell=False`, allowlist, confirm everything else.
 - **Path checks:** `Path.resolve()` against allowed folders. Block `~/.ssh`, `~/.aws`, Keychains, `.env` files and the `security` command.
@@ -515,8 +767,9 @@ Examples:
 - **Emergency stop:** checked before every tool call. Triggers: a flag file, Telegram `/stop` (handled outside the LLM loop), a menu bar button.
 - **Audit log:** append-only JSONL with time, source, tool, arguments, decision, exit code, output hash.
 - **Every task** has a step limit and a cost limit.
+- **Cloud privacy gate:** before any cloud AI call, context is filtered by privacy class (see "Privacy controls for cloud AI").
 
-### 10.3 macOS permissions
+### 11.3 macOS permissions
 
 - **v1 runs from Terminal.** Permissions are granted to Terminal. LaunchAgent, Full Disk Access and microphone come later.
 - **Screenshots:** `screencapture -x`. Needs Screen Recording permission, which macOS re-asks about monthly.
@@ -524,7 +777,7 @@ Examples:
 - **Global hotkey:** pynput crashes on macOS 26. Use a Quartz event tap or Shortcuts/Raycast.
 - **Later (v2):** Jarvis inside a signed `.app`, started at login by a LaunchAgent, so permissions stick.
 
-### 10.4 Browser automation: isolated, safe browser
+### 11.4 Browser automation: isolated, safe browser
 
 Browser automation arrives in Phase 8, with these rules:
 
@@ -540,7 +793,7 @@ Browser automation arrives in Phase 8, with these rules:
 
 ---
 
-## 11. Proactive
+## 12. Proactive
 
 - **Heartbeat:** every 30 minutes Jarvis reads a `HEARTBEAT.md` checklist and checks whether anything is worth telling Sachin (OpenClaw's design).
 - **Daily brief:** each morning: calendar, reminders, goals, weather, important emails.
@@ -549,12 +802,12 @@ Browser automation arrives in Phase 8, with these rules:
 
 ---
 
-## 12. Connectors
+## 13. Connectors
 
 | Order | Connector | How | Effort |
 |---|---|---|---|
 | 1 | Telegram | python-telegram-bot, long-polling (no server), only Sachin's user ID allowed, Approve/Deny buttons | Low |
-| 2 | Web search | Anthropic web search tool. Free backup: Tavily | Low |
+| 2 | Web search | Jarvis search and fetch tools, independent of the AI provider (provider is an open decision; Tavily free tier recommended, ddgs as fallback). Anthropic's server-side web search only as an optional Claude-only extra | Low |
 | 3 | Reminders + reading Calendar | EventKit (pyobjc), one-time permission from Terminal | Low–Medium |
 | 4 | Google Calendar + Gmail | Direct Google API, OAuth "Desktop app" | Medium |
 | 5 | Gmail send | `gmail.send`, always after approval | Low |
@@ -567,7 +820,7 @@ Browser automation arrives in Phase 8, with these rules:
 - Google's official Gmail/Calendar MCP servers are still in Developer Preview. The Gmail MCP can only draft.
 - Sending email via Mail.app AppleScript is unreliable on macOS 26.
 - **WhatsApp:** since 15 Jan 2026 Meta bans general-purpose AI assistants on the Business API. Unofficial libraries risk a number ban. Hence Telegram.
-- Anthropic web search: $10 per 1,000 searches + tokens. Tavily: 1,000 free credits a month.
+- Anthropic web search: $10 per 1,000 searches + tokens. Tavily: 1,000 free credits a month. Search runs as a Jarvis tool so any AI provider, including a future local one, can use it.
 
 ### Connector and MCP registry
 
@@ -591,7 +844,7 @@ One list of every connector and tool: `connectors/registry.yaml`.
 
 ---
 
-## 13. Voice
+## 14. Voice
 
 | Part | Choice | Note |
 |---|---|---|
@@ -604,46 +857,47 @@ One list of every connector and tool: `connectors/registry.yaml`.
 | TTS Marathi | edge-tts "mr-IN-ManoharNeural" | Needs internet |
 | Barge-in | silero-vad | Interrupt Jarvis while it speaks |
 
+**Cloud dependency:** edge-tts (the Marathi voice) is a Microsoft cloud service. Stage D needs an offline Marathi voice or an explicit exception. Whisper and macOS `say` already run locally.
+
 **Incomplete:** the voice research agent was stopped midway. Before Phase 6, re-check that these libraries work on Python 3.13 and which Whisper build is fastest on the Mac.
 
 ---
 
-## 14. Brain loop: how to build it
+## 15. Brain loop: how to build it
 
-**Research recommendation: Claude Agent SDK (Python).**
+**Recommendation (changed in v3.3): Jarvis owns the agent loop. Claude is called through the Claude adapter, built on the Anthropic Python SDK (Messages API with tool use). The Claude Agent SDK is not part of the core.** Sachin still has to confirm this (see "Open decisions").
 
-**Why:** no need to write our own file, shell, edit, streaming, session and subagent code. Subagents for the agent team are built in.
+**Why the change:** The Agent SDK runs Claude Code's own loop, built-in tools, permission hooks, subagents and session files. Those are exactly the parts that must stay provider-independent for the move to local AI. Building on it would force a rewrite at migration time. Until v3.2 the recommendation was the Agent SDK.
 
-**How to configure it:**
-- `setting_sources=[]` so Sachin's global CLAUDE.md (graphify) does not leak into Jarvis.
-- `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` to turn off the SDK's own memory; we use ours.
-- Custom system prompt: personality + memory index.
-- Per-turn memories via a `UserPromptSubmit` hook.
-- One `PreToolUse` hook = our T0–T4 gate. A `deny` always holds.
-- `canUseTool` for confirmations; `defer` when asking over Telegram.
-- Classify Bash calls inside `PreToolUse`, because auto-approved calls never reach `canUseTool`.
-- Agent team via `AgentDefinition` (prompt, tools, model, turn limit).
-- `max_turns`, `max_budget_usd`, and `interrupt()` for the emergency stop.
-- `fallback_model` (comma-separated list) and a per-`AgentDefinition` `model` are supported. Verified in the official Python SDK docs.
+**What Jarvis builds itself (much of it was needed anyway):**
+- **Loop:** call the provider, run tool calls through the Jarvis tool gateway (T0–T4, approvals, audit), append results, repeat until done or a limit is hit.
+- **Agent team:** sub-loops with their own system prompt, tool allowlist, route and budget.
+- **Sessions and resume:** neutral messages and task state in SQLite.
+- **Emergency stop:** checked before every provider call and every tool call.
+- **Budgets:** per-task token, cost and step limits from provider usage reports.
+- **Skill loading:** skill index in the prompt plus a `load_skill` tool.
 
-**Trade-offs:**
-- One subprocess per session, ~1 GiB RAM each per the docs. Avoid many concurrent sessions on a 16 GB Mac.
-- Cost figures are estimates; keep our own accounting.
+**What we give up compared with the Agent SDK:** its ready-made file, shell and edit tools, hooks, subagents and session handling. That means more code in Phases 1–3. In return there is no lock-in, and our safety gate sees every call directly.
 
-**Alternative:** our own loop on the Anthropic SDK. Full control, more code. **Sachin's decision.**
+**Claude adapter details:** see "Adapters" in the AI provider section. Prompt caching order stays: fixed tools and personality first, then the slowly changing memory index, then per-turn memories.
 
-**Prompt caching:** fixed tools and personality first, then the slowly changing memory index, then per-turn memories last. This keeps costs down.
+**Agent SDK later?** Only as an optional, isolated, Claude-only capability behind the provider boundary (for example a coding agent), if Sachin approves and nothing in the local path depends on it. If it is ever used: `setting_sources=[]` keeps Sachin's global CLAUDE.md out, and `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` turns off its own memory.
 
 ---
 
-## 15. Model routing and fallback
+## 16. Provider and model routing
 
 **Core rules:**
-- Route by **call type**. Never switch models mid-conversation: prompt caches and thinking blocks are model-specific, and switching raises cost.
-- The routing table is deterministic and every decision is logged. No LLM router.
-- Anthropic's guidance: before building a multi-model cascade, test the best model at lower effort. It is often enough, and one model means one cache.
+- Routing is by call type (route). Never switch provider or model mid-conversation; prompt caches and thinking blocks are specific to a provider and model, and switching raises cost.
+- The policy lives in `config/routing.yaml`. It is deterministic, and every decision is logged: route, provider, model, reason, privacy classes.
+- Only **approved providers** may be used. In Stage A the approved list is `anthropic` only. A local provider is approved only after it passes Stage B and Sachin agrees.
+- **No silent fallback to an unapproved or cloud provider.** Fallback stays within the route's candidate list. Cross-provider fallback (local to cloud or back) happens only when the route and the privacy class of the context allow it.
+- Capabilities are never assumed. Each model has a capability profile (documented for cloud models, measured for local models). Each route lists the capabilities it needs, and a model without them is not eligible.
+- Anthropic's guidance still applies: before building a multi-model cascade, test the best model at lower effort.
 
-**Models (Anthropic docs, list dated 2026-10-06):**
+**Routing modes:** `cloud_primary` (Stage A), `local_first` (Stage C), `local_only` (Stage D), plus a global `cloud_allowed` switch.
+
+**Claude models (Anthropic docs, list dated 2026-10-06):**
 
 | Model | ID | Input $ / 1M tokens | Output $ / 1M tokens |
 |---|---|---|---|
@@ -653,44 +907,62 @@ One list of every connector and tool: `connectors/registry.yaml`.
 
 The Haiku price applies to prompts up to 100K tokens.
 
-**Routing table (starting point):**
+**Routing table (Stage A starting point):**
 
-| Route | Model | Effort | Why |
-|---|---|---|---|
-| Jarvis main conversation | Opus 5.5 | medium | Default, strong understanding |
-| Big plans, team manager | Opus 5.5 | high | Hard reasoning |
-| Memory extractor, query rewrite, intent/risk label, heartbeat check, receipt summary | Haiku 5.5 | low | Simple and frequent; Sachin asked for a cheap, fast model here |
-| Researcher, Writer | Opus 5.5 low **or** Sonnet 5.5 medium | — | **Sachin's decision.** Test both |
-| Checker | No weaker than the workers | high | Verification must not be weak |
-| Coder (later) | Opus 5.5 | high | Effort matters for code |
-| No internet | Small Ollama model | — | Chat only, no tools |
+| Route | Provider / model | Effort | Highest privacy class | Needs | Why |
+|---|---|---|---|---|---|
+| Jarvis main conversation | anthropic / Opus 5.5 | medium | P1, plus approved P2 categories | tools, structured output | Default, strong understanding |
+| Big plans, team manager | anthropic / Opus 5.5 | high | P1, plus approved P2 | tools, structured output | Hard reasoning |
+| Memory extractor, query rewrite, intent/risk label, heartbeat check, receipt summary | anthropic / Haiku 5.5 | low | P1, plus approved P2 | structured output | Simple and frequent; Sachin asked for a cheap, fast model here |
+| Researcher, Writer | anthropic / Opus 5.5 low **or** Sonnet 5.5 medium | — | P1 | tools | **Sachin's decision.** Test both |
+| Checker | No weaker than the workers | high | P1 | structured output | Verification must not be weak |
+| Coder (later) | anthropic / Opus 5.5 | high | P1 | tools | Effort matters for code |
+| No internet | None in Stage A (no approved local provider yet) | — | — | — | AI tasks pause with a clear message |
 
-**Fallback:**
-1. 429 or 5xx: automatic retry, honoring `retry-after`.
-2. Still failing: the Agent SDK's `fallback_model` (Opus 5.5 → Sonnet 5.5).
-3. Refusal: code checks `stop_reason`. Direct API calls to Opus and Sonnet use server-side `fallbacks: "default"`. Haiku has no such option, so our code retries on Sonnet.
-4. Everything fails: task goes to PAUSED, retried later, Sachin told on Telegram.
-5. **Never silent.** Any fallback is written in the receipt and reported.
-6. **Safety does not depend on the model.** T0–T4 rules are identical for every model.
+**Config sketch (documentation only):**
+
+```yaml
+mode: cloud_primary
+cloud_allowed: true
+approved_providers: [anthropic]
+routes:
+  memory_extractor:
+    candidates:
+      - {provider: anthropic, model: claude-haiku-5-5, effort: low}
+      - {provider: anthropic, model: claude-sonnet-5-5, effort: low}
+    needs: [structured_output]
+    max_privacy: P1
+    cloud_fallback: never      # never | ask | allowed (used from Stage C)
+```
+
+**Fallback order:**
+1. 429 or 5xx: retry with backoff, honoring `retry-after`.
+2. Next candidate in the same route list, if approved and capable.
+3. Refusal: the adapter returns a neutral `refusal`. Inside the Claude adapter, server-side `fallbacks: "default"` may route to another Claude model; this is logged.
+4. No eligible candidate: the task goes to PAUSED and Sachin is told on Telegram. Never an unlisted provider.
+5. **Never silent.** Every fallback is written in the receipt.
+6. **Safety does not depend on the provider.** T0–T4 rules and the privacy gate are identical for every provider.
 
 **Budget:**
-- `max_budget_usd` per task. It is a client-side estimate, so set the limit with headroom.
+- `max_budget_usd` per task for cloud calls, set with headroom because cost figures are estimates.
 - Per-route and monthly caps, warning at 80%.
-- `model_usage` table: route, model, tokens, estimated cost, whether a fallback happened.
+- From Stage B, local calls track time, RAM and CPU instead of dollars.
+- `model_usage` table: route, provider, model, tokens, estimated cost or resource use, whether a fallback happened.
 
-**Implementation note:** Opus 5.5 cannot disable thinking and rejects `budget_tokens`; control cost with `effort`. Forced `tool_choice` is not supported either.
+**Implementation note:** Claude-specific rules (Opus 5.5 cannot disable thinking and rejects `budget_tokens`; forced `tool_choice` is unsupported; control cost with `effort`) stay inside the Claude adapter.
 
 ---
 
-## 16. Tech stack
+## 17. Tech stack
 
 | Part | Choice | Why |
 |---|---|---|
 | Language | Python 3.13, project venv | Already installed |
-| Brain | Claude API, cloud-first | Local models are weaker on 16 GB |
-| Agent loop | Claude Agent SDK (recommended) | Subagents, hooks, sessions built in |
-| Models | Opus 5.5 main, Haiku 5.5 for simple calls, workers after testing | See Model routing |
-| Fallback | Ollama + small model (optional) | When offline |
+| Brain | Claude API via the Anthropic Python SDK, behind the provider interface (Stage A) | Best quality now, replaceable later |
+| Agent loop | Jarvis-owned orchestrator with a manual tool loop | Provider-independent, no lock-in |
+| Models | Opus 5.5 main, Haiku 5.5 for simple calls, workers after testing | See "Provider and model routing" |
+| Local AI runtime | Not chosen. Candidates to evaluate in Stage B: Ollama, llama.cpp server, MLX-LM | Decide on measurements from this Mac |
+| Web search | Jarvis search tool; provider open (Tavily free tier recommended, ddgs fallback) | Independent of the AI provider |
 | Memory | Markdown + SQLite (FTS5 + numpy vectors) | No server, editable, no extensions |
 | Embeddings | multilingual-e5-small | Small, MIT, swap after testing |
 | Skills | SKILL.md standard | Open standard |
@@ -702,28 +974,31 @@ The Haiku price applies to prompts up to 100K tokens.
 | Dashboard | FastAPI + Next.js | Node installed |
 | Browser automation | Playwright Chromium, isolated profiles | Phase 8 |
 
-**Dropped:** PostgreSQL, pgvector, Redis, n8n, users/roles/login, Zapier, Higgsfield, WhatsApp, 15 separate agents, 14 tabs.
+**Dropped:** PostgreSQL, pgvector, Redis, n8n, users/roles/login, Zapier, Higgsfield, WhatsApp, 15 separate agents, 14 tabs, the Claude Agent SDK as the core loop (possible later as an isolated extra).
 **Why:** one user, one Mac, 16 GB RAM. If needs grow, SQLite can migrate to PostgreSQL.
 
 ---
 
-## 17. Phases
+## 18. Phases
 
 | Phase | Work | Done when |
 |---|---|---|
-| **0. Setup** | venv, config, Keychain, folders, SQLite, audit log, CLI chat | Jarvis replies "Good evening, sir." |
-| **1. Brain + Memory** | Agent loop, SOUL.md, profile interview, Marathi understanding, memory write/read, session search, memory commands, skill-system foundation, model-routing foundation (Opus main, Haiku extractor) | Memory test: teach 10 facts; in a new session at least 9 are used correctly. "Act" test passes too |
-| **2. Tools + Safety** | Typed tools, T0–T4, approvals, taint flag, kill switch, verifier, audit, daily info, media controls, connector registry (built-in tools) | 10 tasks verified. No T4 action ever runs. Prompt-injection samples fail |
-| **3. Tasks + Agent team** | Task queue and states, planner, task folders, receipts, project workspace, teach-by-demonstration (chat, terminal, files), model routing, Researcher/Writer/Checker, budgets, resume | A laptop-compare style job finishes with a report and a correct receipt, within budget. A demonstrated task replays as a skill |
+| **0. Setup** | venv, config (providers, models, routing), Keychain, folders, SQLite, audit log, provider interface and fake provider, CLI chat | Jarvis replies "Good evening, sir." through the Claude adapter. The same CLI test passes offline with the fake provider. The import-boundary test passes |
+| **1. Brain + Memory** | Agent loop, SOUL.md, profile interview, Marathi understanding, memory write/read, session search, memory commands, skill-system foundation, model-routing foundation (Opus main, Haiku extractor), Claude adapter with contract tests, privacy gate v1 (P0–P3 tags, P3 filters), migration evaluation scaffold and first Claude baseline (memory, Marathi/English, structured output) | Memory test: teach 10 facts; in a new session at least 9 are used correctly. "Act" test passes too |
+| **2. Tools + Safety** | Typed tools, T0–T4, approvals, taint flag, kill switch, verifier, audit, daily info, media controls, connector registry (built-in tools), portable tool schemas, Jarvis web search and fetch tools | 10 tasks verified. No T4 action ever runs. Prompt-injection samples fail |
+| **3. Tasks + Agent team** | Task queue and states, planner, task folders, receipts, project workspace, teach-by-demonstration (chat, terminal, files), model routing, Researcher/Writer/Checker as sub-loops of the Jarvis orchestrator, budgets, resume | A laptop-compare style job finishes with a report and a correct receipt, within budget. A demonstrated task replays as a skill. Tool-calling and task-success baselines recorded |
+| **Stage B. Local model evaluation** (separate step, needs Sachin's approval; earliest after Phase 3) | Install candidate local runtimes and models, build the local adapter, run the migration evaluation suite on this Mac | Evaluation report per candidate with per-route verdicts. Live routing unchanged |
 | **4. Telegram + Proactive** | Bot (Sachin only), approve buttons, /stop, /tasks, heartbeat, daily brief, reminders, skill and agent schedules | Morning brief arrives on the phone. Approvals work from the phone. A weekly schedule runs and handles a missed run |
 | **5. Connectors** | EventKit, Google Calendar, Gmail (read/draft, send after approval), registry entries and health checks, document library | "Put a call tomorrow at 11" creates a verified event. Answers from project docs cite sources |
 | **6. Voice** | Push-to-talk, Whisper, Rishi/Manohar, then hey_jarvis, barge-in, voice verification, Marathi STT test | 5 voice commands work |
 | **7. Dashboard** | FastAPI + Next.js: Chat, Memory, Task board & Approvals, Agents, Connectors, Schedules, Settings & Usage | Everything controllable from the browser |
 | **8. Extras** | Coder/Operator agents, magic search, meeting notes, Playwright with isolated profiles, browser step recording, OCR, smart home, signed .app | As needed |
 
+Stages C (local-first) and D (fully local) start only after Stage B results and Sachin's approval. See "Migration roadmap".
+
 ---
 
-## 18. Working across laptops and Claude accounts
+## 19. Working across laptops and Claude accounts
 
 This project runs for many days. Work stops and resumes, sometimes on this laptop, sometimes on another, sometimes from a different Claude account.
 
@@ -739,7 +1014,7 @@ This project runs for many days. Work stops and resumes, sometimes on this lapto
 
 ---
 
-## 19. Development rules (for Claude Code)
+## 20. Development rules (for Claude Code)
 
 1. Inspect existing files first; don't change code right away.
 2. One phase at a time, only after Sachin says "Start Phase X".
@@ -754,7 +1029,7 @@ These rules are already in the repo's `CLAUDE.md`.
 
 ---
 
-## 20. When version 1 is "done"
+## 21. When version 1 is "done"
 
 - Takes tasks by text and shows task state and history.
 - Uses what it was taught in a new session (memory test passes).
@@ -767,11 +1042,15 @@ These rules are already in the repo's `CLAUDE.md`.
 - Never performs a T3 action without permission.
 - Handles timeouts, failures, cancellation and duplicate requests.
 - Reachable on the phone via Telegram, with a morning brief.
+- No vendor SDK is imported outside `jarvis/providers/` (enforced by a test).
+- The full test suite runs offline against the fake provider.
+- The cloud privacy gate is active: P3 never leaves the Mac, and every cloud call is logged with its privacy classes.
+- A Claude baseline of the migration evaluation suite is recorded.
 - Automated tests pass.
 
 ---
 
-## 21. Testing
+## 22. Testing
 
 **Memory eval (most important):**
 - 50–100 scenarios: teach, unrelated sessions in between, then probe.
@@ -783,11 +1062,15 @@ These rules are already in the repo's `CLAUDE.md`.
 
 **Other:** safety tests (blocked actions, prompt injection, secret leaks), failure tests (timeout, no internet, crash), mixed Marathi-English commands, duplicate actions, model fallback, and missed schedules after the Mac sleeps.
 
+**Provider portability:** an adapter contract suite every adapter must pass, an import-boundary test, a fake-provider end-to-end suite, and privacy-gate tests with planted P3 strings.
+
+**Migration evaluation:** see "Migration evaluation suite".
+
 **Metrics:** memory recall, task success, verified completion, safety events, API cost per task, latency.
 
 ---
 
-## 22. Cost
+## 23. Cost
 
 - **No** new hardware. The M4 Mac is enough.
 - Main cost = Claude API usage. More when the agent team runs (15× tokens).
@@ -797,13 +1080,13 @@ These rules are already in the repo's `CLAUDE.md`.
 
 ---
 
-## 23. Open decisions
+## 24. Open decisions
 
 | # | Question | Recommendation |
 |---|---|---|
 | 1 | **5 things Jarvis should do for Sachin every day** | Most important. Needed from Sachin |
 | 2 | Is there a Claude API key? | Cloud-first |
-| 3 | Brain loop | Claude Agent SDK |
+| 3 | Brain loop | Jarvis-owned loop with a Claude adapter (Anthropic SDK). Changed from the Agent SDK in v3.3 for local-migration readiness |
 | 4 | Voice language | English voice + Marathi text first; Marathi voice later |
 | 5 | Connector order | Telegram, web search, Calendar, Gmail |
 | 6 | Monthly API budget | Sachin decides |
@@ -812,22 +1095,34 @@ These rules are already in the repo's `CLAUDE.md`.
 | 9 | Worker agent model | Opus 5.5 at low effort vs Sonnet 5.5; test both |
 | 10 | Backup and sync of Jarvis's personal data | Separate **private** GitHub repo (e.g. `jarvis-memory`) |
 | 11 | Keep the code repo public? | Sachin's choice. Personal data never goes in it either way |
+| 12 | Which P2 (sensitive) categories may go to Claude in Stage A | Withhold all P2 by default; enable category by category |
+| 13 | Web search provider for the Jarvis search tool | Tavily free tier, ddgs fallback. Anthropic web search optional |
+| 14 | When to run Stage B, and OK to download local runtimes and models (several GB; ~32 GB free) | After Phase 3 |
+| 15 | Pass thresholds for local models per route | Set after the Claude baseline |
+| 16 | Evaluation judge policy (cloud judge for evaluation only?) | Deterministic checks first, one fixed judge, human spot checks |
+| 17 | If local models fall short on this Mac: stay hybrid for some routes, or upgrade hardware | Decide after Stage B |
+| 18 | Offline Marathi voice for Stage D | Evaluate options in Stage B |
 
 ---
 
-## 24. Still to verify
+## 25. Still to verify
 
 - Voice libraries on Python 3.13 and macOS 26 (research incomplete).
 - Whether Google's official MCP works with a personal Gmail account.
 - Memory thresholds (0.97 / 0.85) on real data.
 - Embedding model on Sachin's real queries.
 - How reliable the Shortcuts CLI is on macOS 26.
-- Exactly which errors trigger the Agent SDK's `fallback_model`. The docs don't say.
-- Whether the Agent SDK can pass server-side refusal `fallbacks` for Opus/Sonnet.
+- Tool calling and structured-output reliability of local runtimes and models on this M4 with 16 GB (unverified; Stage B).
+- Usable context length, speed and RAM use of local models while Jarvis runs.
+- Marathi quality (romanized and Devanagari) of candidate local models.
+- Whether candidate local runtimes really expose an OpenAI-style API with tool calling.
+- Anthropic API data-retention and training terms, for the privacy policy.
+- Whether an offline Marathi voice exists that runs on macOS.
+- Only if the Agent SDK is ever used: which errors trigger its `fallback_model`.
 
 ---
 
-## 25. Sources
+## 26. Sources
 
 **Jarvis projects and trends**
 - https://github.com/topics/jarvis-ai
@@ -866,7 +1161,9 @@ These rules are already in the repo's `CLAUDE.md`.
 - https://huggingface.co/intfloat/multilingual-e5-small
 - https://huggingface.co/ibm-granite/granite-embedding-97m-multilingual-r2
 
-**Brain loop (Claude Agent SDK)**
+**Brain loop (Anthropic SDK and Claude Agent SDK)**
+- https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls
+- https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-runner
 - https://code.claude.com/docs/en/agent-sdk/overview
 - https://code.claude.com/docs/en/agent-sdk/permissions
 - https://code.claude.com/docs/en/agent-sdk/hooks
