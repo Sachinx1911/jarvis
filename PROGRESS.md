@@ -9,7 +9,10 @@ Ending a session: update this file and commit.
 - **How the work was done:** Phase 3 by the lead session; Phases 4, 5, 6, 7, 8 by parallel agents in git worktrees (`.claude/worktrees/`, git-ignored), each owning its own files, then merged and wired in by the lead.
 - **AI provider now:** Claude through Sachin's Claude Max subscription, via the local Claude Code CLI (`claude -p`), adapter `jarvis/providers/claude_code.py`. No API key, no per-call billing; calls count against the plan's usage limits. Main chat Opus 5.5 (medium); memory, quarantine, summaries Haiku 5.5 (low); planner and checker Opus 5.5 (high); workers per profile (`config/tasks.yaml`). The Anthropic API adapter (`claude.py`) stays but is not approved in `config/routing.yaml`.
 - **Needs on each machine:** Python 3.12+, `pip install -e ".[dev]"`, Claude Code CLI 2.1.280 or newer logged in with the subscription (`jarvis health`), Tavily key (`jarvis secret set tavily_api_key`). Optional extras: `[voice]`, `[voice-cloud]`, `[wakeword]`, `[google]`, `[browser]`. Dashboard frontend: `cd dashboard; npm install; npm run build`.
-- **Half-done work (2026-10-10, merged so far):** research fixes are in: prompt-injection hardening (taint by default, agent and file provenance, egress control, typed quarantine, approval highlights; offline attack success 0/36), price source tiers + Tavily Extract (store pages confirmed, aggregators as estimates, Amazon/Flipkart as user-check links), memory retrieval upgrade (both scripts, time-aware, session facts, excerpts; offline Recall@5 34.5 -> 96.6), one-click app (`jarvis app`, Desktop shortcut, Projects/Teach/Schedules/Setup tabs, mic button). 791 tests pass. Event triggers merged (849 tests pass). In progress by agents: daily cap + nightly review + backups; memory viewer + approval previews + standing approvals; India features (AMFI NAV, IMD/Sachet alerts, bills tracker, document wallet); verify-after-act + "/repeat" automation. Reports: `reports/Jarvis next steps research.md`, `reports/Personal AI capability gaps.md`.
+- **Half-done work (handoff 2026-10-10, office laptop -> home):**
+  - On `main` and tested (902 pass): everything through Phases 0–8, research fixes (prompt-injection hardening, price tiers, memory retrieval), one-click app, event triggers, approval previews + grouped and standing approvals + memory sources/trash + "why" panel.
+  - Stopped mid-work, saved on branches (pushed, NOT merged, not tested): `wip/india-features` (AMFI NAV, IMD/Sachet feeds, bills tracker, document wallet, UPI link; tests partly written) and `wip/verify-repeat` (verify-after-act, `/repeat`). Resume each: check out the branch, run the whole suite, finish the brief in this file's "Next step", then merge.
+  - Not started yet: global daily cap for unattended work, nightly review into `memory/episodes/`, backups (from the Hermes masterclass review).
 - **Last update:** 2026-10-10, office laptop (Windows 11, Python 3.12).
 - **GitHub:** Pushed to `main` on 2026-10-10 up to commit b38853f (Phases 0–8, research fixes, app, triggers) with Sachin's OK.
 
@@ -55,17 +58,14 @@ Parked items. Work that does not depend on them continues.
 
 ## Next step
 
-1. **Sachin + Claude (now):** hands-on testing with [TESTING.md](TESTING.md) on this laptop. A demo project `demo-trip` (synthetic data) is indexed for the document tests. Run commands with `.\jarvis.cmd ...` from the repo folder.
-2. **Claude, after testing:** fix what testing finds, then the research recommendations in [reports/Jarvis next steps research.md](reports/Jarvis%20next%20steps%20research.md), cheapest and most important first:
-   - Prompt injection P0: taint on by default for every tool; taint carried between agents and into files written from tainted input; ask before fetching URLs the user did not give in a tainted session; never auto-render images; confirm the Claude Code CLI runs with no built-in tools.
-   - Prices: verifier source tiers (A retailer/brand page or official API, B aggregator = labelled estimate, C rejected); a page with no Rs amount counts as a failed fetch; Amazon/Flipkart only as links for Sachin to confirm (their terms forbid automated price collection).
-   - Memory: date-range step before retrieval, index past chats with extracted facts, raw excerpts plus memories in the answer context, notes-before-answer with "I don't know", Devanagari + romanized keywords.
-   - Add the 14-case prompt-injection eval set from the research notes.
-3. **Automation (Sachin, 2026-10-10: "everything I tell it must get done, and be automated"):** after the security, prices, memory and app work merges:
-   - Event triggers: run a skill/task when something happens (new email from X, new file in a folder, a price below a limit, a calendar event soon), with polling intervals and dedupe.
-   - Standing approvals: Sachin pre-approves one exact routine action pattern (tool + argument limits + expiry) so it runs without asking; never for T3 (send, pay, delete) or T4.
-   - "Do this every time": after a task, Jarvis offers to turn it into a skill plus a schedule or trigger (saved only after Sachin confirms).
-4. **Later (Stage B, needs the Mac):** llama.cpp `llama-server` with Qwen3.5-9B / Gemma 4 E4B / Qwen3.5-4B for query rewrite, labels, schema-forced extraction and quarantine; Marathi chat stays on Claude. Marathi voice: IndicWhisper (faster-whisper) vs IndicConformer for STT, Indic Parler-TTS for TTS.
+On a new machine first: `git clone`, run `scripts/setup.ps1` (Windows) or `scripts/setup.sh` (Mac), log in to Claude Code with the subscription (`claude`), `jarvis secret set tavily_api_key`, then `cd dashboard; npm install; npm run build`, then `jarvis health`. Personal data (memory, projects, data) does not travel with the repo.
+
+1. **Claude:** finish `wip/india-features`: India tools need registering in `jarvis/tools/catalog.py` (`india_tools`), brief sections via `register_india_sections()` from `jarvis/proactive/integration.py`, CLI `cli_india` in the module tuple of `jarvis/cli.py`; whole suite green; merge.
+2. **Claude:** finish `wip/verify-repeat`: verify-after-act checks for Operator/Coder/browser and receipt "claims vs evidence"; `/repeat <when>` and `jarvis task repeat` (skill + schedule saved only after confirmation); merge.
+3. **Claude:** build the global daily cap + runaway guard, nightly review (episode file + memory conflicts in the brief), and `jarvis backup create|list|restore-check` (destination folder from config; open decision #10).
+4. **Claude, small hooks:** dashboard triggers adapter (`"triggers": ("jarvis.proactive.triggers", "dashboard_triggers")` in `jarvis/web/adapters.py`), `record_turn` in `ChatSession.send` for "why" on CLI/Telegram chats, enforce "health/politics = sensitive" in code (not only prompts).
+5. **Claude:** final testing on Claude Fable (`JARVIS_TEST_MODEL=claude-fable-5-1`): live suites, eval + memory eval (`jarvis eval --suite memory --live`), injection live set, laptop compare with price tiers; record results here.
+6. **Sachin:** the "Waiting for Sachin" list; hands-on testing with TESTING.md (section 9: the app).
 
 ## Decisions made by Sachin
 
@@ -127,5 +127,6 @@ See "Open decisions" in PLAN.md. Most important:
 | 2026-10-10 | Office laptop (Windows) | Cloned repo. Built Phase 0 cross-platform, then the Claude Code CLI adapter (subscription). Live greeting test passed |
 | 2026-10-10 | Office laptop (Windows) | Built Phase 1 (memory, loop, privacy gate, evals). Live memory test 10/10, eval baseline 8/8 |
 | 2026-10-10 | Office laptop (Windows) | Built Phase 2 (tiers, approvals, taint, quarantine, tools). Live: 10/10 tasks, injection blocked, 0 T4 runs. Pushed to GitHub |
+| 2026-10-10 | Office laptop (Windows) | Research fixes merged (security, prices, memory), one-click app, triggers, standing approvals and previews. 902 tests pass. Pushed. India features and verify/repeat stopped mid-work on wip branches; handoff to home |
 | 2026-10-10 | Office laptop (Windows) | Fable final tests (live suites pass, evals 12/12; laptop compare fails on retailer-price verification). Planner modes, task cancel, chat browser, memory upkeep, approval replay, migration lock fix, README, research on 5 topics, TESTING.md |
 | 2026-10-10 | Office laptop (Windows) | Built Phase 3 (tasks, team, receipts, projects, teach-by-demo). Five parallel agents built Phases 4–8; all merged and wired in. 494 offline tests pass. First live laptop compare failed verification; quality fixes made; rerun started |
