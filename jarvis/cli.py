@@ -336,13 +336,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 def build_parser_with_extensions():
     """Core commands plus the command groups from other modules (each has register())."""
-    from jarvis import cli_tasks
+    from jarvis import cli_tasks, cli_voice
 
     parser = build_parser()
     sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
     extra: dict = {}
     for module in (cli_tasks,):
         extra.update(module.register(sub))
+    cli_voice.register(sub)
+    for name, handler in cli_voice.HANDLERS.items():
+        extra[name] = lambda args, out, inp, approvers, h=handler: h(args, out, inp)
     return parser, extra
 
 

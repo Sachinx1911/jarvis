@@ -5,7 +5,7 @@ Ending a session: update this file and commit.
 
 ## Current status
 
-- **Phase:** Phase 3 built (offline tests pass; live laptop-compare run with opus and sonnet workers in progress). Phases 4, 5, 6, 7 being built in parallel by agents in separate worktrees (`.claude/worktrees/`, git-ignored); the lead merges them.
+- **Phase:** Phase 3 built (offline tests pass; live laptop-compare run with opus and sonnet workers in progress). Phase 6 (voice) merged: Windows speech works (System.Speech), push-to-talk loop, voice approvals default to deny; speech-to-text waits for the Whisper download. Phases 4, 5, 7, 8 being built in parallel by agents in separate worktrees (`.claude/worktrees/`, git-ignored); the lead merges them.
 - **Phase 3 code:** `jarvis/tasks/` (store with states, budget, receipt), `jarvis/agents/` (team sub-loops, orchestrator), `jarvis/projects.py`, `jarvis/skills/recorder.py` (teach-by-demonstration), `jarvis/cli_tasks.py` (`task`, `tasks`, `receipt`, `project`, `record`, `skill`; chat `/task`, `/record`, `/note`), `config/tasks.yaml`, team routes in `config/routing.yaml`.
 - **Phase 2:** done-when met on Claude via subscription: 10/10 tool tasks verified, prompt-injection page blocked, no T4 action ran.
 - **AI provider now:** Claude through Sachin's Claude Max subscription, via the local Claude Code CLI (`claude -p`), adapter `jarvis/providers/claude_code.py`. No API key, no per-call billing; calls count against the plan's usage limits. Main chat: Opus 5.5 (medium). Memory enrichment/extraction: Haiku 5.5 (low). The Anthropic API adapter (`claude.py`) stays but is not approved in `config/routing.yaml`.
@@ -39,6 +39,10 @@ Parked items. Work that does not depend on them continues.
 
 - Pick the worker model (Researcher/Writer) after the opus vs sonnet laptop-compare comparison.
 - Push to GitHub: Phase 3 and later commits are local only until Sachin OKs a push.
+- Voice: OK to install `faster-whisper` (~80 MB of packages) and download the Whisper `small` model (486 MB) with `jarvis voice setup`? Needed for speech-to-text and the "5 voice commands" check.
+- Voice: turn the Marathi cloud voice (edge-tts, `mr-IN-ManoharNeural`) on or keep it off? Off by default.
+- Voice: wake word "hey jarvis" (openWakeWord, ~100 MB, models CC BY-NC-SA) now or later? Off by default.
+- Voice on the Mac: check the Rishi voice (`say -v '?'`), Whisper speed on the M4, microphone permission.
 
 ## Next step
 
@@ -71,6 +75,7 @@ Parked items. Work that does not depend on them continues.
 | 2026-10-10 | (Confirmed by Sachin) P2 "sensitive" in memory prompts = health, money, ID document contents/numbers, other people's phone/email/address. Family names, where things are kept, schedules and preferences are P1. The first live run marked a daughter's name and a document location as P2, which withheld them from Claude |
 | 2026-10-10 | Start Phase 2. Web search stays Tavily (compared with Brave, Claude search via Max, Google CSE, DuckDuckGo, SearXNG; Tavily: no card, AI-ready content, provider-independent) |
 | 2026-10-10 | Tavily MCP server not used for now: Jarvis already calls the Tavily REST API directly; MCP client comes with connectors (Phases 4–5) |
+| 2026-10-10 | (Claude) Voice engines: faster-whisper for local speech-to-text (no torch, 4x faster than openai-whisper on CPU per its README); System.Speech on Windows and `say` on macOS for speech; edge-tts only as an optional, off-by-default Marathi cloud voice that never gets P2/P3 text |
 | 2026-10-10 | File tools start with the Jarvis `workspace/` folder only; more folders can be added one at a time in `config/local.yaml` |
 
 ## Open decisions

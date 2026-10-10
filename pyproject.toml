@@ -15,6 +15,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# Voice (Phase 6). sounddevice: push-to-talk recording, ships PortAudio, no numpy needed.
+# faster-whisper: local speech-to-text (CTranslate2, no torch); its model is downloaded by `jarvis voice setup`.
+voice = ["sounddevice>=0.5.6", "faster-whisper>=1.2.1"]
+voice-cloud = ["edge-tts>=7.2.8"]   # optional Marathi cloud voice, off by default
+wakeword = ["openwakeword==0.6.0"]  # optional "hey jarvis", off by default
 
 [project.scripts]
 jarvis = "jarvis.cli:main"
