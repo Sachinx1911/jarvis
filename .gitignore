@@ -36,3 +36,6 @@ node_modules/
 *.egg-info/
 build/
 dist/
+
+# Claude Code worktrees for parallel agents
+/.claude/worktrees/
