@@ -15,7 +15,7 @@ import os
 import re
 import shutil
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable
 
@@ -225,8 +225,10 @@ class TaskRunner:
     def _env(self) -> AgentEnv:
         task_id = self.task_dir.name
         steps = Budget.from_config(self.config.tasks.get("budget")).max_steps_per_agent
+        task = self.tasks.get(task_id)
         return AgentEnv(self.config, self.home, self.db_path, self.audit, self.stop, task_id, self.task_dir,
-                        self.provider_for, self.decision_for, self._quarantine, self._charge, self.web, steps)
+                        self.provider_for, self.decision_for, self._quarantine, self._charge, self.web, steps,
+                        goal=task.goal if task else "")  # the user's own words: trusted links for egress
 
     def _charge(self, resp) -> None:
         self.tracker.charge(resp)
@@ -299,7 +301,8 @@ class TaskRunner:
                 context=f"Overall task: {task.goal}\n\nWhat the checker found:\n- " + "\n- ".join(problems) + project + rules,
                 output_format="FINDINGS, SOURCES (title - URL), GAPS",
                 stop_condition="every listed problem has an answer with a source, or no source exists")
-            follow = run_agent(RESEARCHER, f"researcher-fix-{cp['version']}", order, env)
+            # Its input (the checker's findings) came from web text: start it tainted.
+            follow = run_agent(RESEARCHER, f"researcher-fix-{cp['version']}", order, replace(env, tainted_input=True))
             cp["research"] = cp["research"] + [follow.text]
             (self.task_dir / f"research-fix-{cp['version']}.md").write_text(follow.text, encoding="utf-8")
             self.tasks.update(task_id, checkpoint=cp)
@@ -320,6 +323,7 @@ class TaskRunner:
                 tools_config=self.config.tools, web=self.web or WebClient(), quarantine=self._quarantine(),
                 tavily_key=lambda: get_secret("tavily_api_key"), system=SystemTools()))
             apply_registry(registry, registry_path(self.home), self.audit)
+            registry.trusted_text = lambda: [task.goal]  # links in the goal are the user's own
             d = self.decision_for("main_chat")
             loop = AgentLoop(self.provider_for(d), d, registry, self.store, self.audit, self.stop,
                              max_steps=Budget.from_config(self.config.tasks.get("budget")).max_steps_per_agent,
