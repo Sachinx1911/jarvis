@@ -5,17 +5,21 @@ Ending a session: update this file and commit.
 
 ## Current status
 
-- **Phase:** Planning complete. Phase 0 has not started.
-- **Code:** None yet.
-- **Half-done work:** None.
-- **Last update:** 2026-10-10, MacBook (Apple M4). Session ended here; Sachin continues from the office laptop.
+- **Phase:** Phase 0 built. Offline done-when checks pass; the live Claude check waits for an API key.
+- **Code:** `jarvis/` package: provider interface (`providers/base.py`), fake provider, Claude adapter (generate only), routing policy, SQLite store, audit log, keyring secrets, CLI (`init`, `chat`, `secret`, `health`). Config in `config/`, system prompt in `prompts/`, setup scripts in `scripts/`.
+- **Tests:** 26 pass, 1 skipped (live Claude test). Run: `.venv\Scripts\python.exe -m pytest` (Windows) or `.venv/bin/python -m pytest` (Mac).
+- **Half-done work:** Phase 0 done-when item 1 (reply "Good evening, sir." through the Claude adapter) not yet run: no API key.
+- **Last update:** 2026-10-10, office laptop (Windows 11, Python 3.12).
 - **GitHub:** Pushed to `main` on 2026-10-10 with Sachin's OK.
 
 ## Next step
 
 1. **Sachin:** Get a Claude API key (Anthropic Console) and decide the monthly API budget.
-2. **Sachin:** Say "Start Phase 0".
-3. **Claude:** Show a short Phase 0 plan (see "Phases" in PLAN.md), then build.
+2. **Sachin:** Store it: `jarvis secret set anthropic_api_key` (typed into a hidden prompt, never in chat or files).
+3. **Claude:** Run the live test (`JARVIS_LIVE=1 pytest -m live`) and `jarvis chat`, then close Phase 0.
+4. **Sachin:** Say "Start Phase 1".
+
+Phase 1 notes: add Claude `stream()`/`structured()` with adapter contract tests; consider server-side refusal `fallbacks` (Claude-only, logged in receipts).
 
 ## Decisions made by Sachin
 
@@ -34,6 +38,9 @@ Ending a session: update this file and commit.
 | 2026-10-10 | Brain loop: Jarvis-owned loop with a Claude adapter (not the Claude Agent SDK) |
 | 2026-10-10 | Web search: Tavily |
 | 2026-10-10 | Sensitive (P2) data: nothing sent to the cloud at the start |
+| 2026-10-10 | Build cross-platform (Windows office laptop + Mac). Mac-only features stay in later phases. Secrets via keyring: Keychain on Mac, Credential Manager on Windows |
+| 2026-10-10 | Python 3.12 on the office laptop; code supports 3.12+ (Mac keeps 3.13) |
+| 2026-10-10 | Phase 0 started without an API key, using the fake provider; live Claude check after the key arrives |
 
 ## Open decisions
 
@@ -52,3 +59,4 @@ See "Open decisions" in PLAN.md. Most important:
 | 2026-10-10 | MacBook M4 | PLAN v3.3: AI provider layer, privacy classes P0–P3, migration roadmap Stages A–D, migration evaluation suite. Brain-loop recommendation changed to a Jarvis-owned loop. No code |
 | 2026-10-10 | MacBook M4 | Sachin decided: own loop, Tavily, no P2 to cloud at start (PLAN v3.4) |
 | 2026-10-10 | MacBook M4 | PLAN v3.5: migration path for every AI-dependent component, rule for moving a component local. CLAUDE.md rule added |
+| 2026-10-10 | Office laptop (Windows) | Cloned repo. Built Phase 0 cross-platform: provider interface, fake + Claude adapters, routing, SQLite, audit, keyring, CLI, setup scripts, 26 tests passing |

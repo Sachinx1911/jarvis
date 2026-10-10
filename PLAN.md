@@ -994,7 +994,7 @@ routes:
 
 | Part | Choice | Why |
 |---|---|---|
-| Language | Python 3.13, project venv | Already installed |
+| Language | Python 3.12+ (3.13 on the Mac, 3.12 on the Windows laptop), project venv | Already installed |
 | Brain | Claude API via the Anthropic Python SDK, behind the provider interface (Stage A) | Best quality now, replaceable later |
 | Agent loop | Jarvis-owned orchestrator with a manual tool loop | Provider-independent, no lock-in |
 | Models | Opus 5.5 main, Haiku 5.5 for simple calls, workers after testing | See "Provider and model routing" |
@@ -1006,7 +1006,7 @@ routes:
 | Scheduler | APScheduler | Heartbeat, brief, schedules |
 | Phone | python-telegram-bot | Long-polling |
 | Mac control | pyobjc, osascript, screencapture | Native |
-| Secrets | Keychain (keyring) | Safer than .env |
+| Secrets | keyring: Keychain on macOS, Credential Manager on Windows | Safer than .env |
 | Voice | openWakeWord, Whisper, say, edge-tts | See Voice |
 | Dashboard | FastAPI + Next.js | Node installed |
 | Browser automation | Playwright Chromium, isolated profiles | Phase 8 |

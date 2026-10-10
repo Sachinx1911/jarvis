@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jarvis"
+version = "0.0.1"
+description = "Personal AI assistant, built phase by phase"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=1.0",   # Claude adapter only (jarvis/providers/claude.py)
+    "keyring>=25",      # secrets in macOS Keychain / Windows Credential Manager
+    "pyyaml>=6",        # config/*.yaml
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+jarvis = "jarvis.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["jarvis*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["live: calls a real cloud provider (needs an API key and JARVIS_LIVE=1)"]

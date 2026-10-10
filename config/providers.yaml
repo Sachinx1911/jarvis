@@ -1,0 +1,8 @@
+# Known AI providers. No secrets here: keys live in the OS secret store (keyring).
+# Approval to actually use a provider is in routing.yaml (approved_providers).
+providers:
+  anthropic:
+    kind: cloud
+    secret: anthropic_api_key
+  fake:
+    kind: test        # deterministic, offline; always allowed, sends nothing anywhere

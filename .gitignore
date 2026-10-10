@@ -27,3 +27,11 @@ node_modules/
 
 # macOS
 .DS_Store
+
+# Machine-specific config overrides
+/config/local.yaml
+
+# Packaging
+*.egg-info/
+build/
+dist/
