@@ -148,7 +148,7 @@ def test_real_runner_timeout_and_missing_osascript(monkeypatch):
 
 def test_body_withheld_below_p2_and_not_even_fetched():
     runner = FakeNotesRunner(NOTES)
-    tools = make_tools(runner, "P1")
+    tools = make_tools(runner, "P1", title_class="P1")   # titles allowed here; the body stays P2
     out = tools.notes_search({"query": "plan"})
     assert payload(runner.calls[-1])["with_body"] is False
     assert "Garden plan" in out and "tulsi" not in out and "withheld: private" in out
@@ -196,7 +196,7 @@ def test_secrets_in_notes_are_redacted():
 def test_search_folder_order_and_limit():
     runner = FakeNotesRunner(NOTES + [{"id": "x-coredata://FAKE-STORE/ICNote/p99", "title": "Old demo",
                                        "folder": "Recently Deleted", "modified": "2026-10-09T23:00:00Z"}])
-    tools = make_tools(runner, "P1", max_results=1)
+    tools = make_tools(runner, "P1", max_results=1, title_class="P1")
     out = tools.notes_search({"query": "demo"})
     assert "Demo trip packing" in out and "Old demo" not in out and "(showing 1 of 2, newest first)" in out
     assert payload(runner.calls[-1])["limit"] == 1
@@ -391,4 +391,11 @@ def test_main_live_check(monkeypatch, tmp_path, capsys):
 
 def test_shipped_notes_config():
     cfg = load_connectors_config()["notes"]
-    assert cfg == {"enabled": True, "body_class": "P2", "title_class": "P1", "folder": "Jarvis", "max_results": 10}
+    assert cfg == {"enabled": True, "body_class": "P2", "title_class": "P2", "folder": "Jarvis", "max_results": 10}
+
+
+def test_titles_are_withheld_by_default_below_p2():
+    """Until Sachin decides (#19, like email subjects), note titles are P2 too."""
+    runner = FakeNotesRunner(NOTES)
+    out = make_tools(runner, "P1").notes_search({"query": "plan"})
+    assert "Garden plan" not in out and "tulsi" not in out

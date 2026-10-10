@@ -14,7 +14,7 @@ Tools and tiers:
 
 Privacy (PLAN.md 5.9): note text is P2 (notes.body_class), like email bodies. Below P2 the
 text is not even fetched from Notes and the model is told it was withheld. Titles and
-folder names follow notes.title_class (P1 by default). Notes can be shared with other
+folder names follow notes.title_class (P2 by default until Sachin decides, like email subjects). Notes can be shared with other
 people or hold pasted web text, so notes_search and notes_read taint the session.
 
 Injection safety: the script texts are constants. Every user value (title, words, folder,
@@ -361,7 +361,7 @@ class NotesTools:
 
     @property
     def title_ok(self) -> bool:
-        return allowed(self._class("title_class", "P1"), self.max_privacy)
+        return allowed(self._class("title_class", "P2"), self.max_privacy)
 
     @property
     def folder(self) -> str:
