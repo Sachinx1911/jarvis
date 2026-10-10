@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ApiError, api, post, upload } from "@/lib/api";
-import { micSupported, Recording, startRecording } from "@/lib/audio";
+import { ApiError, api, post } from "@/lib/api";
 import { errText } from "@/lib/hooks";
+import { Icon } from "./icons";
+import { useHandsFree, usePushToTalk, useStt, notReadyText } from "./voice";
+import { ModeSelect, PauseReason, speakingMs, VoiceSettings, voiceState, Waveform } from "./VoiceUI";
 
 type Line = { who: "user" | "jarvis" | "system"; text: string; turn_id?: number | null };
 type Session = { id: string; provider: string; model: string; project?: string | null };
@@ -29,7 +31,11 @@ export type Inject = { type: "message"; text: string } | { type: "project"; name
 
 const KEY = "jarvis_chat";
 const SPEAK_KEY = "jarvis_speak";
-export const NOT_INSTALLED = "speech-to-text not installed (run voice setup)";
+const AUTOSEND_KEY = "jarvis_autosend";
+export { NOT_INSTALLED } from "./voice";
+
+const COMMANDS = ["/remember", "/remember-private", "/memory", "/project", "/repeat", "/why", "/note", "/help"];
+const STARTERS = ["What is on my plate today?", "आज काय काम आहे?", "Summarise my open tasks", "Remind me at 6 pm to call home"];
 
 function loadSaved(): { session: Session | null; lines: Line[]; project: string } {
   try {
@@ -41,7 +47,38 @@ function loadSaved(): { session: Session | null; lines: Line[]; project: string 
   return { session: null, lines: [], project: "" };
 }
 
-export default function ChatTab({ inject, onInjected }: { inject?: Inject | null; onInjected?: () => void }) {
+function flag(key: string, fallback: boolean): boolean {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : v === "1";
+  } catch {
+    return fallback;
+  }
+}
+
+function saveFlag(key: string, on: boolean) {
+  try {
+    localStorage.setItem(key, on ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+}
+
+export default function ChatTab({
+  inject,
+  onInjected,
+  voice,
+  onVoice,
+  pendingApprovals = 0,
+  stopEngaged = false,
+}: {
+  inject?: Inject | null;
+  onInjected?: () => void;
+  voice?: VoiceSettings;
+  onVoice?: (v: VoiceSettings) => void;
+  pendingApprovals?: number;
+  stopEngaged?: boolean;
+}) {
   const [session, setSession] = useState<Session | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [project, setProject] = useState("");
@@ -51,30 +88,30 @@ export default function ChatTab({ inject, onInjected }: { inject?: Inject | null
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [speak, setSpeak] = useState(false);
-  const [stt, setStt] = useState<{ ready: boolean; detail: string } | null>(null);
-  const [recording, setRecording] = useState<Recording | null>(null);
+  const [autoSend, setAutoSend] = useState(true);
   const [voiceNote, setVoiceNote] = useState("");
+  const [speakingUntil, setSpeakingUntil] = useState(0);
   const logRef = useRef<HTMLDivElement>(null);
   const sessionRef = useRef<Session | null>(null);
   sessionRef.current = session;
+  const busyRef = useRef(false);
+  busyRef.current = busy;
+  const stt = useStt();
+
+  const hf: VoiceSettings = voice ?? { on: false, mode: "wake" };
+  const setHf = (v: VoiceSettings) => onVoice?.(v);
 
   useEffect(() => {
     const saved = loadSaved();
     setSession(saved.session);
     setLines(saved.lines);
     setProject(saved.project || saved.session?.project || "");
-    try {
-      setSpeak(localStorage.getItem(SPEAK_KEY) === "1");
-    } catch {
-      /* ignore */
-    }
+    setSpeak(flag(SPEAK_KEY, false));
+    setAutoSend(flag(AUTOSEND_KEY, true));
     setLoaded(true);
     api<{ items: { name: string }[] }>("/api/projects")
       .then((r) => setProjects(r.items.map((p) => p.name)))
       .catch(() => setProjects([]));
-    api<{ stt_ready: boolean; stt_detail: string }>("/api/voice/status")
-      .then((r) => setStt({ ready: r.stt_ready, detail: r.stt_detail }))
-      .catch(() => setStt({ ready: false, detail: NOT_INSTALLED }));
   }, []);
 
   useEffect(() => {
@@ -85,7 +122,7 @@ export default function ChatTab({ inject, onInjected }: { inject?: Inject | null
       /* ignore */
     }
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
-  }, [session, lines, project, loaded]);
+  }, [session, lines, project, loaded, busy]);
 
   // Requests from other tabs (run a skill, use a project) once the saved chat is loaded.
   useEffect(() => {
@@ -97,13 +134,49 @@ export default function ChatTab({ inject, onInjected }: { inject?: Inject | null
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, inject]);
 
+  // While Jarvis is speaking on the Mac speakers, hands-free waits (it would hear itself).
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (speakingUntil <= Date.now()) return;
+    const t = window.setTimeout(() => tick((n) => n + 1), speakingUntil - Date.now() + 50);
+    return () => window.clearTimeout(t);
+  }, [speakingUntil]);
+  const speaking = speakingUntil > Date.now();
+
+  const pauseReason: PauseReason = pendingApprovals > 0 ? "approval" : busy ? "thinking" : speaking ? "speaking" : null;
+
+  const handsFree = useHandsFree({
+    enabled: hf.on && !stopEngaged,
+    mode: hf.mode,
+    paused: pauseReason !== null,
+    onUtterance: (t) => {
+      if (!busyRef.current) void sendText(t);
+    },
+    onDraft: (t) => setText(t),
+    onNote: (t) => setVoiceNote(t),
+    onError: (t) => {
+      setVoiceNote(t);
+      setHf({ ...hf, on: false });
+    },
+  });
+
+  const ptt = usePushToTalk(stt, (heard, clear) => {
+    if (clear && autoSend && !heard.trim().startsWith("/")) {
+      void sendText(heard);
+      return;
+    }
+    setText((t) => (t ? `${t} ${heard}` : heard));
+    if (clear) ptt.setNote("Check the text, then press Send.");
+  });
+
   function toggleSpeak(on: boolean) {
     setSpeak(on);
-    try {
-      localStorage.setItem(SPEAK_KEY, on ? "1" : "0");
-    } catch {
-      /* ignore */
-    }
+    saveFlag(SPEAK_KEY, on);
+  }
+
+  function toggleAutoSend(on: boolean) {
+    setAutoSend(on);
+    saveFlag(AUTOSEND_KEY, on);
   }
 
   async function start(): Promise<Session> {
@@ -156,6 +229,7 @@ export default function ChatTab({ inject, onInjected }: { inject?: Inject | null
         setProject(res.project ?? "");
         setSession({ ...s, project: res.project });
       }
+      if (res.voice?.spoken) setSpeakingUntil(Date.now() + speakingMs(res.reply.length));
       if (res.voice && !res.voice.spoken && res.voice.detail) setVoiceNote(`Not spoken: ${res.voice.detail}`);
       else setVoiceNote("");
     } catch (e) {
@@ -171,44 +245,6 @@ export default function ChatTab({ inject, onInjected }: { inject?: Inject | null
     if (!msg || busy) return;
     setText("");
     await sendText(msg);
-  }
-
-  async function mic() {
-    setVoiceNote("");
-    if (recording) {
-      setRecording(null);
-      setVoiceNote("Reading what you said…");
-      try {
-        const wav = await recording.stop();
-        const r = await upload<{ status: string; text: string; heard: string }>(
-          "/api/voice/transcribe",
-          wav,
-          "audio/wav",
-        );
-        if (r.status === "ok") {
-          setText((t) => (t ? `${t} ${r.text}` : r.text));
-          setVoiceNote("Check the text, then press Send.");
-        } else if (r.status === "no_audio") setVoiceNote("Nothing was recorded. Try again.");
-        else setVoiceNote(`Sorry, I did not catch that${r.heard ? ` (heard "${r.heard}")` : ""}. Please say it again.`);
-      } catch (e) {
-        setVoiceNote(errText(e));
-      }
-      return;
-    }
-    if (stt && !stt.ready) {
-      setVoiceNote(stt.detail.startsWith(NOT_INSTALLED) ? stt.detail : `${NOT_INSTALLED}: ${stt.detail}`);
-      return;
-    }
-    if (!micSupported()) {
-      setVoiceNote("This browser cannot record audio.");
-      return;
-    }
-    try {
-      setRecording(await startRecording());
-      setVoiceNote("Listening… press the button again when you are done.");
-    } catch (e) {
-      setVoiceNote(`Microphone not available: ${errText(e)}`);
-    }
   }
 
   async function end() {
@@ -239,18 +275,22 @@ export default function ChatTab({ inject, onInjected }: { inject?: Inject | null
     }
   }
 
-  const micLabel = recording ? "■ Stop" : "🎤 Talk";
-  const micTitle =
-    stt && !stt.ready ? NOT_INSTALLED : recording ? "Stop recording and read it" : "Push to talk (speech-to-text on this computer)";
+  const sttMissing = stt !== null && !stt.ready;
+  const micTitle = sttMissing
+    ? notReadyText(stt!)
+    : ptt.recording
+      ? "Stop recording and read it"
+      : "Push to talk (speech-to-text on this computer)";
+  const state = voiceState(handsFree.phase, pauseReason);
+  const note = ptt.note || voiceNote;
 
   return (
-    <section className="panel">
-      <div className="row">
-        <h2 className="grow">Chat</h2>
-        <label className="small row" title="Its memories and documents come first">
-          Project
+    <section className="panel chat">
+      <div className="chat-toolbar">
+        <label className="field-inline" title="Its memories and documents come first">
+          <Icon name="folder" size={15} />
           <select value={project} onChange={(e) => chooseProject(e.target.value)} aria-label="Active project">
-            <option value="">none</option>
+            <option value="">No project</option>
             {projects.map((p) => (
               <option key={p} value={p}>
                 {p}
@@ -258,73 +298,173 @@ export default function ChatTab({ inject, onInjected }: { inject?: Inject | null
             ))}
           </select>
         </label>
-        <label className="small row" title="Speak replies on this computer's speakers">
+        <label className="switch field-inline" title="Speak replies on this computer's speakers">
           <input type="checkbox" checked={speak} onChange={(e) => toggleSpeak(e.target.checked)} />
+          <span className="track" aria-hidden />
           Speak replies
         </label>
-        <span className="small muted">{session ? `${session.provider}/${session.model}` : "no chat yet"}</span>
-        <button onClick={() => setLines([])} disabled={busy}>
-          Clear screen
+        <label className="switch field-inline" title="Send what you said as soon as it is understood">
+          <input type="checkbox" checked={autoSend} onChange={(e) => toggleAutoSend(e.target.checked)} />
+          <span className="track" aria-hidden />
+          Auto-send voice
+        </label>
+        <span className="grow" />
+        <span className="pill outline small">{session ? `${session.provider} · ${session.model}` : "no chat yet"}</span>
+        <button className="ghost sm" onClick={() => setLines([])} disabled={busy}>
+          Clear
         </button>
-        <button onClick={end} disabled={!session || busy} title="End the chat; Jarvis saves what it learned">
+        <button className="sm" onClick={end} disabled={!session || busy} title="End the chat; Jarvis saves what it learned">
           End chat
         </button>
       </div>
+
       <div className="chat-log" ref={logRef} aria-live="polite">
         {lines.length === 0 && (
-          <p className="muted">
-            Write in English or Marathi (मराठी). <code>/remember …</code> saves a memory,{" "}
-            <code>/remember-private …</code> saves one that never goes to the cloud. <code>/memory</code>,{" "}
-            <code>/project</code>, <code>/record</code>, <code>/note</code> and <code>/help</code> work too. Actions that
-            need approval appear above the chat.
-          </p>
+          <div className="chat-empty">
+            <span className="tile lg blue">
+              <Icon name="chat" size={26} />
+            </span>
+            <h2>Talk to Jarvis</h2>
+            <p className="muted">Write or speak in English or मराठी. Actions that need your approval appear above the chat.</p>
+            <div className="chips" style={{ justifyContent: "center", marginTop: 16 }}>
+              {STARTERS.map((s) => (
+                <button key={s} className="chip plain" onClick={() => sendText(s)} disabled={busy}>
+                  {s}
+                </button>
+              ))}
+            </div>
+            <details>
+              <summary>Chat commands</summary>
+              <p>
+                <code>/remember …</code> saves a memory, <code>/remember-private …</code> saves one that never goes to the
+                cloud. <code>/memory</code>, <code>/project</code>, <code>/repeat</code>, <code>/why</code>,{" "}
+                <code>/note</code> and <code>/help</code> work too.
+              </p>
+            </details>
+          </div>
         )}
         {lines.map((l, i) => {
-          const msg = (
-            <div key={i} className={`msg ${l.who}`} lang={/[ऀ-ॿ]/.test(l.text) ? "mr" : undefined}>
+          const lang = /[ऀ-ॿ]/.test(l.text) ? "mr" : undefined;
+          if (l.who === "system")
+            return (
+              <div key={i} className="msg system" lang={lang}>
+                {l.text}
+              </div>
+            );
+          const bubble = (
+            <div className={`msg ${l.who}`} lang={lang}>
               {l.text}
             </div>
           );
-          if (l.who !== "jarvis" || l.turn_id == null) return msg;
           return (
-            <div key={i} className="msg-wrap">
-              {msg}
-              <Why turnId={l.turn_id} />
+            <div key={i} className={`msg-line ${l.who}`}>
+              {l.who === "jarvis" && (
+                <span className="avatar" aria-hidden>
+                  J
+                </span>
+              )}
+              {l.who === "jarvis" && l.turn_id != null ? (
+                <div className="msg-wrap">
+                  {bubble}
+                  <Why turnId={l.turn_id} />
+                </div>
+              ) : (
+                bubble
+              )}
             </div>
           );
         })}
-        {busy && <div className="msg system">Jarvis is working…</div>}
+        {busy && (
+          <div className="msg-line jarvis">
+            <span className="avatar" aria-hidden>
+              J
+            </span>
+            <span className="typing">
+              <span className="dots" aria-hidden>
+                <span />
+                <span />
+                <span />
+              </span>
+              Jarvis is working…
+            </span>
+          </div>
+        )}
       </div>
-      {error && <div className="error">{error}</div>}
-      {voiceNote && <div className="notice small">{voiceNote}</div>}
-      <div className="row" style={{ marginTop: 8, alignItems: "flex-end" }}>
-        <textarea
-          className="grow"
-          rows={3}
-          value={text}
-          placeholder="Message Jarvis (Enter to send, Shift+Enter for a new line)"
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              send();
-            }
-          }}
-        />
-        <button
-          onClick={mic}
-          disabled={busy}
-          title={micTitle}
-          aria-label={micTitle}
-          className={recording ? "danger" : stt && !stt.ready ? "muted" : ""}
-        >
-          {micLabel}
-        </button>
-        <button className="primary" onClick={send} disabled={busy || !text.trim()}>
-          Send
-        </button>
+
+      <div className="composer">
+        <div className="notes">
+          {error && <div className="error">{error}</div>}
+          {note && <div className="infobox small">{note}</div>}
+        </div>
+        <div className="composer-box">
+          <textarea
+            rows={2}
+            value={text}
+            placeholder="Message Jarvis… (Enter to send, Shift+Enter for a new line)"
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                send();
+              }
+            }}
+          />
+          <div className="composer-actions">
+            <div className="chips">
+              {COMMANDS.map((c) => (
+                <button key={c} className="chip" onClick={() => setText((t) => (t ? t : `${c} `))} title={`Start with ${c}`}>
+                  {c}
+                </button>
+              ))}
+            </div>
+            <button
+              className={`icon-btn mic-btn${ptt.recording ? " recording" : ""}`}
+              onClick={ptt.toggle}
+              disabled={busy || hf.on}
+              title={hf.on ? "Hands-free is listening" : micTitle}
+              aria-label={micTitle}
+            >
+              <Icon name={ptt.recording ? "stop" : "mic"} size={18} />
+            </button>
+            <button className="primary" onClick={send} disabled={busy || !text.trim()} aria-label="Send">
+              <Icon name="send" size={16} /> Send
+            </button>
+          </div>
+        </div>
+        <div className="voice-row">
+          <label className="switch field-inline" title="Keep the microphone open and talk without clicking">
+            <input
+              type="checkbox"
+              checked={hf.on}
+              disabled={stopEngaged || sttMissing}
+              onChange={(e) => {
+                setVoiceNote("");
+                setHf({ ...hf, on: e.target.checked });
+              }}
+            />
+            <span className="track" aria-hidden />
+            Hands-free
+          </label>
+          <ModeSelect mode={hf.mode} onMode={(m) => setHf({ ...hf, mode: m })} />
+          {hf.on && (
+            <>
+              <span className={`hf-state ${state.tone}`}>
+                <span className={`dot ${state.tone === "listening" ? "ok pulse" : state.tone === "paused" ? "warn" : "accent"}`} />
+                {state.word}
+                {handsFree.armed ? " · say your request" : ""}
+              </span>
+              <span style={{ width: 140 }}>
+                <Waveform analyserRef={handsFree.analyserRef} live={pauseReason === null} height={26} />
+              </span>
+              <button className="ghost sm" onClick={() => setHf({ ...hf, on: false })}>
+                Stop
+              </button>
+            </>
+          )}
+          {sttMissing && <span className="small muted">Microphone: speech-to-text is not set up (Setup tab).</span>}
+          {!hf.on && !sttMissing && <span className="small faint">Voice never approves actions: approvals stay click-only.</span>}
+        </div>
       </div>
-      {stt && !stt.ready && <div className="small muted">Microphone: {NOT_INSTALLED}. See the Setup tab.</div>}
     </section>
   );
 }
