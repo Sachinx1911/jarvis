@@ -167,7 +167,9 @@ def cmd_memory(args: argparse.Namespace, out: TextIO) -> int:
             n = mem.export(Path(args.text[0]))
             print(f"Exported {n} memories to {args.text[0]}.", file=out)
         elif args.action == "reindex":
+            from jarvis.memory import session_facts
             print(f"Indexed {mem.reindex()} memory files.", file=out)
+            session_facts.reindex_all(rt.store.conn)  # facts of chats extracted before this index existed
         elif args.action == "add":
             saved = make_extractor(rt, args.provider).remember(" ".join(args.text), private=args.private)
             print(f"Remembered as {saved.id}: {saved.summary_en or saved.name}", file=out)
@@ -219,6 +221,9 @@ def cmd_interview(args: argparse.Namespace, out: TextIO, inp: TextIO) -> int:
 
 
 def cmd_eval(args: argparse.Namespace, out: TextIO) -> int:
+    if getattr(args, "suite", "migration") == "memory":
+        from jarvis.evals.memory_eval import run_cli
+        return run_cli(args, out)
     from jarvis.evals.runner import run_suite
 
     rt = open_runtime()
@@ -320,9 +325,11 @@ def build_parser() -> argparse.ArgumentParser:
     iv = sub.add_parser("interview", help="profile interview; answers become memories")
     iv.add_argument("--provider", choices=PROVIDERS, default=None)
 
-    ev = sub.add_parser("eval", help="run the migration evaluation suite")
+    ev = sub.add_parser("eval", help="run an evaluation suite (migration or memory)")
     ev.add_argument("--provider", choices=PROVIDERS, default=None)
     ev.add_argument("--category", default=None)
+    ev.add_argument("--suite", choices=["migration", "memory"], default="migration")
+    ev.add_argument("--live", action="store_true", help="memory suite: also measure answers with the real model")
 
     con = sub.add_parser("connectors", help="tools, risk tiers and health checks")
     con.add_argument("action", choices=["status"])
@@ -340,12 +347,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def build_parser_with_extensions():
     """Core commands plus the command groups from other modules (each has register())."""
-    from jarvis import cli_browser, cli_connectors, cli_memory, cli_proactive, cli_tasks, cli_voice, cli_web
+    from jarvis import cli_app, cli_browser, cli_connectors, cli_memory, cli_proactive, cli_tasks, cli_voice, cli_web
 
     parser = build_parser()
     sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
     extra: dict = {}
-    for module in (cli_tasks, cli_browser, cli_web, cli_memory):
+    for module in (cli_tasks, cli_browser, cli_web, cli_memory, cli_app):
         extra.update(module.register(sub))
     cli_voice.register(sub)
     cli_connectors.register(sub)

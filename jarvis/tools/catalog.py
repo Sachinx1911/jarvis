@@ -102,8 +102,10 @@ def build_registry(reg: ToolRegistry, d: ToolDeps) -> ToolRegistry:
                           _obj({"query": S}, ["query"])), "T0", memory_search))
 
     def session_search(args: dict) -> str:
-        rows = d.store.search_sessions(args["query"], limit=5, exclude_session=d.session_id())
-        return "\n".join(f"- {r['ts']} {r['role']}: {r['text'][:300]}" for r in rows) or "No matching past conversations."
+        from jarvis.memory import session_facts  # cross-script, time-aware, fact-augmented search
+
+        rows = session_facts.search(d.store.conn, args["query"], limit=5, exclude_session=d.session_id())
+        return "\n".join(f"- {r.ts} {r.role}: {r.text[:300]}" for r in rows) or "No matching past conversations."
 
     add(Tool(ToolSpec("session_search", "Search past conversations with the user.", _obj({"query": S}, ["query"])),
              "T0", session_search))
