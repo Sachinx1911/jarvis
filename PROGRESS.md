@@ -60,7 +60,7 @@ Can be built after Sachin's OK:
 
 Need Sachin's OK for a download or a decision first:
 - Marathi speech-to-text (IndicConformer or IndicWhisper, local; today only a placeholder) and the English Whisper model download.
-- Backup encryption (new dependency or an external tool) and the final backup location (#10).
+- Backup encryption (deferred by Sachin; location decided: local).
 - Signed Mac `.app` started by a LaunchAgent (stable macOS permissions).
 - Stage B: local model runtime + local adapter + migration evals on this Mac.
 
@@ -126,6 +126,7 @@ On a new machine first: `git clone`, run `scripts/setup.ps1` (Windows) or `scrip
 | 2026-10-10 | Smart home control (skill #24) is not wanted: dropped from the plan |
 | 2026-10-10 | #19 decided: email sender/subject and Apple Notes titles stay P2 (not sent to the cloud model) for now |
 | 2026-10-10 | #10 decided: backups stay local (`~/JarvisBackups`, never inside the repo) and must be encrypted |
+| 2026-10-10 | Backup encryption work deferred by Sachin ("backup apan nantar baguya"); backups stay as they are (local, not encrypted) until he picks it up |
 | 2026-10-10 | No adding UPI payees from the app; payees stay terminal-only |
 | 2026-10-10 | Downloads approved: English Whisper model, Marathi speech models (STT/TTS), wake word, and Stage B local AI (runtime + models). Stage B measures only; live routing changes need Sachin's OK |
 | 2026-10-10 | Vetted the Hermes Agent Masterclass (Jack Roberts, hermes-masterclass.vercel.app). Taken: a global daily cap for unattended work (runaway-loop risk), a nightly review into `memory/episodes/` with memory conflicts in the brief, local dated backups (destination still open decision #10). Already in Jarvis: soul file, markdown memory + FTS, risk tiers/approvals/kill switch, Telegram allow-list, cron/heartbeat/brief, planner-worker-critic, budgets, dashboard. Dropped: VPS/Docker hosting (data leaves the laptop), OpenRouter (new key/cost), WhatsApp (banned for AI assistants), public webhooks (security), the selling/money module, the unproven "CLI uses 100x fewer tokens" claim |
