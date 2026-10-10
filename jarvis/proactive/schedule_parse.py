@@ -114,7 +114,8 @@ class ScheduleDraft:
     source: str = "rules"       # rules | model | explicit
 
     def show(self, now: datetime | None = None) -> str:
-        what = {"prompt": f"ask Jarvis: {self.input!r}", "skill": f"run skill {self.target!r} with {self.input!r}",
+        what = {"prompt": f"ask Jarvis: {self.input!r}",
+                "skill": f"run skill {self.target!r}" + (f" with {self.input!r}" if self.input else " (no extra input)"),
                 "agent": f"give agent {self.target!r} the task {self.input!r}", "brief": "send the daily brief",
                 "heartbeat": "run the heartbeat check",
                 "memory_extract": "extract memories from chats that went quiet",

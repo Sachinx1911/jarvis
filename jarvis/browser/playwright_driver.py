@@ -182,6 +182,13 @@ class PlaywrightDriver:
     def text(self) -> str:
         return self._call(lambda: self._page.inner_text("body"))
 
+    def title(self) -> str:
+        return self._call(lambda: self._page.title())
+
+    def value(self, target: str) -> str:
+        loc = self._locate(target)
+        return self._call(loc.input_value)
+
     def describe(self, target: str) -> ElementInfo:
         d = self._call(lambda: self._locate(target).evaluate(_DESCRIBE_JS))
         return ElementInfo(d["tag"], d["type"], d["name"], d["text"], d["autocomplete"], bool(d["submits"]))

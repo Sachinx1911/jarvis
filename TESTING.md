@@ -41,6 +41,7 @@ Tick each box and note anything odd. Everything here works without Telegram, Goo
 - [ ] `.\jarvis.cmd tasks --all`, `.\jarvis.cmd receipt t-001`
 - [ ] Cancel test: start a task, then in another window `.\jarvis.cmd task cancel t-00N` → stops, receipt says CANCELLED
 - [ ] Known limit: price comparisons of Amazon/Flipkart products usually fail verification (see the research report)
+- [ ] After a task the Operator or Coder did, the receipt has **Claims vs evidence**: each claim with `[x]` and the tool run (or file hash / test exit code) that proves it. A claim marked `[!]` means the task FAILED, never COMPLETED
 
 ## 5. Teach by demonstration
 
@@ -48,6 +49,14 @@ Tick each box and note anything odd. Everything here works without Telegram, Goo
 - [ ] In chat: "Create notes/day-2026-10-11.md with headings Plan, Done, Ideas" (+ `/note why you do this`)
 - [ ] `.\jarvis.cmd record stop`, then `.\jarvis.cmd record draft r-…` → read the SKILL.md draft
 - [ ] `.\jarvis.cmd record approve r-…`, then `.\jarvis.cmd skill run daily-note date=2026-10-12`
+
+## 5b. Repeat this (skill + schedule, saved only after your yes)
+
+- [ ] `.\jarvis.cmd task repeat t-001 "every Monday at 9"` → SKILL.md draft + parsed schedule; answer `n` → `Not saved.`; run again and answer `y` → `Saved skill …` and `Saved schedule s-…`
+- [ ] In chat: "Create notes/prices.md with Laptop A", then `/repeat every day at 21:00` → draft; `/repeat no` drops it; repeat and `/repeat yes` saves it
+- [ ] `/repeat every 5 minutes` → refused (automations run at most every 30 minutes)
+- [ ] `.\jarvis.cmd schedule run-now s-…` on the saved schedule → only T0/T1 steps run; anything else is listed as "refused unattended, waiting for approval"
+- [ ] Telegram (when set up): `/repeat every day at 21:00` → draft with Save / Cancel buttons; nothing is saved before Save
 
 ## 6. Schedules, brief, reminders (no Telegram needed)
 

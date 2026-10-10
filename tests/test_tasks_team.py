@@ -252,11 +252,22 @@ def test_cancel_while_running_stops_at_next_step(env):
 
 def test_operate_mode_runs_operator_and_checker(env):
     plan = {**PLAN_SOLO, "mode": "operate", "deliverable": {"filename": "done.md", "outline": "what was done"}}
-    runner, ts, providers = _runner(env, plan, roles={"operator": FakeProvider(script=["Opened notepad and checked it runs."])})
-    t = ts.create("Open notepad for me")
+    runner, ts, providers = _runner(env, plan, roles={"operator": FakeProvider(script=[
+        {"tool": "write_file", "arguments": {"path": "todo.txt", "content": "buy milk"}},
+        "DONE:\n- Created todo.txt\nEVIDENCE: todo.txt\nNOT DONE: none"])})
+    t = ts.create("Make a todo file for me")
     done = runner.run(t.id)
     assert done.state == "COMPLETED", done.last_error
-    assert "Opened notepad" in (env[0] / "data" / "tasks" / t.id / "done.md").read_text(encoding="utf-8")
+    assert "Created todo.txt" in (env[0] / "data" / "tasks" / t.id / "done.md").read_text(encoding="utf-8")
+
+
+def test_operate_mode_fails_when_the_claimed_action_never_ran(env):
+    """Verify-after-act: the old silent failure ("Opened notepad" with no tool run) now fails."""
+    plan = {**PLAN_SOLO, "mode": "operate", "deliverable": {"filename": "done.md", "outline": "what was done"}}
+    runner, ts, _ = _runner(env, plan, roles={"operator": FakeProvider(script=["Opened notepad and checked it runs."])})
+    t = ts.create("Open notepad for me")
+    done = runner.run(t.id)
+    assert done.state == "FAILED" and "claimed but not done" in done.last_error
 
 
 def test_code_mode_fails_without_passing_tests(env):

@@ -31,6 +31,7 @@ CHAT_HELP = """Commands:
   /memory <words>           search memories
   /forget <id>              archive a memory
   /task <goal>              run a task now (plan, team, check, receipt)
+  /repeat [<task id>] <when> turn the last action (or a task) into a skill + schedule; /repeat yes|no
   /record start <name>      record a demonstration (/record stop, /note <why>)
   /project <name>|off       set the active project (its memories and documents come first)
   /exit                     end the chat (Jarvis then saves what it learned)"""

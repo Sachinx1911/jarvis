@@ -82,6 +82,15 @@ class RecordingDriver:
     def describe(self, target: str) -> ElementInfo:
         return self.inner.describe(target)
 
+    def title(self) -> str:
+        fn = getattr(self.inner, "title", None)
+        return fn() if callable(fn) else ""
+
+    def value(self, target: str) -> str | None:
+        """Read-back of a field's value, or None when the driver cannot read it."""
+        fn = getattr(self.inner, "value", None)
+        return fn(target) if callable(fn) else None
+
     def click(self, target: str) -> None:
         self.inner.click(target)
         self._log("click", target)

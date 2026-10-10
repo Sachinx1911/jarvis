@@ -71,7 +71,7 @@ class JarvisBot:
         app.add_handler(TypeHandler(Update, self.gate), group=-1)
         for name in ("start", "help", "stop", "resume", "tasks", "task", "pause", "cancel", "schedules", "schedule",
                      "schedule_pause", "schedule_resume", "schedule_run", "schedule_delete", "triggers", "trigger",
-                     "trigger_pause", "trigger_resume", "trigger_delete", "approvals", "approve",
+                     "trigger_pause", "trigger_resume", "trigger_delete", "repeat", "approvals", "approve",
                      "deny", "dismiss",
                      "remind", "reminders", "brief", "cloud", "new"):
             app.add_handler(CommandHandler(name, self.on_command))
@@ -120,6 +120,10 @@ class JarvisBot:
         if cmd == "trigger":
             shown, token = await asyncio.to_thread(c.draft_trigger, arg)
             await self._reply(update, shown, _buttons("tr", token, "Save", "Cancel") if token else None)
+            return
+        if cmd == "repeat":  # reads the chat session (chat thread); saved only by the Save button
+            shown, token = await self._in_chat_thread(c.draft_repeat, arg)
+            await self._reply(update, shown, _buttons("rp", token, "Save", "Cancel") if token else None)
             return
         if cmd in ("cloud", "new"):  # these touch the chat session, which lives in the chat thread
             fn = (lambda: c.cmd_cloud(arg)) if cmd == "cloud" else c.new_session
@@ -208,6 +212,9 @@ class JarvisBot:
         elif prefix == "tr":
             await query.answer()
             await query.edit_message_text(await asyncio.to_thread(self.core.confirm_trigger, token, yes))
+        elif prefix == "rp":
+            await query.answer()
+            await query.edit_message_text((await asyncio.to_thread(self.core.confirm_repeat, token, yes))[:4000])
         else:
             await query.answer()
 
