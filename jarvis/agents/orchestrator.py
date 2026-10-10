@@ -347,7 +347,6 @@ class TaskRunner:
         """Operator (computer and named websites, asks Jarvis's approver) or Coder (its own code folder)."""
         from jarvis.agents.extra import CODER, OPERATOR, open_browser_session, run_extra_agent
         from jarvis.browser import domains_from_text
-
         from jarvis.tools.code import SKIP_DIRS, load_coder_config, project_root
 
         task = self.tasks.get(task_id)
@@ -393,13 +392,14 @@ class TaskRunner:
 
     def _check_claims(self, task_id: str, role: str, cp: dict, code_root: Path | None) -> tuple[dict, list[str]]:
         """Verify-after-act: what the agent reports vs what its tools did (jarvis/tasks/verify.py).
-        Recorded as a "claims" event; the receipt shows it as "Claims vs evidence"."""
+        Recorded as a "claims" event; the receipt shows it as "Claims vs evidence". Any claim
+        without supporting evidence is a problem, so the task cannot become COMPLETED."""
+        from jarvis.tools.code import SKIP_DIRS
+
         path = self.task_dir / cp["report"]
         report = path.read_text(encoding="utf-8") if path.is_file() else ""
         runs = tool_runs(self.store.conn, task_id, agent=role)
         if role == "coder" and code_root is not None:
-            from jarvis.tools.code import SKIP_DIRS
-
             result = check_coder(report, cp.get("coder_before") or {}, folder_hashes(code_root, SKIP_DIRS), runs)
             label = "the files the Coder reports match the files that changed, and its last test run passed"
         else:

@@ -1,16 +1,21 @@
-"""Verify-after-act (reports/Personal AI capability gaps.md, item 5).
+"""Verify-after-act (PROGRESS.md "Next step" 2; PLAN.md 10.1: no task is COMPLETED without
+verification).
 
 Agents that fail without noticing are the main real-world agent failure. Jarvis therefore
 checks what an agent SAYS it did against what its tools DID, deterministically:
 
 - Operator: each effect claimed in the DONE section of its report must be backed by a
-  successful, verified tool run of the matching kind (and, when the claim names a file, page
-  or app, a run whose arguments or result mention it). A claimed action with no such run
-  fails verification. Effects the tools had but the report does not mention are listed as
-  warnings.
+  successful, verified tool run of the matching kind (and, when the claim names a file or a
+  site, a run whose arguments or result mention it). A claimed action with no such run fails
+  verification. Effects the tools had but the report does not mention are listed as warnings.
 - Coder: the project folder is hashed before and after the task; the files the Coder lists
-  under CHANGED must be exactly the files that changed. Its last run_tests must have passed,
-  after its last code_write.
+  under CHANGED must be exactly the files that changed. Its last run_tests must have exited
+  with code 0, after its last code_write.
+
+"Verified" means the tool's own post-check (the registry appends "[verified: how]" or
+"[NOT verified: how]" as the last line of the result) did not say otherwise: file exists
+with the expected hash, the app process runs, the page moved or shows a confirmation, the
+downloaded file exists (sha256), the test command exited 0.
 
 Everything here reads SQLite rows and files; no model is involved.
 """
@@ -25,6 +30,10 @@ from pathlib import Path
 from typing import Any, Iterable
 
 NOT_VERIFIED = "[NOT verified"
+VERIFIED = "[verified"
+
+FILE_EXTS = "md|txt|py|pdf|csv|png|jpe?g|json|ya?ml|html?|docx?|xlsx?|js|ts|log"
+URL_START_RE = re.compile(r"https?://|www\.", re.I)
 
 # Kind of effect -> (words in a claim line, tools that can produce it). Order matters: the
 # first kinds are the more specific ones.
@@ -35,13 +44,17 @@ CLAIM_KINDS: list[tuple[str, re.Pattern[str], frozenset[str]]] = [
     ("download", re.compile(r"\bdownload(ed)?\b", re.I), frozenset({"browser_download"})),
     ("screenshot", re.compile(r"\bscreenshots?\b", re.I), frozenset({"browser_screenshot", "browser_submit"})),
     ("click", re.compile(r"\bclick(ed)?\b", re.I), frozenset({"browser_click"})),
+    # Reading a file is not an effect, but a claim to have read one must match a read.
+    ("read", re.compile(r"\b(read|open(ed)?|looked at|reviewed|checked|went through)\b[^\n]*?"
+                        rf"[\w-]\.(?:{FILE_EXTS})\b", re.I),
+     frozenset({"read_file", "list_folder", "code_read"})),
     ("open_page", re.compile(r"\b(open(ed)?|visit(ed)?|went to|navigated|load(ed)?)\b[^.\n]*"
                              r"(https?://|www\.|\b[a-z0-9-]+\.[a-z]{2,}\b|\bpage\b|\bsite\b|\bwebsite\b)", re.I),
      frozenset({"browser_open", "web_fetch"})),
     ("open_app", re.compile(r"\b(open(ed)?|launch(ed)?|start(ed)?)\b", re.I), frozenset({"open_app"})),
     ("write", re.compile(r"\b(wrote|written|write|created|saved|made a file)\b", re.I),
      frozenset({"write_file", "overwrite_file", "code_write", "browser_screenshot", "browser_download",
-                "browser_submit"})),
+                "browser_submit", "calendar_create_event", "reminder_create", "gmail_draft"})),
     ("move", re.compile(r"\b(moved|renamed)\b", re.I), frozenset({"move_file"})),
     ("delete", re.compile(r"\b(deleted|removed)\b", re.I), frozenset({"delete_file"})),
     ("notify", re.compile(r"\bnotif(y|ied|ication)\b", re.I), frozenset({"notify"})),
@@ -50,7 +63,9 @@ CLAIM_KINDS: list[tuple[str, re.Pattern[str], frozenset[str]]] = [
 EFFECT_TOOLS = frozenset({"browser_submit", "browser_fill", "browser_download", "browser_click", "write_file",
                           "overwrite_file", "move_file", "delete_file", "open_app", "notify", "code_write",
                           "gmail_send", "calendar_create_event", "reminder_create"})
-SECTION_RE = re.compile(r"^\s*(?:\d+[.)]\s*)?\**\s*(DONE|EVIDENCE|NOT DONE|CHANGED|TESTS|OPEN)\s*\**\s*:\s*(.*)$", re.I)
+# "DONE: ...", "1. DONE:", "**DONE**:", "## DONE" (a header needs a colon or nothing after it).
+SECTION_RE = re.compile(r"^\s*(?:#{1,6}\s*)?(?:\d+[.)]\s*)?\**\s*(DONE|EVIDENCE|NOT DONE|CHANGED|TESTS|OPEN)\s*\**\s*"
+                        r"(?::\s*(.*)|$)", re.I)
 URL_RE = re.compile(r"https?://[^\s)\]>\"'|,]+")
 FILE_RE = re.compile(r"(?<![\w/.-])((?:[\w-]+/)*[\w-]+\.[A-Za-z0-9]{1,5})(?![\w/])")
 HOST_RE = re.compile(r"\b((?:[a-z0-9-]+\.)+[a-z]{2,})\b", re.I)
@@ -94,7 +109,7 @@ def report_sections(text: str) -> dict[str, list[str]]:
         if m:
             current = m.group(1).upper()
             sections.setdefault(current, [])
-            rest = m.group(2).strip()
+            rest = (m.group(2) or "").strip()
             if rest:
                 sections[current].append(rest)
             continue
@@ -110,17 +125,42 @@ def claim_lines(text: str) -> list[str]:
     return [ln for ln in (lines or []) if ln.lower() not in ("none", "nothing", "-", "n/a")]
 
 
-NEGATION_RE = re.compile(r"\b(not|no|never|nothing|none|unable|cannot|can't|couldn't|didn't|wasn't|won't)\b", re.I)
+NEGATION_RE = re.compile(r"\b(not|no|never|nothing|none|unable|cannot|can't|couldn't|didn't|wasn't|won't|"
+                         r"failed to)\b", re.I)
+# A claim line can hold several actions: "Opened the page, filled the form and submitted it".
+# Periods split only when followed by a space, so file names and hosts stay whole.
+CLAUSE_RE = re.compile(r"[;,]|\.(?:\s|$)|\s+(?:and|but|then|however|although|though)\s+", re.I)
+
+
+def clauses(line: str) -> list[str]:
+    return [c.strip() for c in CLAUSE_RE.split(line) if c and c.strip()]
+
+
+def classify_clause(clause: str) -> list[str]:
+    """Kinds of effect one clause claims. A kind whose verb comes after a negation in the same
+    clause ("the form was not sent", "could not open notepad") claims nothing; a negation after
+    the verb ("submitted the form with no errors") does not cancel the claim."""
+    neg = NEGATION_RE.search(clause)
+    no_urls = URL_RE.sub(lambda m: " " * len(m.group(0)), clause)  # same offsets, no file names inside links
+    kinds = []
+    for kind, rx, _ in CLAIM_KINDS:
+        m = rx.search(no_urls if kind == "read" else clause)
+        if m and not (neg and neg.start() < m.start()):
+            kinds.append(kind)
+    if "read" in kinds and "open_page" in kinds and not URL_START_RE.search(clause):
+        kinds.remove("open_page")  # "opened notes.txt": a file, not a site
+    if "open_app" in kinds and len(kinds) > 1:
+        kinds.remove("open_app")  # "opened the page", "started the download": not an app
+    if "submit" in kinds and "write" in kinds and not _files_in(clause):
+        kinds.remove("write")  # "sent the form and saved it" -> the submit
+    return kinds
 
 
 def classify(line: str) -> list[str]:
-    if NEGATION_RE.search(line):
-        return ["other"]  # "the form was not sent" claims no effect
-    kinds = [kind for kind, rx, _ in CLAIM_KINDS if rx.search(line)]
-    if "open_page" in kinds and "open_app" in kinds:
-        kinds.remove("open_app")
-    if "submit" in kinds and "write" in kinds and not _files_in(line):
-        kinds.remove("write")  # "sent the form and saved it" -> the submit
+    """Kinds of effect a claim line makes, in order; ["other"] when it claims no effect."""
+    kinds: list[str] = []
+    for clause in clauses(line):
+        kinds += [k for k in classify_clause(clause) if k not in kinds]
     return kinds or ["other"]
 
 
@@ -138,8 +178,7 @@ def _objects(line: str) -> list[str]:
         objs.append(host)
     rest = URL_RE.sub(" ", line)
     for f in _files_in(rest):
-        if HOST_RE.fullmatch(f) and not re.search(r"\.(md|txt|py|pdf|csv|png|jpe?g|json|ya?ml|html?|docx?|xlsx?|js|ts)$",
-                                                   f, re.I):
+        if HOST_RE.fullmatch(f) and not re.search(rf"\.(?:{FILE_EXTS})$", f, re.I):
             objs.append(f.lower())          # a bare host like shop.example
         else:
             objs.append(f.split("/")[-1].lower())
@@ -158,14 +197,35 @@ class Run:
     agent: str | None = None
 
     @property
+    def check(self) -> bool | None:
+        """The post-check verdict on the result's last line: True, False, or None (no post-check)."""
+        return verify_state(self.result)
+
+    @property
     def verified(self) -> bool:
         """Succeeded, and no post-check said otherwise."""
-        return self.ok and NOT_VERIFIED not in (self.result or "")
+        return self.ok and self.check is not False
 
     def mentions(self, obj: str) -> bool:
         hay = f"{self.arguments}\n{self.result}".lower()
         stem = obj.rsplit(".", 1)[0] if "/" not in obj and obj.count(".") == 1 else obj
         return obj in hay or (len(stem) >= 3 and re.search(rf"\b{re.escape(stem)}\b", hay) is not None)
+
+
+def _last_line(text: str) -> str:
+    lines = [ln for ln in (text or "").splitlines() if ln.strip()]
+    return lines[-1].strip() if lines else ""
+
+
+def verify_state(result: str) -> bool | None:
+    """The registry's post-check tag is always the LAST line of a result (it survives
+    truncation). Text elsewhere in the result (a web page, test output) is never read as one."""
+    last = _last_line(result)
+    if last.startswith(NOT_VERIFIED):
+        return False
+    if last.startswith(VERIFIED):
+        return True
+    return None
 
 
 def tool_runs(conn: sqlite3.Connection, task_id: str, agent: str | None = None) -> list[Run]:
@@ -182,13 +242,16 @@ def check_claims(report: str, runs: Iterable[Run]) -> ClaimReport:
     out = ClaimReport()
     used: set[int] = set()
     for line in claim_lines(report):
-        objs = _objects(line)
-        for kind in classify(line):
+        found: list[tuple[str, list[str]]] = []  # (kind, objects named in its clause)
+        for clause in clauses(line):
+            objs = _objects(clause)
+            found += [(k, objs) for k in classify_clause(clause) if (k, objs) not in found]
+        if not found:
+            out.claims.append(Claim(line, "other", evidence="not an action Jarvis can check"))
+            continue
+        for kind, objs in found:
             claim = Claim(line, kind)
             out.claims.append(claim)
-            if kind == "other":
-                claim.evidence = "not an action Jarvis can check"
-                continue
             tools = next(t for k, _, t in CLAIM_KINDS if k == kind)
             cands = [r for r in runs if r.tool in tools]
             ok_runs = [r for r in cands if r.verified]
@@ -212,7 +275,7 @@ def check_claims(report: str, runs: Iterable[Run]) -> ClaimReport:
 
 
 def _verified_note(run: Run) -> str:
-    m = re.search(r"\[verified: ([^\]]+)\]", run.result or "")
+    m = re.match(r"\[verified: (.+)\]$", _last_line(run.result)) if run.check else None
     return f" (verified: {m.group(1)[:120]})" if m else ""
 
 
@@ -241,13 +304,35 @@ def changed_files(before: dict[str, str], after: dict[str, str]) -> dict[str, st
     return out
 
 
+# A path: has a slash, or a dot that is not the last character ("a.py", ".gitignore", "src/Makefile").
+_PATH_TOKEN_RE = re.compile(r"(?:\.{1,2}/)?(?:[\w.@+-]+/)*[\w.@+-]*\.[\w.@+-]*[\w@+-]|(?:[\w.@+-]+/)+[\w.@+-]+")
+_NOT_PATHS = frozenset({"e.g", "i.e", "etc", "vs"})
+
+
+def _path_token(token: str) -> str | None:
+    t = token.strip("`'\"*()").rstrip(":,;").strip("`'\"*()")
+    if not _PATH_TOKEN_RE.fullmatch(t) or "://" in t or t.lower() in _NOT_PATHS:
+        return None
+    if "/" not in t and not t.rsplit(".", 1)[1][:1].isalpha():
+        return None  # numbers and versions: 1.5, 1.5x, v2.0
+    return t
+
+
 def claimed_files(report: str) -> set[str]:
+    """Files the Coder lists under CHANGED. Each line starts with the path (prompts/coder.md),
+    so a line's first token is taken whatever its length ("a.py"); a line that does not start
+    with a path falls back to every file-like token in it."""
     s = report_sections(report)
     lines = s.get("CHANGED") if "CHANGED" in s else s.get("", [])
     files: set[str] = set()
     for line in lines or []:
-        for f in _files_in(URL_RE.sub(" ", line)):
-            files.add(f.strip("`'\"").lstrip("./"))
+        words = URL_RE.sub(" ", line).split()
+        first = _path_token(words[0]) if words else None
+        for f in [first] if first else [t for t in map(_path_token, words) if t]:
+            f = f.strip("`'\"")
+            while f.startswith("./"):
+                f = f[2:]
+            files.add(f)
     return files
 
 
@@ -283,7 +368,9 @@ def check_coder(report: str, before: dict[str, str], after: dict[str, str], runs
     tests = [r for r in runs if r.tool == "run_tests"]
     writes = [r for r in runs if r.tool == "code_write" and r.ok]
     last = tests[-1] if tests else None
-    passed = bool(last and last.ok and re.search(r"Exit code 0 \(passed\)", last.result or ""))
+    # The exit code line is the first line of run_tests' result; test output that merely prints
+    # "Exit code 0 (passed)" further down does not count, nor does a failed post-check.
+    passed = bool(last and last.verified and re.match(r"Exit code 0 \(passed\)", last.result or ""))
     claim = Claim("tests pass", "tests")
     out.claims.append(claim)
     if not last:
@@ -296,5 +383,5 @@ def check_coder(report: str, before: dict[str, str], after: dict[str, str], runs
         claim.status, claim.evidence = "unsupported", "code changed after the last test run"
         out.problems.append("code was changed after the last passing test run")
     else:
-        claim.status, claim.evidence = "supported", f"run_tests run #{last.id} passed"
+        claim.status, claim.evidence = "supported", f"run_tests run #{last.id} passed" + _verified_note(last)
     return out

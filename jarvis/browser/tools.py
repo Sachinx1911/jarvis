@@ -192,6 +192,12 @@ def browser_tools(session: BrowserSession, quarantine: Quarantine | None) -> lis
         return ok, (f"page {state['url']} is open" if ok else "no allowed page is open"), \
             {"url": state["url"], "title": state["title"]}
 
+    def click_post(args: dict) -> tuple[bool, str, dict]:
+        state = session.page_state()
+        ok = state["url"] not in ("", "about:blank") and session.allow.allows(state["url"])
+        return ok, (f"page {state['url']} is open after the click" if ok else "no allowed page is open after "
+                    "the click"), {"target": args["target"], "url": state["url"], "title": state["title"]}
+
     def fill_post(args: dict) -> tuple[bool, str, dict]:
         back = session.driver.value(args["field"])
         if back is None:
@@ -245,7 +251,8 @@ def browser_tools(session: BrowserSession, quarantine: Quarantine | None) -> lis
                       _obj({"question": S}, ["question"])), "T0", browser_read, taints=True),
         Tool(ToolSpec("browser_click", "Click a link or button on the open page, by visible text or CSS selector. "
                       "Not for submitting, login, paying or posting: use browser_submit.",
-                      _obj({"target": S}, ["target"])), "T2", browser_click, precheck=_guard(click_check), taints=True),
+                      _obj({"target": S}, ["target"])), "T2", browser_click, precheck=_guard(click_check), taints=True,
+             verify=_checked("click", click_post)),
         Tool(ToolSpec("browser_fill", "Type a value into a form field (by label, name or CSS selector). Never "
                       "passwords, one-time codes or card details.",
                       _obj({"field": S, "value": S}, ["field", "value"])), "T2", browser_fill, precheck=_guard(fill_check),

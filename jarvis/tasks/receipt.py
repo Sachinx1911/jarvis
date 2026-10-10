@@ -128,7 +128,9 @@ def claims_section(events: list[dict]) -> list[str]:
         return []
     c = claims[-1]
     marks = {"supported": "x", "unsupported": "!", "unchecked": "-"}
-    out = ["", f"Claims vs evidence ({c.get('agent', 'agent')}): {'PASS' if c.get('passed') else 'FAIL'}"]
+    out = ["", f"Claims vs evidence ({c.get('agent', 'agent')}): {'PASS' if c.get('passed') else 'FAIL'}",
+           "([x] backed by evidence, [!] no evidence: the task cannot complete, [-] not an action Jarvis can check, "
+           "[?] done but not reported)"]
     for cl in c.get("claims", []):
         out.append(f"- [{marks.get(cl.get('status'), '?')}] {cl.get('text', '')[:120]} -> {cl.get('evidence', '')}")
     for u in c.get("unreported", []):
