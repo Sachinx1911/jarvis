@@ -1,0 +1,32 @@
+# Connector settings (PLAN.md section 13). Machine-specific changes go in config/local.yaml
+# under connectors_file. No secrets here: OAuth tokens live in the OS secret store (keyring).
+
+timezone: Asia/Kolkata          # used to read "tomorrow at 11" and to show event times
+
+docs:
+  default_class: P2             # every document is private until Sachin marks it P1
+  chunk_chars: 900
+  overlap: 150
+  max_file_mb: 50
+
+google:
+  enabled: true
+  # Path to the OAuth "Desktop app" client JSON downloaded from Google Cloud Console.
+  # Keep it OUTSIDE the repo (or in a git-ignored folder). Set it in config/local.yaml.
+  client_secret_file: ""
+  # "testing" = refresh tokens expire after 7 days. Set the app to "In production" in the
+  # Google Cloud console (personal use needs no verification) and change this to production.
+  oauth_app_status: testing
+  calendar_id: primary
+  default_event_minutes: 30
+
+gmail:
+  # OPEN DECISION (PLAN.md 24, #19): do sender and subject count as P1 or P2?
+  # P2 (safe default): sender and subject are withheld from the cloud model.
+  # P1: sender and subject may be sent to the cloud model. Bodies stay P2 either way.
+  header_class: P2
+  body_class: P2
+  max_results: 10
+
+eventkit:
+  enabled: true                 # macOS only; ignored on other systems
