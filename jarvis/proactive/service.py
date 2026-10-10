@@ -260,8 +260,74 @@ class Proactive:
         finally:
             rt.close()
 
+    # ---- event triggers (jarvis/proactive/triggers.py) ----
+
+    @property
+    def trigger_settings(self) -> dict[str, Any]:
+        return self.settings.section("triggers")
+
+    def trigger_engine(self):
+        """Tests inject fakes through `extras`: "web" (WebClient), "tavily_key" (callable),
+        "google_client" (callable returning a GoogleClient or None), "connectors_cfg" (dict)."""
+        from jarvis.proactive.integration import agent_task_executor
+        from jarvis.proactive.triggers import TriggerEngine
+
+        web = self.extras.get("web")
+        if web is None:
+            from jarvis.tools.web import WebClient
+
+            web = WebClient()
+        key = self.extras.get("tavily_key")
+        if key is None:
+            from jarvis.secrets import get_secret
+
+            key = lambda: get_secret("tavily_api_key")  # noqa: E731
+        cfg = self.extras.get("connectors_cfg")
+        if cfg is None:
+            from jarvis.connectors.config import load_connectors_config
+
+            cfg = load_connectors_config()
+        google = self.extras.get("google_client")
+        if google is None:
+            from jarvis.connectors.registry import default_google_client
+
+            google = default_google_client(cfg)
+        return TriggerEngine(self.open_rt, self.trigger_settings, self.clock, chat=self.chat,  # type: ignore[arg-type]
+                             agent_executor=agent_task_executor, notifier=self.notifier, web=web, tavily_key=key,
+                             google=google, connectors_cfg=cfg, default_budget=self.default_budget)
+
+    def draft_trigger(self, text: str, defaults: dict[str, Any] | None = None):
+        """Parse and validate; raises TriggerParseError (a question) or TriggerInvalid (a refusal)."""
+        from jarvis.proactive.trigger_parse import parse_trigger
+
+        defaults = {"output": self.default_output, **(defaults or {})}
+        engine = self.trigger_engine()
+        draft = parse_trigger(text, defaults)
+        engine.apply_defaults(draft, every_given=bool(defaults.get("every_s")),
+                              cooldown_given=defaults.get("cooldown_s") is not None)
+        return engine.validate(draft)
+
+    def save_trigger(self, draft, source: str = "cli"):
+        from jarvis.proactive.triggers import TriggerStore
+
+        self.trigger_engine().validate(draft)   # again: the folder or the store list may have changed
+        rt = self.open_rt()
+        try:
+            t = TriggerStore(rt.store.conn).add(draft, self.now(), source)
+            rt.audit.write("trigger_added", trigger_id=t.id, source_kind=t.source, action=t.action, created_by=source)
+            return t
+        finally:
+            rt.close()
+
+    def poll_triggers(self) -> list:
+        if not self.trigger_settings.get("enabled", True):
+            return []
+        return self.trigger_engine().poll_due()
+
     def service(self) -> ScheduleService:
         every = int(self.settings.section("reminders").get("check_seconds", 30))
         sync = int(self.settings.section("schedules").get("sync_seconds", 60))
-        return ScheduleService(self.runner(), self.settings.tz_name, sync,
-                               extra_jobs=[(self.fire_reminders, every, "_reminders")])
+        jobs = [(self.fire_reminders, every, "_reminders")]
+        if self.trigger_settings.get("enabled", True):
+            jobs.append((self.poll_triggers, int(self.trigger_settings.get("poll_seconds", 60)), "_triggers"))
+        return ScheduleService(self.runner(), self.settings.tz_name, sync, extra_jobs=jobs)

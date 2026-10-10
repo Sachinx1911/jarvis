@@ -57,3 +57,21 @@ routes:
 # `jarvis schedule approvals`). Approving replays the exact queued call once.
 approvals:
   replay_max_age_hours: 24    # older items can no longer be approved (stale)
+
+# Event triggers (jarvis/proactive/triggers.py): run a prompt, skill or agent task, or just
+# send a message, when something happens. `jarvis trigger add "..."`, Telegram /triggers.
+triggers:
+  enabled: true
+  poll_seconds: 60              # how often the daemon looks for triggers that are due
+  default_cooldown_minutes: 10  # after a fire, new items wait this long (they are not dropped)
+  max_events_per_fire: 10       # more new items than this wait for the next check
+  max_backoff_hours: 6          # a failing check retries later and later, up to this
+  tavily_daily_credits: 15      # all triggers together; the free plan has 1000 credits a month
+  file_new: {every_minutes: 2}
+  email_from: {every_minutes: 5, lookback_days: 2, max_results: 20}
+  calendar_soon: {every_minutes: 5}
+  web_price:
+    every_hours: 6
+    min_every_hours: 2          # never more often than this (store pages, Tavily credits)
+    ignore_below_fraction: 0.3  # amounts under 30% of the limit are EMI or accessories, not the price
+  web_search_new: {every_hours: 6, min_every_hours: 1, max_results: 5}

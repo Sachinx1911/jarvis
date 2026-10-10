@@ -37,6 +37,9 @@ HELP = """Jarvis commands:
 /schedules - list schedules
 /schedule <text> - new schedule, e.g. /schedule every Monday at 9 project summary
 /schedule_pause <id>, /schedule_resume <id>, /schedule_run <id>, /schedule_delete <id>
+/triggers - list event triggers
+/trigger <text> - new trigger, e.g. /trigger when a new file arrives in workspace/inbox summarize it
+/trigger_pause <id>, /trigger_resume <id>, /trigger_delete <id>
 /approvals - actions from unattended runs that wait for you (Approve/Deny buttons)
 /approve <id> - run that exact queued action once;  /deny <id>;  /dismiss <id>
 /remind <text> - e.g. /remind in 10 minutes call back
@@ -49,7 +52,7 @@ Anything else is a chat message to Jarvis."""
 
 @dataclass
 class _Draft:
-    draft: ScheduleDraft
+    draft: Any          # ScheduleDraft or TriggerDraft
     created: float
 
 
@@ -66,6 +69,7 @@ class BotCore:
         self.broker = broker or ApprovalBroker()
         self.stop = StopSwitch(self.data_dir)
         self._drafts: dict[str, _Draft] = {}
+        self._trigger_drafts: dict[str, _Draft] = {}
         self._drafts_lock = threading.Lock()
         self._rt = None       # chat thread only
         self._session = None  # chat thread only
@@ -209,6 +213,73 @@ class BotCore:
         if action == "run":
             r = self.p.runner().run(sid, "run-now")
             return f"{sid} ran: {r.status}." + (f"\n{r.text}" if r.text and self.p.notifier is None else "")
+        return self._with_rt(go)
+
+    # ---- event triggers ----
+
+    def cmd_triggers(self) -> str:
+        from jarvis.proactive.triggers import TriggerStore
+
+        def go(rt) -> str:
+            items = TriggerStore(rt.store.conn).list()
+            if not items:
+                return "No triggers. Add one: /trigger when a new file arrives in workspace/inbox summarize it"
+            # Email rules show their id, not the sender (P2 until decision #19; this goes over Telegram).
+            return "\n".join(t.line() if t.source != "email_from" else
+                             f"{t.id} [{'enabled' if t.enabled else 'PAUSED'}] {t.safe_name} -> {t.action}"
+                             + (f", last {t.last_status}" if t.last_status else "") for t in items)
+        return self._with_rt(go)
+
+    def draft_trigger(self, text: str) -> tuple[str, str | None]:
+        """(text to show, draft token or None). Saved only after the Save button."""
+        from jarvis.proactive.trigger_parse import TriggerInvalid, TriggerParseError
+
+        if not text.strip():
+            return ("Say what to watch and what to do, e.g. /trigger when a new file arrives in workspace/inbox "
+                    "summarize it"), None
+        try:
+            draft = self.p.draft_trigger(text)
+        except TriggerParseError as e:
+            return e.question, None
+        except TriggerInvalid as e:
+            return str(e), None
+        token = secrets.token_hex(6)
+        with self._drafts_lock:
+            now = time.monotonic()
+            self._trigger_drafts = {k: v for k, v in self._trigger_drafts.items() if now - v.created < DRAFT_TTL_SECONDS}
+            self._trigger_drafts[token] = _Draft(draft, now)
+        return draft.show() + "\n\nSave this trigger?", token
+
+    def confirm_trigger(self, token: str, save: bool) -> str:
+        from jarvis.proactive.trigger_parse import TriggerInvalid
+
+        with self._drafts_lock:
+            d = self._trigger_drafts.pop(token, None)
+        if d is None or time.monotonic() - d.created >= DRAFT_TTL_SECONDS:
+            return "That draft expired. Send /trigger again."
+        if not save:
+            return "Not saved."
+        try:
+            t = self.p.save_trigger(d.draft, source="telegram")
+        except TriggerInvalid as e:
+            return f"Not saved: {e}"
+        return f"Saved as {t.id}: {t.safe_name}."
+
+    def cmd_trigger_action(self, action: str, tid: str) -> str:
+        from jarvis.proactive.triggers import TriggerStore
+
+        tid = tid.strip()
+
+        def go(rt) -> str:
+            store = TriggerStore(rt.store.conn)
+            if not tid or not store.get(tid):
+                return f"No trigger {tid or '(give an id, see /triggers)'}."
+            if action == "delete":
+                store.delete(tid)
+            else:
+                store.set_enabled(tid, action == "resume", self.p.now())
+            rt.audit.write("trigger_" + action, trigger_id=tid, source="telegram")
+            return {"pause": f"{tid}: paused.", "resume": f"{tid}: resumed.", "delete": f"{tid}: deleted."}[action]
         return self._with_rt(go)
 
     def cmd_approvals(self) -> str:

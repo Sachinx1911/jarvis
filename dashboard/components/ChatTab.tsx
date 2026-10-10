@@ -5,9 +5,24 @@ import { ApiError, api, post, upload } from "@/lib/api";
 import { micSupported, Recording, startRecording } from "@/lib/audio";
 import { errText } from "@/lib/hooks";
 
-type Line = { who: "user" | "jarvis" | "system"; text: string };
+type Line = { who: "user" | "jarvis" | "system"; text: string; turn_id?: number | null };
 type Session = { id: string; provider: string; model: string; project?: string | null };
-type Reply = { reply: string; kind: string; project?: string | null; voice?: { spoken: boolean; detail?: string } };
+type Reply = {
+  reply: string;
+  kind: string;
+  project?: string | null;
+  voice?: { spoken: boolean; detail?: string };
+  turn_id?: number | null;
+};
+// What was in the model's context for one reply ("Why did Jarvis say that?").
+type TurnContext = {
+  turn_id: number;
+  session_id: string;
+  ts: string;
+  memories: { id: string; name: string; summary_en: string; type: string; sensitivity: string; masked: boolean; status: string }[];
+  excerpts: { message_id: string; session_id: string; ts: string; role: string; text: string }[];
+  withheld: number;
+};
 
 // Something another tab asks the chat to do: send a message (run a skill) or set the project.
 export type Inject = { type: "message"; text: string } | { type: "project"; name: string };
@@ -133,7 +148,10 @@ export default function ChatTab({ inject, onInjected }: { inject?: Inject | null
           res = await post<Reply>(`/api/chat/sessions/${s.id}/messages`, { text: msg, speak });
         } else throw e;
       }
-      setLines((l) => [...l, { who: res.kind === "command" ? "system" : "jarvis", text: res.reply }]);
+      setLines((l) => [
+        ...l,
+        { who: res.kind === "command" ? "system" : "jarvis", text: res.reply, turn_id: res.turn_id ?? null },
+      ]);
       if (res.project !== undefined) {
         setProject(res.project ?? "");
         setSession({ ...s, project: res.project });
@@ -261,11 +279,20 @@ export default function ChatTab({ inject, onInjected }: { inject?: Inject | null
             need approval appear above the chat.
           </p>
         )}
-        {lines.map((l, i) => (
-          <div key={i} className={`msg ${l.who}`} lang={/[ऀ-ॿ]/.test(l.text) ? "mr" : undefined}>
-            {l.text}
-          </div>
-        ))}
+        {lines.map((l, i) => {
+          const msg = (
+            <div key={i} className={`msg ${l.who}`} lang={/[ऀ-ॿ]/.test(l.text) ? "mr" : undefined}>
+              {l.text}
+            </div>
+          );
+          if (l.who !== "jarvis" || l.turn_id == null) return msg;
+          return (
+            <div key={i} className="msg-wrap">
+              {msg}
+              <Why turnId={l.turn_id} />
+            </div>
+          );
+        })}
         {busy && <div className="msg system">Jarvis is working…</div>}
       </div>
       {error && <div className="error">{error}</div>}
@@ -299,5 +326,74 @@ export default function ChatTab({ inject, onInjected }: { inject?: Inject | null
       </div>
       {stt && !stt.ready && <div className="small muted">Microphone: {NOT_INSTALLED}. See the Setup tab.</div>}
     </section>
+  );
+}
+
+// "Why?" under a Jarvis reply: the memories and past-chat excerpts that were in its context.
+function Why({ turnId }: { turnId: number }) {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState<TurnContext | null>(null);
+  const [error, setError] = useState("");
+
+  async function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (!next || data) return;
+    setError("");
+    try {
+      setData(await api<TurnContext>(`/api/chat/turns/${turnId}`));
+    } catch (e) {
+      setError(errText(e));
+    }
+  }
+
+  const empty = data && data.memories.length === 0 && data.excerpts.length === 0;
+  return (
+    <div className="why">
+      <button className="link small" onClick={toggle} aria-expanded={open}>
+        {open ? "Hide why" : "Why?"}
+      </button>
+      {open && (
+        <div className="subpanel">
+          {error && <div className="error">{error}</div>}
+          {!data && !error && <span className="muted">Loading…</span>}
+          {empty && <p className="muted">No memories or past-chat excerpts were used for this reply.</p>}
+          {data && data.memories.length > 0 && (
+            <>
+              <h3>Memories used</h3>
+              <ul>
+                {data.memories.map((m) => (
+                  <li key={m.id}>
+                    <code>{m.id}</code>{" "}
+                    {m.masked ? <span className="muted">(sensitive)</span> : m.summary_en || m.name}
+                    {m.status && m.status !== "active" && <span className="muted"> · {m.status}</span>}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {data && data.excerpts.length > 0 && (
+            <>
+              <h3>Past-chat excerpts used</h3>
+              <ul>
+                {data.excerpts.map((x, i) => (
+                  <li key={`${x.message_id}-${i}`}>
+                    <span className="muted">
+                      {x.ts} · {x.role} · chat {x.session_id}:
+                    </span>{" "}
+                    {x.text}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {data && data.withheld > 0 && (
+            <div className="notice small">
+              {data.withheld} sensitive item{data.withheld === 1 ? " was" : "s were"} withheld.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
