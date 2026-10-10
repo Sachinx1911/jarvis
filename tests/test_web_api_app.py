@@ -520,3 +520,47 @@ def test_quit_only_under_app(isolated, cfgdir):
     called = []
     with _client(cfgdir, on_quit=lambda: called.append(1)) as c:
         assert c.post("/api/app/quit", headers=H).json()["quitting"] and called == [1]
+
+
+class FakeWake:
+    """Stands in for the wake-word model: says where in the clip "hey Jarvis" ended."""
+
+    threshold = 0.25
+
+    def __init__(self, score: float, end_seconds: float):
+        self.score, self.end = score, end_seconds
+        self.scanned = 0
+
+    def scan(self, pcm: bytes):
+        self.scanned += 1
+        return self.score, int(self.end * 16000) * 2
+
+
+def test_hands_free_wake_cuts_the_wake_phrase_before_transcribing(isolated, cfgdir):
+    from jarvis.voice.stt import FakeSTT
+
+    stt = FakeSTT(["आज काय काम आहे"])
+    seen = []
+    orig = stt.transcribe
+    stt.transcribe = lambda audio, hint=None: (seen.append(audio.seconds), orig(audio, hint))[1]
+    wake = FakeWake(0.6, 0.8)
+    with _client(cfgdir, stt_factory=lambda: stt, wake_factory=lambda: wake) as c:
+        r = c.post("/api/voice/transcribe?wake=1", headers=H, content=wav(3.0)).json()
+    assert r["status"] == "ok" and r["wake_hit"] is True and r["text"] == "आज काय काम आहे"
+    assert abs(seen[0] - 2.2) < 0.01  # only the part after the wake phrase was transcribed
+
+
+def test_hands_free_wake_alone_and_no_wake(isolated, cfgdir):
+    from jarvis.voice.stt import FakeSTT
+
+    stt = FakeSTT(["hello there"] * 3)
+    with _client(cfgdir, stt_factory=lambda: stt, wake_factory=lambda: FakeWake(0.7, 1.8)) as c:
+        r = c.post("/api/voice/transcribe?wake=1", headers=H, content=wav(2.0)).json()
+        assert r["status"] == "wake_only" and r["wake_hit"] is True
+    with _client(cfgdir, stt_factory=lambda: stt, wake_factory=lambda: FakeWake(0.05, 0.4)) as c:
+        r = c.post("/api/voice/transcribe?wake=1", headers=H, content=wav(2.0)).json()
+        assert r["status"] == "ok" and r["wake_hit"] is False and r["text"] == "hello there"
+    wake = FakeWake(0.9, 0.5)
+    with _client(cfgdir, stt_factory=lambda: stt, wake_factory=lambda: wake) as c:
+        r = c.post("/api/voice/transcribe", headers=H, content=wav(2.0)).json()  # push-to-talk: no wake check
+        assert "wake" not in r and wake.scanned == 0

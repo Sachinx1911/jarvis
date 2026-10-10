@@ -521,3 +521,17 @@ def test_auto_sure_marathi_skips_the_english_pass():
     sure.last_language_probs = {"mr": 0.7, "en": 0.2}
     t = LanguageRouter(sure, FakeMarathi(), "auto").transcribe(tone())
     assert t.engine == "indicconformer" and ("transcribe", "en") not in sure.calls
+
+
+def test_auto_unsure_english_falls_back_to_marathi_when_surer():
+    class UnsureEnglish(FakeWhisper):
+        def transcribe_if_english(self, audio):
+            self.calls.append(("detect", None))
+            return Transcript("that was a cam", "en", 0.3), "en", 0.8
+
+    t = LanguageRouter(UnsureEnglish(), FakeMarathi(), "auto", min_confidence=0.45).transcribe(tone())
+    assert t.engine == "indicconformer" and t.text == "नमस्कार"
+    sure = LanguageRouter(UnsureEnglish(), FakeMarathi(), "auto", min_confidence=0.2).transcribe(tone())
+    assert sure.engine == "faster_whisper"  # confident enough: no Marathi pass
+    no_model = LanguageRouter(UnsureEnglish(), FakeMarathi(ready=False), "auto", min_confidence=0.45).transcribe(tone())
+    assert no_model.engine == "faster_whisper"

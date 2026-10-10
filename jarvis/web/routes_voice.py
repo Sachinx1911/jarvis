@@ -27,6 +27,21 @@ NOT_INSTALLED = "speech-to-text not installed (run voice setup)"
 
 def build_router(ctx: WebContext) -> APIRouter:
     r = APIRouter()
+    wake_cache: dict[str, Any] = {}
+
+    def wake_detector(cfg: dict[str, Any], home):
+        """The local "hey jarvis" model, loaded once; None when it is not installed or downloaded."""
+        if ctx.wake_factory is not None:
+            return ctx.wake_factory()
+        if "detector" not in wake_cache:
+            from jarvis.voice.wakeword import OpenWakeWordDetector, find_model, models_dir, openwakeword_installed
+
+            ww = cfg.get("wake_word", {})
+            model = ww.get("model", "hey_jarvis")
+            ok = openwakeword_installed() and find_model(models_dir(home), model) is not None
+            wake_cache["detector"] = OpenWakeWordDetector(model, float(ww.get("threshold", 0.5)),
+                                                          models_dir=models_dir(home)) if ok else None
+        return wake_cache["detector"]
 
     def voice_cfg() -> dict[str, Any]:
         from jarvis.voice.config import load_voice_config
@@ -63,7 +78,7 @@ def build_router(ctx: WebContext) -> APIRouter:
         return {"stt_ready": ready, "stt_detail": detail, "tts_engine": local_engine_name(cfg),
                 **voice_status(cfg, home)}
 
-    def transcribe(data: bytes) -> dict[str, Any]:
+    def transcribe(data: bytes, wake: bool = False) -> dict[str, Any]:
         from jarvis.voice.base import Audio, VoiceUnavailable
         from jarvis.voice.stt import language_hint
 
@@ -78,6 +93,26 @@ def build_router(ctx: WebContext) -> APIRouter:
             raise HTTPException(400, "expected 16 kHz audio")
         if audio.seconds < 0.2:
             return {"status": "no_audio", "text": ""}
+        # Hands-free asks whether the clip starts with "hey Jarvis", judged from the sound by the
+        # local wake-word model (speech-to-text often mishears the name). When it does, only the
+        # part after the wake phrase is transcribed.
+        wake_info: dict[str, Any] = {}
+        if wake:
+            det = wake_detector(cfg, home)
+            if det is not None:
+                try:
+                    score, end = det.scan(audio.pcm)
+                except Exception:  # a wake-word problem must not break transcription
+                    score, end = 0.0, 0
+                hit = score >= det.threshold
+                wake_info = {"wake": round(score, 3), "wake_hit": hit}
+                if hit:
+                    rest = Audio(audio.pcm[end:], audio.sample_rate)
+                    if rest.seconds < 0.5:
+                        audit.write("voice_turn", source="dashboard", status="wake_only", wake=round(score, 3),
+                                    audio_seconds=round(audio.seconds, 2))
+                        return {"status": "wake_only", "text": "", "heard": "", **wake_info}
+                    audio = rest
         stt = stt_engine(home)
         try:
             if hasattr(stt, "check"):
@@ -93,11 +128,11 @@ def build_router(ctx: WebContext) -> APIRouter:
         min_conf = float(cfg["stt"].get("min_confidence", 0.45))
         status = "ok" if t.text.strip() and t.confidence >= min_conf else "unclear"
         audit.write("voice_turn", source="dashboard", status="transcribed" if status == "ok" else "unclear",
-                    stt_engine=getattr(stt, "name", None), language=t.language, confidence=round(t.confidence, 3),
-                    audio_seconds=round(audio.seconds, 2), heard_chars=len(t.text),
-                    audio_stored=bool(cfg.get("store_audio", False)))
+                    stt_engine=t.engine or getattr(stt, "name", None), language=t.language,
+                    confidence=round(t.confidence, 3), audio_seconds=round(audio.seconds, 2), heard_chars=len(t.text),
+                    audio_stored=bool(cfg.get("store_audio", False)), **wake_info)
         return {"status": status, "text": t.text if status == "ok" else "", "heard": t.text,
-                "language": t.language, "confidence": round(t.confidence, 3)}
+                "language": t.language, "confidence": round(t.confidence, 3), **wake_info}
 
     @r.post("/voice/transcribe")
     async def voice_transcribe(request: Request) -> dict[str, Any]:
@@ -107,7 +142,8 @@ def build_router(ctx: WebContext) -> APIRouter:
             if size > MAX_AUDIO_BYTES:
                 raise HTTPException(413, "the recording is too long")
             chunks.append(chunk)
-        return await run_in_threadpool(transcribe, b"".join(chunks))
+        wake = request.query_params.get("wake") in ("1", "true", "yes")
+        return await run_in_threadpool(transcribe, b"".join(chunks), wake)
 
     return r
 
