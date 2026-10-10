@@ -1,4 +1,4 @@
-"""CLI for Phase 4: schedule, heartbeat, brief, remind, telegram, daemon.
+"""CLI for Phase 4: schedule, trigger, heartbeat, brief, remind, telegram, daemon.
 
 Integration (jarvis/cli.py):
     from jarvis import cli_proactive
@@ -26,7 +26,7 @@ from jarvis.proactive.settings import load_settings
 from jarvis.secrets import get_secret, set_secret
 
 PROVIDERS = ["claude_code", "anthropic", "fake"]
-COMMANDS = ("schedule", "heartbeat", "brief", "remind", "telegram", "daemon")
+COMMANDS = ("schedule", "trigger", "heartbeat", "brief", "remind", "telegram", "daemon")
 
 
 def register(sub: argparse._SubParsersAction) -> None:
@@ -43,6 +43,22 @@ def register(sub: argparse._SubParsersAction) -> None:
     sch.add_argument("--no-model", action="store_true", help="read the time with the rules only")
     sch.add_argument("--dismiss", type=int, default=None, help="approvals: dismiss this pending item")
     sch.add_argument("--provider", choices=PROVIDERS, default=None)
+
+    tr = sub.add_parser("trigger", help="event triggers: do something when something happens")
+    tr.add_argument("action", choices=["add", "list", "pause", "resume", "delete", "test", "runs"])
+    tr.add_argument("text", nargs="*", help="add: what to watch and what to do, e.g. 'when a new file arrives in "
+                                            "workspace/inbox summarize it'; others: trigger id")
+    tr.add_argument("--kind", choices=["notify", "prompt", "skill", "agent"], default=None,
+                    help="what runs when it fires (default: read from the text)")
+    tr.add_argument("--target", default="", help="skill or agent name (for --kind skill/agent)")
+    tr.add_argument("--input", default="", help="the prompt or task text (instead of the one in the sentence)")
+    tr.add_argument("--output", choices=OUTPUTS, default=None)
+    tr.add_argument("--every", type=float, default=None, help="minutes between checks (web sources have a minimum)")
+    tr.add_argument("--cooldown", type=float, default=None, help="minutes between two runs")
+    tr.add_argument("--product", default="", help="web_price: the exact product name on the store page")
+    tr.add_argument("--yes", action="store_true", help="save without asking (scripts)")
+    tr.add_argument("--fire", action="store_true", help="test: check now for real (new items fire)")
+    tr.add_argument("--provider", choices=PROVIDERS, default=None)
 
     hb = sub.add_parser("heartbeat", help="run the heartbeat check")
     hb.add_argument("action", choices=["run-once"])
@@ -178,6 +194,92 @@ def cmd_schedule(args: argparse.Namespace, out: TextIO, inp: TextIO) -> int:
             print(f"Not saved: {e}", file=out)
             return 1
         print(f"Saved as {s.id}. It runs while `jarvis daemon` is running.", file=out)
+        return 0
+    finally:
+        if rt is not None:
+            rt.close()
+
+
+def cmd_trigger(args: argparse.Namespace, out: TextIO, inp: TextIO) -> int:
+    from jarvis.proactive.trigger_parse import TriggerInvalid, TriggerParseError
+    from jarvis.proactive.triggers import TriggerStore
+
+    p = _proactive(args, out, notify=args.action == "test" and args.fire)
+    text = " ".join(args.text).strip()
+    if args.action == "add":
+        if not text:
+            print("Say what to watch and what to do, e.g. jarvis trigger add \"when a new file arrives in "
+                  "workspace/inbox summarize it\"", file=out)
+            return 2
+        defaults: dict = {"output": args.output or p.default_output, "target": args.target, "input": args.input,
+                          "product": args.product}
+        if args.kind:
+            defaults["action"] = args.kind
+        if args.every:
+            defaults["every_s"] = int(args.every * 60)
+        if args.cooldown is not None:
+            defaults["cooldown_s"] = int(args.cooldown * 60)
+        try:
+            draft = p.draft_trigger(text, defaults)
+        except (TriggerParseError, TriggerInvalid) as e:
+            print(str(e), file=out)
+            return 1
+        print(draft.show(), file=out)
+        if not args.yes and not _ask(out, inp, "Save this trigger?"):
+            print("Not saved.", file=out)
+            return 0
+        try:
+            t = p.save_trigger(draft, "cli")
+        except TriggerInvalid as e:
+            print(f"Not saved: {e}", file=out)
+            return 1
+        print(f"Saved as {t.id}. It is checked while `jarvis daemon` is running.", file=out)
+        return 0
+    rt = p.open_rt()
+    try:
+        store = TriggerStore(rt.store.conn)
+        if args.action == "list":
+            items = store.list()
+            for t in items:
+                print(t.line(), file=out)
+                if t.last_status in ("error", "waiting") and t.last_detail:
+                    print(f"    {t.last_status}: {t.last_detail}", file=out)
+            if not items:
+                print("No triggers. Add one: jarvis trigger add \"when a new file arrives in workspace/inbox "
+                      "summarize it\"", file=out)
+            return 0
+        if not text or not store.get(text):
+            print(f"No trigger {text or '(give an id, see: jarvis trigger list)'}.", file=out)
+            return 1
+        if args.action == "runs":
+            for f in store.fires(text):
+                print(f"{f['started_at'][:16]} {f['status']:<8} events={f['events']} calls={f['model_calls']} "
+                      f"pending={f['pending_approvals']} {(f['detail'] or '').splitlines()[0][:80] if f['detail'] else ''}",
+                      file=out)
+            return 0
+        if args.action == "test":
+            rt.close()
+            rt = None
+            r = p.trigger_engine().poll(text, dry_run=not args.fire)
+            print(f"{text}: {r.status}" + (f" - {r.detail}" if r.detail else ""), file=out)
+            for e in r.events[:20]:
+                print(f"  - {e.summary}", file=out)
+            if r.fire_status:
+                print(f"Action: {r.fire_status}", file=out)
+                if r.text and p.notifier is None:
+                    print(r.text, file=out)
+            if not args.fire:
+                print("(dry run: nothing was marked or run; add --fire to check for real)", file=out)
+            return 0 if r.status not in ("error", "unknown") else 1
+        if args.action == "delete":
+            if not args.yes and not _ask(out, inp, f"Delete {text}?"):
+                print("Kept.", file=out)
+                return 0
+            store.delete(text)
+        else:
+            store.set_enabled(text, args.action == "resume", p.now())
+        rt.audit.write(f"trigger_{args.action}", trigger_id=text, source="cli")
+        print(f"{text}: {args.action} done.", file=out)
         return 0
     finally:
         if rt is not None:
@@ -320,7 +422,7 @@ def cmd_daemon(args: argparse.Namespace, out: TextIO, inp: TextIO) -> int:
 
 
 HANDLERS: dict[str, Callable[[argparse.Namespace, TextIO, TextIO], int]] = {
-    "schedule": cmd_schedule, "heartbeat": cmd_heartbeat, "brief": cmd_brief, "remind": cmd_remind,
+    "schedule": cmd_schedule, "trigger": cmd_trigger, "heartbeat": cmd_heartbeat, "brief": cmd_brief, "remind": cmd_remind,
     "telegram": cmd_telegram, "daemon": cmd_daemon,
 }
 
