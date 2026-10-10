@@ -30,6 +30,7 @@ CHAT_HELP = """Commands:
   /remember-private <text>  save a sensitive memory (kept local, never sent to the cloud)
   /memory <words>           search memories
   /forget <id>              archive a memory
+  /why                      what Jarvis had in mind for its last answer (memories, past chats)
   /task <goal>              run a task now (plan, team, check, receipt)
   /repeat [<task id>] <when> turn the last action (or a task) into a skill + schedule; /repeat yes|no
   /record start <name>      record a demonstration (/record stop, /note <why>)
@@ -82,8 +83,32 @@ def _slash(session: ChatSession, rt: Runtime, text: str, out: TextIO) -> bool:
     if cmd == "/help":
         print(CHAT_HELP, file=out)
         return True
+    if cmd == "/why":
+        print(why_text(rt, getattr(session, "last_turn_id", None)), file=out)
+        return True
     from jarvis import cli_tasks
     return cli_tasks.chat_command(session, rt, cmd, rest, out)
+
+
+def why_text(rt: Runtime, turn_id: int | None) -> str:
+    """The last answer's context: memories and past-chat lines it was given (as the dashboard's
+    "why" panel). Sensitive memories show only their name; their text stays hidden."""
+    from jarvis.web.trust import turn_view
+
+    view = turn_view(rt, turn_id) if turn_id else None
+    if not view:
+        return "Nothing to explain yet: ask something first."
+    lines = ["Context Jarvis had for its last answer:"]
+    for m in view["memories"]:
+        detail = "" if m.get("masked") or not m.get("summary_en") else f": {m['summary_en']}"
+        lines.append(f"- memory {m['id']} {m['name']} ({m.get('type') or '-'}, {m.get('status') or '-'}){detail}")
+    for x in view["excerpts"]:
+        lines.append(f"- past chat {x.get('ts', '')} {x.get('role', '')}: {str(x.get('text', ''))[:160]}")
+    if len(lines) == 1:
+        lines.append("- no memories or past chats: the answer came from the conversation itself.")
+    if view.get("withheld"):
+        lines.append(f"{view['withheld']} private item(s) were kept from the cloud model.")
+    return "\n".join(lines)
 
 
 def terminal_approver(out: TextIO, inp: TextIO):

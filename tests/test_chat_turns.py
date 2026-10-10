@@ -135,3 +135,22 @@ def test_recording_failure_does_not_break_send(env, monkeypatch, caplog):
 
     monkeypatch.setattr(s.audit, "write", flaky_write)
     assert s.send("again") == "Again, sir."
+
+
+def test_why_command_explains_the_last_answer(env):
+    import io
+
+    from jarvis.cli import _slash
+
+    home, store, mem = env
+    mem.save(Memory(name="garden shed key", keywords="garden shed key drawer",
+                    summary_en="The shed key is in the drawer.", evidence="the shed key is in the drawer"))
+    s = _session(env, ["It is in the drawer, sir."])
+    rt = SimpleNamespace(store=store, memory=mem)
+    out = io.StringIO()
+    assert _slash(s, rt, "/why", out) and "Nothing to explain yet" in out.getvalue()
+    s.send("where is the garden shed key?")
+    out = io.StringIO()
+    assert _slash(s, rt, "/why", out)
+    text = out.getvalue()
+    assert "garden shed key" in text and "The shed key is in the drawer." in text
