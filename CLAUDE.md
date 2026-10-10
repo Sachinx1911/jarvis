@@ -2,7 +2,7 @@
 
 ## What this project is
 A personal AI assistant for Sachin, built phase by phase.
-- Full plan, research and decisions: `PLAN.md` (written in romanized Marathi).
+- Full plan, research and decisions: `PLAN.md`.
 - Current status, half-done work and the exact next step: `PROGRESS.md`.
 
 ## This project moves between machines and accounts
@@ -17,8 +17,10 @@ Work runs over many days. It stops and resumes, sometimes on this MacBook, somet
 1. Update `PROGRESS.md`: what was done, what is half-done, the exact next step, decisions taken, date and machine.
 2. Commit. Push only after Sachin has OK'd pushing in this session (the repo is public).
 
-## How to talk to Sachin
-- Reply in romanized Marathi (Marathi written in Latin letters) with English technical terms. Keep code, file names and commands in English. He sometimes writes in Devanagari; still reply in romanized Marathi unless he asks otherwise.
+## Language
+- **Chat with Sachin in Marathi**, written in Devanagari script, with English technical terms (API, memory, phase, commit) left in Latin script. Keep code, file names and commands in English.
+- **Write every file in English**: PLAN.md, PROGRESS.md, code, comments, commit messages. Do not write files in Marathi.
+- If he writes in romanized Marathi or Devanagari, still reply in Devanagari Marathi unless he asks otherwise.
 - Short answers, lists, plain words.
 
 ## Working rules
