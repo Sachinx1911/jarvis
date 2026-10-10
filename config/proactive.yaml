@@ -14,6 +14,8 @@ schedules:
   misfire_grace_minutes: 60   # a run missed (machine asleep/off) is done once on wake if within this window, else skipped
   default_output: telegram    # telegram | file | both
   default_budget: {max_model_calls: 12, max_notional_usd: 0.5}
+  alert_missed: true          # tell Sachin when a run was missed (asleep/off past the grace window)
+  missed_alert_quiet_kinds: [heartbeat, memory_extract]   # frequent checks: no missed-run notice
   stale_lock_hours: 6         # a "running" mark older than this is treated as a crash leftover
   sync_seconds: 60            # the daemon re-reads schedules changed from the CLI this often
 
