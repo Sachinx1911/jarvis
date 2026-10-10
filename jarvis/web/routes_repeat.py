@@ -93,11 +93,7 @@ def build_router(ctx: WebContext) -> APIRouter:
         p = ctx.proactive()
         with ctx.runtime() as rt:
             s = store(rt)
-            items = []
-            for path in sorted(s.pending_dir.glob("rp-*.json")):
-                prop = s.get(path.stem)
-                if prop is not None:
-                    items.append(summary(prop, s.ttl_s))
+            items = [summary(prop, s.ttl_s) for prop in s.pending()]
             ttl = s.ttl_s
         items.sort(key=lambda x: x["created_at"], reverse=True)
         limit = float(p.settings.section("schedules").get("repeat_min_interval_minutes", MIN_INTERVAL_MINUTES))
@@ -138,7 +134,7 @@ def build_router(ctx: WebContext) -> APIRouter:
     @r.post("/repeat/drafts/{pid}/save")
     def save(pid: str, body: SaveBody) -> dict[str, Any]:
         """The explicit Save click on one shown draft: saves its skill and schedule."""
-        from jarvis.tasks.repeat import confirm
+        from jarvis.tasks.repeat import confirm_result
 
         p = ctx.proactive()
         with ctx.runtime() as rt:
@@ -146,15 +142,13 @@ def build_router(ctx: WebContext) -> APIRouter:
             if body.draft_sha256 != draft_hash(prop):
                 rt.audit.write("repeat_save_refused", source="dashboard", proposal=pid, reason="draft_changed")
                 raise HTTPException(409, "this draft is not the one on screen; open it again and check it")
-            message = confirm(rt, p, pid, True, channel="dashboard")
-            if not message.startswith("Saved"):
-                reason = "expired" if message.startswith("That draft expired") else "refused"
-                rt.audit.write("repeat_save_refused", source="dashboard", proposal=pid, reason=reason)
-                raise HTTPException(404 if reason == "expired" else 400, message)
-            entry = next((e for e in reversed(store(rt).saved()) if e.get("proposal") == pid), {})
-            rt.audit.write("repeat_saved", source="dashboard", proposal=pid, schedule_id=entry.get("schedule_id"))
-        return {"saved": True, "id": pid, "skill": prop.skill, "schedule_id": entry.get("schedule_id"),
-                "message": message, "running_here": bool(ctx.extra.get("scheduler_running"))}
+            result = confirm_result(rt, p, pid, True, channel="dashboard")
+            if not result.saved:
+                rt.audit.write("repeat_save_refused", source="dashboard", proposal=pid, reason=result.status)
+                raise HTTPException(404 if result.status == "expired" else 400, result.message)
+            rt.audit.write("repeat_saved", source="dashboard", proposal=pid, schedule_id=result.schedule_id)
+        return {"saved": True, "id": pid, "skill": result.skill or prop.skill, "schedule_id": result.schedule_id,
+                "message": result.message, "running_here": bool(ctx.extra.get("scheduler_running"))}
 
     @r.post("/repeat/drafts/{pid}/cancel")
     def cancel(pid: str) -> dict[str, Any]:
