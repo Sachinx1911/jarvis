@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, post } from "@/lib/api";
 import { errText, money, num, usePoll } from "@/lib/hooks";
 import Approvals, { ApprovalsData } from "./Approvals";
 import { PendingRepeatDrafts, RepeatThis } from "./RepeatDrafts";
+import { Icon } from "./icons";
+import { STATE_TONE, stateWord } from "./system";
 
 type Usage = { calls: number; input_tokens: number; output_tokens: number; notional_usd: number; billed_usd: number; models: string[] };
 type Task = {
@@ -31,25 +33,37 @@ type TaskDetail = Task & {
   plan: Record<string, unknown>;
 };
 
-const COLUMNS: [string, string[]][] = [
-  ["Backlog", ["BACKLOG", "SCHEDULED", "PLANNED"]],
-  ["Running", ["RUNNING", "WAITING_APPROVAL", "VERIFYING"]],
-  ["Paused", ["PAUSED"]],
-  ["Completed", ["COMPLETED"]],
-  ["Failed", ["FAILED"]],
-  ["Cancelled", ["CANCELLED"]],
+const COLUMNS: [string, string, string[]][] = [
+  ["Backlog", "backlog", ["BACKLOG", "SCHEDULED", "PLANNED"]],
+  ["Running", "running", ["RUNNING", "WAITING_APPROVAL", "VERIFYING"]],
+  ["Paused", "paused", ["PAUSED"]],
+  ["Completed", "completed", ["COMPLETED"]],
+  ["Failed", "failed", ["FAILED"]],
+  ["Cancelled", "cancelled", ["CANCELLED"]],
 ];
 const PRIORITY = ["", "high", "normal", "low"];
 
 export default function TasksTab({
   approvals,
   reloadApprovals,
+  focus,
+  onFocused,
 }: {
   approvals: ApprovalsData | null;
   reloadApprovals: () => void;
+  focus?: string | null;
+  onFocused?: () => void;
 }) {
   const tasks = usePoll(() => api<{ items: Task[]; running: string[] }>("/api/tasks"), 3000);
   const [selected, setSelected] = useState<string | null>(null);
+
+  // Another page (Command Center) asked to open one task.
+  useEffect(() => {
+    if (!focus) return;
+    setSelected(focus);
+    onFocused?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus]);
   const [message, setMessage] = useState("");
   const [draftsChanged, setDraftsChanged] = useState(0);
   const items = tasks.data?.items ?? [];
@@ -77,38 +91,63 @@ export default function TasksTab({
         }}
       />
       <section className="panel">
-        <div className="row">
-          <h2 className="grow">Task board</h2>
-          <button onClick={resumeAll}>Resume waiting tasks</button>
+        <div className="card-head">
+          <h2>Task board</h2>
+          <button className="sm" onClick={resumeAll}>
+            <Icon name="refresh" size={15} /> Resume waiting tasks
+          </button>
         </div>
         {message && <div className="notice small">{message}</div>}
         {tasks.error && <div className="error">{tasks.error}</div>}
-        <div className="board">
-          {COLUMNS.map(([name, states]) => {
-            const col = items.filter((t) => states.includes(t.state));
-            return (
-              <div className="column" key={name}>
-                <h3>
-                  {name} ({col.length})
-                </h3>
-                {col.map((t) => (
-                  <div
-                    key={t.id}
-                    className={`card ${selected === t.id ? "selected" : ""}`}
-                    onClick={() => setSelected(t.id)}
-                  >
-                    <div className="small muted">
-                      {t.id} · {PRIORITY[t.priority] ?? t.priority}
-                      {t.state === "WAITING_APPROVAL" && <strong> · needs approval</strong>}
-                      {t.running && " · live"}
-                    </div>
-                    <div>{t.title}</div>
-                    {t.current_step && <div className="small muted">{t.current_step}</div>}
+        <div className="board-wrap">
+          <div className="kanban">
+            {COLUMNS.map(([name, cls, states]) => {
+              const col = items.filter((t) => states.includes(t.state));
+              return (
+                <div className={`kanban-col ${cls}`} key={name}>
+                  <div className="kanban-head">
+                    <span className="dot" />
+                    <span className="grow">{name}</span>
+                    <span className="badge">{col.length}</span>
                   </div>
-                ))}
-              </div>
-            );
-          })}
+                  <div className="kanban-list">
+                    {col.length === 0 && <div className="empty compact muted">Nothing here</div>}
+                    {col.map((t) => (
+                      <button
+                        key={t.id}
+                        className={`task-card${selected === t.id ? " selected" : ""}`}
+                        onClick={() => setSelected(t.id)}
+                      >
+                        <span className="title">{t.title}</span>
+                        <span className="meta">
+                          <span className={`pill ${STATE_TONE[t.state] ?? "off"}`}>{stateWord(t.state)}</span>
+                          <span className="pill outline">{PRIORITY[t.priority] ?? t.priority}</span>
+                          {t.project && <span className="pill violet">{t.project}</span>}
+                          {t.running && (
+                            <span className="pill accent">
+                              <span className="dot accent pulse" /> live
+                            </span>
+                          )}
+                          <span className="id">{t.id}</span>
+                        </span>
+                        {t.current_step && (
+                          <span className="step">
+                            <Icon name="chevronRight" size={12} />
+                            {t.current_step}
+                          </span>
+                        )}
+                        {t.running && (
+                          <span className="progress indeterminate">
+                            <span />
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </section>
       {selected && (
