@@ -145,7 +145,7 @@ def test_brief_assembles_sections_and_isolates_a_failure(rt):
     assert "- 18:00 call the plumber" in text
     assert "t-001 [BACKLOG] Renew the parking pass" in text
     assert "Walk 30 minutes a day" in text and "done goal" not in text
-    assert "Calendar\nNot connected yet (Phase 5)." in text
+    assert "Calendar today\nGoogle Calendar is not connected" in text  # the Phase 5 section
     assert text.index("Weather") < text.index("Broken") < text.index("Calendar") < text.index("Reminders today")
 
 

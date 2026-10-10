@@ -340,7 +340,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def build_parser_with_extensions():
     """Core commands plus the command groups from other modules (each has register())."""
-    from jarvis import cli_connectors, cli_tasks, cli_voice
+    from jarvis import cli_connectors, cli_proactive, cli_tasks, cli_voice
 
     parser = build_parser()
     sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
@@ -349,6 +349,9 @@ def build_parser_with_extensions():
         extra.update(module.register(sub))
     cli_voice.register(sub)
     cli_connectors.register(sub)
+    cli_proactive.register(sub)
+    for name in cli_proactive.COMMANDS:
+        extra[name] = lambda args, out, inp, approvers: cli_proactive.handle(args, out, inp)
     for name in cli_connectors.COMMANDS:
         extra[name] = lambda args, out, inp, approvers: cli_connectors.handlers(args, out)[args.command]()
     for name, handler in cli_voice.HANDLERS.items():

@@ -9,7 +9,7 @@ import keyring
 from keyring.errors import KeyringError
 
 SERVICE = "jarvis"
-KNOWN_SECRETS = ("anthropic_api_key", "tavily_api_key")
+KNOWN_SECRETS = ("anthropic_api_key", "tavily_api_key", "telegram_bot_token")
 
 
 def get_secret(name: str) -> str | None:

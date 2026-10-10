@@ -259,15 +259,29 @@ def test_failing_run_is_recorded_and_lock_released():
     assert s.running_since is None and runs[0]["status"] == "failed" and "provider exploded" in runs[0]["detail"]
 
 
-def test_agent_schedule_queues_a_task():
+def test_agent_schedule_runs_a_team_task_unattended(monkeypatch):
+    from jarvis.proactive import integration
+
+    ran = []
+
+    class FakeRunner:
+        def __init__(self, rt):
+            self.rt = rt
+
+        def run(self, task_id):
+            ran.append(task_id)
+            from jarvis.core.runtime import task_store
+            return task_store(self.rt).get(task_id)
+
+    monkeypatch.setattr(integration, "RUNNER_FACTORY", FakeRunner)
     p = proactive(at(2026, 10, 12, 9, 0))
     s = p.save(_draft(kind="agent", target="writer", input="Write the weekly project summary"))
     result = p.runner().run(s.id, "cron")
-    assert result.status == "ok" and "t-001" in result.text
+    assert result.status == "ok" and "t-001" in result.text and ran == ["t-001"]
     rt = open_runtime()
-    row = rt.store.conn.execute("SELECT goal, owner, state FROM tasks").fetchone()
+    row = rt.store.conn.execute("SELECT goal, owner FROM tasks").fetchone()
     rt.close()
-    assert row == ("Write the weekly project summary", "writer", "BACKLOG")
+    assert row == ("Write the weekly project summary", "writer")
 
 
 def test_skill_and_agent_need_a_target():

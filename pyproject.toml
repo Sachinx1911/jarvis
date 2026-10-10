@@ -14,6 +14,8 @@ dependencies = [
     "pypdf>=6",         # document library: text per PDF page, so answers can cite the page
     "python-docx>=1.2", # document library: DOCX text and headings
     "tzdata; sys_platform == 'win32'",  # Windows has no IANA time zones (Asia/Kolkata)
+    "apscheduler>=3.10,<4",          # schedules: cron, misfire grace, coalesce, max_instances (v4 is pre-release)
+    "python-telegram-bot>=21,<23",   # phone: long polling, inline Approve/Deny buttons
 ]
 
 [project.optional-dependencies]

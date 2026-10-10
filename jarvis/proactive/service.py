@@ -16,6 +16,7 @@ from jarvis.core.runtime import Runtime, make_chat, open_runtime
 from jarvis.proactive import heartbeat as heartbeat_mod
 from jarvis.proactive import schedule_parse
 from jarvis.proactive.brief import Brief, BriefContext, build_brief
+from jarvis.proactive import integration as _integration  # noqa: F401 (registers the calendar section)
 from jarvis.proactive.cloud import apply_cloud_override
 from jarvis.proactive.heartbeat import Heartbeat, HeartbeatResult
 from jarvis.proactive.reminders import ReminderStore
@@ -136,7 +137,8 @@ class Proactive:
             return result.message if result.spoke else None
 
         chat = chat_executor(self.chat)
-        return {"prompt": chat, "skill": chat, "agent": queue_agent_task, "brief": brief, "heartbeat": beat}
+        from jarvis.proactive.integration import agent_task_executor
+        return {"prompt": chat, "skill": chat, "agent": agent_task_executor, "brief": brief, "heartbeat": beat}
 
     def runner(self) -> ScheduleRunner:
         stale = timedelta(hours=float(self.settings.section("schedules").get("stale_lock_hours", 6)))

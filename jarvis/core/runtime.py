@@ -46,7 +46,11 @@ def open_runtime() -> Runtime:
     memory = MemoryStore(paths.home, store)
     if not (memory.root / "MEMORY.md").exists():
         memory.write_memory_md()
-    return Runtime(load_config(), paths, store, AuditLog(paths.audit_log), memory, SkillLibrary(paths.home / "skills"))
+    from jarvis.proactive.cloud import apply_cloud_override
+
+    # Telegram /cloud off writes an override file; it applies to every route, never loosens routing.yaml.
+    config = apply_cloud_override(load_config(), paths.home)
+    return Runtime(config, paths, store, AuditLog(paths.audit_log), memory, SkillLibrary(paths.home / "skills"))
 
 
 def make_extractor(rt: Runtime, provider_override: str | None = None) -> Extractor:
