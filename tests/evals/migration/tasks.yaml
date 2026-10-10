@@ -1,7 +1,9 @@
 # Migration evaluation tasks (PLAN.md 5.11). Synthetic only: the repo is public.
 # Fields: id, category, language (en | mr-roman | mr-deva | mixed), privacy, grading,
 #   time (HH:MM, fixed local time), setup (memories to create), input (user messages),
-#   checks: contains_any, not_contains, extract_min, extract_max, tools_any, tools_none.
+#   checks: contains_any, not_contains, extract_min, extract_max, tools_any, tools_none,
+#     matches_any (regular expressions, case-insensitive; one must match),
+#     devanagari_min (minimum share of the reply's letters that are Devanagari, 0 to 1).
 tasks:
   - id: greet-en-evening
     category: marathi_english
@@ -19,7 +21,8 @@ tasks:
     grading: deterministic
     time: "08:15"
     input: ["नमस्कार Jarvis"]
-    checks: {contains_any: ["सुप्रभात", "शुभ सकाळ", "good morning"]}
+    # A Devanagari greeting needs a Marathi reply: an English "Good morning, sir." fails.
+    checks: {contains_any: ["सुप्रभात", "शुभ सकाळ", "good morning"], devanagari_min: 0.5}
 
   - id: memory-act-preference
     category: memory
@@ -81,7 +84,10 @@ tasks:
     privacy: P0
     grading: deterministic
     input: ["Punyacha aajcha weather kasa ahe?"]
-    checks: {tools_any: [weather], contains_any: ["°", "c"]}
+    # A real reading: a number followed by °, C, degrees or Marathi अंश/डिग्री (not any "c", which matched "correct").
+    checks:
+      tools_any: [weather]
+      matches_any: ['[0-9०-९]+(?:[.,][0-9०-९]+)?\s*(?:°|º|˚|degrees?\b|deg\b|celsius|c\b|अंश|डिग्री|सेल्सि|ansh|digri)']
 
   - id: tool-write-file
     category: tool_calling
