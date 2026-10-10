@@ -70,7 +70,8 @@ class JarvisBot:
     def register(self, app: Application) -> None:
         app.add_handler(TypeHandler(Update, self.gate), group=-1)
         for name in ("start", "help", "stop", "resume", "tasks", "task", "pause", "cancel", "schedules", "schedule",
-                     "schedule_pause", "schedule_resume", "schedule_run", "schedule_delete", "approvals", "approve",
+                     "schedule_pause", "schedule_resume", "schedule_run", "schedule_delete", "triggers", "trigger",
+                     "trigger_pause", "trigger_resume", "trigger_delete", "approvals", "approve",
                      "deny", "dismiss",
                      "remind", "reminders", "brief", "cloud", "new"):
             app.add_handler(CommandHandler(name, self.on_command))
@@ -116,6 +117,10 @@ class JarvisBot:
             shown, token = await asyncio.to_thread(c.draft_schedule, arg)
             await self._reply(update, shown, _buttons("sc", token, "Save", "Cancel") if token else None)
             return
+        if cmd == "trigger":
+            shown, token = await asyncio.to_thread(c.draft_trigger, arg)
+            await self._reply(update, shown, _buttons("tr", token, "Save", "Cancel") if token else None)
+            return
         if cmd in ("cloud", "new"):  # these touch the chat session, which lives in the chat thread
             fn = (lambda: c.cmd_cloud(arg)) if cmd == "cloud" else c.new_session
             await self._reply(update, await self._in_chat_thread(fn))
@@ -130,6 +135,10 @@ class JarvisBot:
             "schedule_resume": lambda: c.cmd_schedule_action("resume", arg),
             "schedule_run": lambda: c.cmd_schedule_action("run", arg),
             "schedule_delete": lambda: c.cmd_schedule_action("delete", arg),
+            "triggers": lambda: c.cmd_triggers(),
+            "trigger_pause": lambda: c.cmd_trigger_action("pause", arg),
+            "trigger_resume": lambda: c.cmd_trigger_action("resume", arg),
+            "trigger_delete": lambda: c.cmd_trigger_action("delete", arg),
             "approvals": lambda: c.cmd_approvals(),
             "approve": lambda: c.cmd_approve(arg),
             "deny": lambda: c.cmd_deny(arg),
@@ -196,6 +205,9 @@ class JarvisBot:
         elif prefix == "sc":
             await query.answer()
             await query.edit_message_text(await asyncio.to_thread(self.core.confirm_schedule, token, yes))
+        elif prefix == "tr":
+            await query.answer()
+            await query.edit_message_text(await asyncio.to_thread(self.core.confirm_trigger, token, yes))
         else:
             await query.answer()
 
