@@ -51,11 +51,12 @@ Ending a session: update this file and commit.
 
 ## Not built yet (as of 2026-10-10)
 
+Built on 2026-10-10 (Mac): office files (`create_docx`, `create_xlsx` with native charts, `analyze_table`), missed-run alerts, dashboard repeat drafts and trigger create/delete, Apple Notes connector.
+
 Can be built now (no decision or download needed):
-- Office files: create Word (.docx) and Excel (.xlsx) reports, simple data analysis and charts (skills #6, #13). Needs openpyxl (and a chart library) as new dependencies.
-- Missed-run alerts: a notification when a schedule run is missed or skipped (today it is only recorded).
-- Dashboard: `/repeat` drafts, creating/deleting triggers (draft then confirm), adding a UPI payee with an explicit "I checked this ID" step (decision).
-- Apple Notes connector (AppleScript), Mac only.
+- `/repeat` inside the dashboard's own chat (repeat the last chat action).
+- A `--live` flag for `jarvis connectors status` (runs the Apple Notes live check).
+- Adding a UPI payee in the app with an explicit "I checked this ID" step (needs Sachin's OK).
 
 Need Sachin's OK for a download or a decision first:
 - Marathi speech-to-text (IndicConformer or IndicWhisper, local; today only a placeholder) and the English Whisper model download.
@@ -143,6 +144,10 @@ On a new machine first: `git clone`, run `scripts/setup.ps1` (Windows) or `scrip
 | 2026-10-10 | Sensitive enforcement in code (`jarvis/memory/sensitivity.py`) only raises to sensitive. It also flags Sachin's own phone/email/address and places named "hospital"; he can lower a memory by hand. Sensitive `remember` notes are saved without the cloud enrichment (no English summary) |
 | 2026-10-10 | The memory decide step never sends sensitive memories to the cloud model: duplicates of a private memory are caught locally; a newer version with the same subject, type and name supersedes it locally; anything else is added and shows up as a possible conflict |
 | 2026-10-10 | P3 filters read Devanagari digits too (an Aadhaar or OTP in Devanagari digits is withheld) |
+| 2026-10-10 | Apple Notes: search/read T0, create T1 (new notes only, in folder "Jarvis"); note text P2; note titles P2 until Sachin decides (same question as email subjects, #19); live check only on request |
+| 2026-10-10 | Office files: create_docx/create_xlsx are T1 and create-only; the Writer may use them inside the task folder (sandboxed like write_file); formulas only from a short allowlist (no HYPERLINK, WEBSERVICE, INDIRECT, external links); openpyxl added as a dependency. Files made by openpyxl have no cached formula results, so analyze_table reads formula cells as blank until the file is saved in Excel |
+| 2026-10-10 | Missed-run alerts: one grouped notice; heartbeat and memory extraction stay quiet (`schedules.alert_missed`, `missed_alert_quiet_kinds`) |
+| 2026-10-10 | Dashboard: an email trigger's sender is hidden even on the local draft screen (question for Sachin: show it there?) |
 
 ## Open decisions
 
@@ -166,6 +171,7 @@ See "Open decisions" in PLAN.md. Most important:
 | 2026-10-10 | Office laptop (Windows) | Built Phase 2 (tiers, approvals, taint, quarantine, tools). Live: 10/10 tasks, injection blocked, 0 T4 runs. Pushed to GitHub |
 | 2026-10-10 | Office laptop (Windows) | Research fixes merged (security, prices, memory), one-click app, triggers, standing approvals and previews. 902 tests pass. Pushed. India features and verify/repeat stopped mid-work on wip branches; handoff to home |
 | 2026-10-10 | Office laptop (Windows) | Fable final tests (live suites pass, evals 12/12; laptop compare fails on retailer-price verification). Planner modes, task cancel, chat browser, memory upkeep, approval replay, migration lock fix, README, research on 5 topics, TESTING.md |
+| 2026-10-10 | Home MacBook M4 | Smart home dropped (Sachin). Built and merged: missed-run alerts; Apple Notes connector (titles P2 by default); dashboard repeat drafts + trigger create/delete (structured confirm result); office files with receipts, previews and Writer prompt. 1375 passed |
 | 2026-10-10 | Home MacBook M4 | Merged dashboard India tab + event triggers (fixed a pending-approvals table race, added `GET /api/sessions/{id}/turns`, docs). Added `/why`. Fable final tests on the Mac (see Final testing). Fixed macOS TLS certificates and the memory-eval grader. 1230 passed |
 | 2026-10-10 | Home MacBook M4 | Merged why-panel recording for every chat and sensitive enforcement; fixed two privacy gaps found by the agent (Devanagari-digit P3, sensitive memories in the extractor's decide step). 1186 passed |
 | 2026-10-10 | Home MacBook M4 | Merged backups and verify-after-act + repeat-this (made the Telegram `/repeat` draft P2-safe, added `jarvis task draft`). 1100 passed |
