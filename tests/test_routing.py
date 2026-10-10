@@ -46,3 +46,12 @@ def test_missing_capability_skips_candidate():
 def test_unknown_route():
     with pytest.raises(RoutingError):
         decide(load_config(), "nope")
+
+
+def test_test_model_override(monkeypatch):
+    monkeypatch.setenv("JARVIS_TEST_MODEL", "claude-fable-5-1")
+    d = decide(load_config(), "memory_extractor")
+    assert d.model == "claude-fable-5-1" and "test override claude-haiku-5-5" in d.reason
+    monkeypatch.setenv("JARVIS_TEST_MODEL", "nope-1")
+    with pytest.raises(RoutingError):
+        decide(load_config(), "main_chat")

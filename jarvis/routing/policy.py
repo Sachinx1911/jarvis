@@ -6,6 +6,7 @@ never assumed. The fake provider is a local test double and is always allowed.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from jarvis.config import Config
@@ -61,6 +62,13 @@ def decide(config: Config, route: str, provider_override: str | None = None) -> 
         reason = "first eligible candidate"
         if skipped:
             reason += " (skipped: " + "; ".join(skipped) + ")"
+        test_model = os.environ.get("JARVIS_TEST_MODEL")
+        if test_model and test_model != model:
+            # Testing only: run every Claude route on one model (e.g. final tests on Fable).
+            if not ModelCapabilities.from_config(config.models.get(test_model), provider).has("structured_output"):
+                raise RoutingError(f"JARVIS_TEST_MODEL {test_model} is not a known model for {provider}")
+            return RouteDecision(route, provider, test_model, cand.get("effort", "medium"),
+                                 f"{reason}; test override {model} -> {test_model}")
         return RouteDecision(route, provider, model, cand.get("effort", "medium"), reason)
 
     raise RoutingError(f"no eligible candidate for route {route}: " + ("; ".join(skipped) or "none listed"))

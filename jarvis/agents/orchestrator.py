@@ -11,6 +11,7 @@ then the same verification. No task is COMPLETED without passing verification.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 from concurrent.futures import ThreadPoolExecutor
@@ -110,7 +111,7 @@ class TaskRunner:
 
     def decision_for(self, route: str) -> RouteDecision:
         d = decide(self.config, route, self.provider_override)
-        if route in ("researcher", "writer") and self.provider_override is None:
+        if route in ("researcher", "writer") and self.provider_override is None and not os.environ.get("JARVIS_TEST_MODEL"):
             prof = self._worker_profile()
             if prof:
                 d = RouteDecision(route, d.provider, prof["model"], prof.get("effort", d.effort),

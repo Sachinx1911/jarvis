@@ -2,6 +2,21 @@
 # An unknown capability counts as unsupported. languages_verified stays empty until measured.
 # Prices: USD per 1M tokens, Anthropic docs list dated 2026-10-06.
 models:
+  claude-fable-5-1:          # most capable; used for final testing (JARVIS_TEST_MODEL)
+    provider: anthropic
+    context_window: 1000000
+    max_output: 128000
+    tool_calling: parallel
+    structured_output: json_schema
+    vision: true
+    streaming: true
+    prompt_caching: true
+    reasoning_control: true
+    languages_verified: []
+    source: documented
+    via:
+      claude_code: {tool_calling: single, prompt_caching: false, streaming: false, vision: false}
+    price_usd_per_mtok: {input: 10.00, output: 50.00}
   claude-opus-5-5:
     provider: anthropic
     context_window: 1000000
