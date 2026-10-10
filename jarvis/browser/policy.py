@@ -14,7 +14,7 @@ from typing import Any
 
 import yaml
 
-from jarvis.paths import CONFIG_DIR
+from jarvis.paths import CONFIG_DIR, local_config_path
 
 URL_RE = re.compile(r"https?://[^\s)\]>\"'|]+")
 SITE_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{0,62}$")
@@ -41,7 +41,7 @@ def _load(config_dir: Path, name: str, local_key: str) -> dict[str, Any]:
         return data if isinstance(data, dict) else {}
 
     base = read(config_dir / name)
-    override = read(config_dir / "local.yaml").get(local_key) or {}
+    override = read(local_config_path(config_dir)).get(local_key) or {}
     for k, v in override.items():
         base[k] = {**base[k], **v} if isinstance(v, dict) and isinstance(base.get(k), dict) else v
     return base

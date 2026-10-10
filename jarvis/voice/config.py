@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 
-from jarvis.paths import CONFIG_DIR
+from jarvis.paths import CONFIG_DIR, local_config_path
 
 DEFAULTS: dict[str, Any] = {
     "stt": {"engine": "faster_whisper", "model": "small", "device": "cpu", "compute_type": "int8",
@@ -45,4 +45,4 @@ def _merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
 
 def load_voice_config(config_dir: Path = CONFIG_DIR) -> dict[str, Any]:
     cfg = _merge(DEFAULTS, _read(config_dir / "voice.yaml"))
-    return _merge(cfg, _read(config_dir / "local.yaml").get("voice_file", {}))
+    return _merge(cfg, _read(local_config_path(config_dir)).get("voice_file", {}))

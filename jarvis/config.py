@@ -9,6 +9,7 @@ from typing import Any
 import yaml
 
 from jarvis.paths import CONFIG_DIR
+from jarvis.paths import local_config_path
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
@@ -41,7 +42,7 @@ class Config:
 
 
 def load_config(config_dir: Path = CONFIG_DIR) -> Config:
-    local = _read_yaml(config_dir / "local.yaml")
+    local = _read_yaml(local_config_path(config_dir))
     providers = _merge(_read_yaml(config_dir / "providers.yaml"), local.get("providers_file", {}))
     models = _merge(_read_yaml(config_dir / "models.yaml"), local.get("models_file", {}))
     routing = _merge(_read_yaml(config_dir / "routing.yaml"), local.get("routing_file", {}))

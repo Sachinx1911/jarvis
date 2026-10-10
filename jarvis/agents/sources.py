@@ -26,7 +26,7 @@ from typing import Any, Iterable
 
 import yaml
 
-from jarvis.paths import CONFIG_DIR
+from jarvis.paths import CONFIG_DIR, local_config_path
 
 URL_RE = re.compile(r"https?://[^\s)\]>\"'|]+")
 
@@ -74,7 +74,7 @@ def _read(path: Path) -> dict:
 
 def load_lists(config_dir: Path = CONFIG_DIR) -> SourceLists:
     base = _read(config_dir / "sources.yaml")
-    local = _read(config_dir / "local.yaml").get("sources_file") or {}
+    local = _read(local_config_path(config_dir)).get("sources_file") or {}
     merged = {k: list(base.get(k) or []) + [x for x in (local.get(k) or []) if x not in (base.get(k) or [])]
               for k in ("user_check", "store", "aggregator")}
     clean = {k: tuple(str(x).strip().lower().removeprefix("https://").removeprefix("http://").removeprefix("www.")

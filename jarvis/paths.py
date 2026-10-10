@@ -12,6 +12,16 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = REPO_ROOT / "config"
+
+
+def local_config_path(config_dir: Path | None = None) -> Path:
+    """config/local.yaml (machine-specific overrides), or the file named by JARVIS_LOCAL_CONFIG.
+    The test suite points that at a file that does not exist, so a developer's own local.yaml
+    (wake word on, stored recordings...) never changes what the tests see."""
+    override = os.environ.get("JARVIS_LOCAL_CONFIG")
+    if override and (config_dir is None or Path(config_dir) == CONFIG_DIR):
+        return Path(override)  # only the repository's own local.yaml is replaced; a test's own config dir keeps its file
+    return (config_dir or CONFIG_DIR) / "local.yaml"
 PROMPTS_DIR = REPO_ROOT / "prompts"
 
 PERSONAL_DIRS = (

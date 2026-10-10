@@ -8,6 +8,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from jarvis.config import _merge, _read_yaml
+from jarvis.paths import local_config_path
 from jarvis.paths import CONFIG_DIR
 
 DEFAULT_TZ = "Asia/Kolkata"
@@ -18,7 +19,7 @@ _FIXED = {"Asia/Kolkata": timedelta(hours=5, minutes=30), "Asia/Calcutta": timed
 
 
 def load_connectors_config(config_dir: Path = CONFIG_DIR) -> dict[str, Any]:
-    local = _read_yaml(config_dir / "local.yaml")
+    local = _read_yaml(local_config_path(config_dir))
     return _merge(_read_yaml(config_dir / "connectors.yaml"), local.get("connectors_file", {}))
 
 

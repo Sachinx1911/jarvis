@@ -15,7 +15,7 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from jarvis.config import Config, _merge, _read_yaml
-from jarvis.paths import CONFIG_DIR
+from jarvis.paths import CONFIG_DIR, local_config_path
 from jarvis.routing.policy import RouteDecision, decide
 
 DEFAULT_TZ = "Asia/Kolkata"
@@ -76,7 +76,7 @@ def _hhmm(text: str) -> time:
 
 
 def load_settings(config_dir: Path = CONFIG_DIR) -> ProactiveSettings:
-    local = _read_yaml(config_dir / "local.yaml")
+    local = _read_yaml(local_config_path(config_dir))
     return ProactiveSettings(_merge(_read_yaml(config_dir / "proactive.yaml"), local.get("proactive_file", {})))
 
 

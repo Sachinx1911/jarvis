@@ -43,6 +43,7 @@ from pathlib import Path, PureWindowsPath
 from typing import Any, BinaryIO
 
 from jarvis.config import _merge, _read_yaml
+from jarvis.paths import local_config_path
 from jarvis.control.audit import AuditLog
 from jarvis.paths import CONFIG_DIR, REPO_ROOT
 from jarvis.tools.files import is_secret_path
@@ -103,7 +104,7 @@ def settings_from_dict(raw: dict[str, Any]) -> BackupSettings:
 
 def load_backup_settings(config_dir: Path = CONFIG_DIR) -> BackupSettings:
     """config/backup.yaml merged with `backup_file:` from config/local.yaml."""
-    override = _read_yaml(config_dir / "local.yaml").get("backup_file") or {}
+    override = _read_yaml(local_config_path(config_dir)).get("backup_file") or {}
     if not isinstance(override, dict):
         raise BackupError("backup_file in config/local.yaml must be a mapping")
     return settings_from_dict(_merge(_merge(DEFAULTS, _read_yaml(config_dir / "backup.yaml")), override))

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from jarvis.config import _merge, _read_yaml
-from jarvis.paths import CONFIG_DIR, REPO_ROOT
+from jarvis.paths import CONFIG_DIR, REPO_ROOT, local_config_path
 from jarvis.secrets import get_secret, set_secret
 
 TOKEN_NAME = "dashboard_token"
@@ -35,7 +35,7 @@ class WebSettings:
 
 
 def load_web_settings(config_dir: Path = CONFIG_DIR) -> WebSettings:
-    data = _merge(_read_yaml(config_dir / "web.yaml"), _read_yaml(config_dir / "local.yaml").get("web_file", {}))
+    data = _merge(_read_yaml(config_dir / "web.yaml"), _read_yaml(local_config_path(config_dir)).get("web_file", {}))
     s = WebSettings()
     s.host = str(data.get("host") or s.host)
     s.port = int(data.get("port") or s.port)

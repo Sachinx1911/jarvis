@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from jarvis.config import _merge, _read_yaml
-from jarvis.paths import CONFIG_DIR
+from jarvis.paths import CONFIG_DIR, local_config_path
 
 DEFAULTS: dict[str, Any] = {
     "core": {"enabled": True, "user_chars": 1375, "memory_chars": 2200, "write_approval": False},
@@ -25,5 +25,5 @@ DEFAULTS: dict[str, Any] = {
 
 
 def load_memory_settings(config_dir: Path = CONFIG_DIR) -> dict[str, Any]:
-    local = _read_yaml(config_dir / "local.yaml")
+    local = _read_yaml(local_config_path(config_dir))
     return _merge(_merge(DEFAULTS, _read_yaml(config_dir / "memory.yaml")), local.get("memory_file", {}) or {})
