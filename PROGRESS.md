@@ -46,7 +46,7 @@ Ending a session: update this file and commit.
   - "Check yourself" link: researchers cannot get Amazon/Flipkart product URLs (Jarvis does not open those sites). In round 2 the writer made search URLs itself (`amazon.in/s?k=<model>`), and the link-grounding check rejected them as not from research.
   - The "dropped candidates" table showed prices without a label.
   - The checker said the report "ends mid-sentence". The file on disk is complete (9.8 KB). Cause not found yet.
-  - Proposed fix, waiting for Sachin: Jarvis's code (not the model) builds the Amazon/Flipkart search link from a model number that appears in the research, and the writer leaves prices out of the dropped-candidates table.
+  - Proposed fix: Jarvis's code (not the model) builds the Amazon/Flipkart search link from a model number that appears in the research. Sachin said to leave it for now (2026-10-11). Until then, shop-price comparisons can end as "verification failed" even when the report is useful; the report is still saved in the task folder.
 
 **Hands-on checks by Sachin (2026-10-10 night):**
 - Emergency stop from the dashboard: PASS. Pressed at 23:31:26 while `t-001` was running. The running researcher stopped within 16 s, the app stopped, and `data/STOP` stayed until `jarvis resume`.
@@ -88,7 +88,6 @@ Parked items. Work that does not depend on them continues.
 - **Worker model:** Claude recommends Opus (low) after the comparison (see Phase 3 live results). Default stays opus until Sachin decides.
 - **Telegram (Phase 4 live check):** create a bot with @BotFather, run `jarvis telegram set-token`, put your numeric Telegram user ID in `config/local.yaml` (`proactive_file: {telegram: {allowed_user_id: ...}}`) and a default weather place (`proactive_file: {brief: {place: "..."}}`). Then `jarvis telegram test` and `jarvis daemon`.
 - **Google (Phase 5 live check):** create a Google Cloud project, enable Calendar and Gmail APIs, create an OAuth "Desktop app" client, set the app to "In production" (Testing tokens expire in 7 days), put the client JSON path in `config/local.yaml` (`connectors_file: {google: {client_secret_file: ...}}`), `pip install -e ".[google]"`, run `jarvis google auth`.
-- **Price check links (laptop compare):** OK for Jarvis's code to build Amazon/Flipkart search links from model numbers found in the research (see Final testing)?
 - **Confirm tiers:** `parse_time` set to T0 (pure local computation); EventKit tools kept at T2.
 - **Voice (Phase 6 live check):** models and packages are installed. Restart `jarvis app`, allow Chrome microphone access in macOS settings, say one English and one Marathi sentence and check the text; run `jarvis say --lang mr "..."` and rate the Marathi voice.
 - **Voice:** Marathi cloud voice (edge-tts) stays off unless Sachin turns it on. Wake word "hey jarvis" is downloaded but off: turn it on in `config/local.yaml` if wanted.
@@ -104,7 +103,7 @@ On a new machine first: `git clone`, run `scripts/setup.ps1` (Windows) or `scrip
 2. **Done 2026-10-10 (Mac):** finished and merged `wip/verify-repeat` (verify-after-act with claims vs evidence; `/repeat` in chat, Telegram and `jarvis task repeat`). Was: verify-after-act checks for Operator/Coder/browser and receipt "claims vs evidence"; `/repeat <when>` and `jarvis task repeat` (skill + schedule saved only after confirmation); merge.
 3. **Done 2026-10-10 (Mac):** global daily cap + runaway guard, nightly review (episode file + memory conflicts in the brief) merged. Backups merged: `jarvis backup create|list|restore-check` (destination `~/JarvisBackups` by default; open decision #10).
 4. **Done 2026-10-10 (Mac):** dashboard triggers adapter and Event triggers panel, India tab, why-panel recording for every chat (CLI, Telegram) with `GET /api/sessions/{id}/turns` and `/why`, sensitive-topic enforcement in code.
-5. **Done 2026-10-10 (Mac):** laptop compare rerun on Fable: FAILED on "check yourself" links (see Final testing). Next: after Sachin's OK, build the search links in code, keep prices out of the dropped-candidates table, find why the checker saw a cut-off report, then `jarvis task run t-001` or a fresh run. Was: final testing on Claude Fable (`JARVIS_TEST_MODEL=claude-fable-5-1`): live suites, eval + memory eval (`jarvis eval --suite memory --live`), injection live set, laptop compare with price tiers; record results here.
+5. **Done 2026-10-10 (Mac):** laptop compare rerun on Fable: FAILED on "check yourself" links (see Final testing). Search links left out by Sachin for now. Small fixes that need no decision: keep prices out of the dropped-candidates table, find why the checker saw a cut-off report. Was: final testing on Claude Fable (`JARVIS_TEST_MODEL=claude-fable-5-1`): live suites, eval + memory eval (`jarvis eval --suite memory --live`), injection live set, laptop compare with price tiers; record results here.
 6. **Sachin:** the "Waiting for Sachin" list; hands-on testing with TESTING.md (section 9: the app).
 7. **Claude:** when the Stage B agent finishes, review `feature/stage-b-local` (local adapter is localhost-only and not approved in routing; import boundary), merge main into it, run the whole suite, merge, record the measurements here, and ask Sachin which components (if any) may move local (Stage C).
 
@@ -142,6 +141,7 @@ On a new machine first: `git clone`, run `scripts/setup.ps1` (Windows) or `scrip
 | 2026-10-10 | Backup encryption work deferred by Sachin ("backup apan nantar baguya"); backups stay as they are (local, not encrypted) until he picks it up |
 | 2026-10-10 | No adding UPI payees from the app; payees stay terminal-only |
 | 2026-10-10 | Downloads approved: English Whisper model, Marathi speech models (STT/TTS), wake word, and Stage B local AI (runtime + models). Stage B measures only; live routing changes need Sachin's OK |
+| 2026-10-11 | Amazon/Flipkart search links as "check yourself" links in price reports: leave it for now |
 | 2026-10-10 | Vetted the Hermes Agent Masterclass (Jack Roberts, hermes-masterclass.vercel.app). Taken: a global daily cap for unattended work (runaway-loop risk), a nightly review into `memory/episodes/` with memory conflicts in the brief, local dated backups (destination still open decision #10). Already in Jarvis: soul file, markdown memory + FTS, risk tiers/approvals/kill switch, Telegram allow-list, cron/heartbeat/brief, planner-worker-critic, budgets, dashboard. Dropped: VPS/Docker hosting (data leaves the laptop), OpenRouter (new key/cost), WhatsApp (banned for AI assistants), public webhooks (security), the selling/money module, the unproven "CLI uses 100x fewer tokens" claim |
 
 ## Decisions made by Claude (for Sachin to review)
