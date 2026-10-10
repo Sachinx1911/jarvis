@@ -17,6 +17,7 @@ from typing import Any
 from jarvis.control.audit import AuditLog
 from jarvis.memory.model import Memory
 from jarvis.memory.store import MemoryRejected, MemoryStore
+from jarvis.memory.translit import add_script_forms
 from jarvis.paths import PROMPTS_DIR
 from jarvis.privacy import find_p3
 from jarvis.providers.base import LLMRequest, Message, ProviderError, ReasoningProvider
@@ -77,6 +78,15 @@ def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip().lower()
 
 
+def _marathi_words(text: str, limit: int = 8) -> str:
+    """Devanagari words of a note (3+ letters), so their romanized keys reach the keywords
+    even when no model enriched the note."""
+    from jarvis.memory.translit import is_devanagari, words
+
+    out = [w for w in words(text) if is_devanagari(w) and len(w) >= 3]
+    return " ".join(list(dict.fromkeys(out))[:limit])
+
+
 class Extractor:
     def __init__(self, store: MemoryStore, provider: ReasoningProvider | None,
                  decision: RouteDecision | None, audit: AuditLog):
@@ -122,6 +132,8 @@ class Extractor:
             if data:
                 for k in _FIELDS:
                     setattr(mem, k, data[k])
+        # Both scripts in the keywords, whatever the model wrote (Devanagari <-> romanized).
+        mem.keywords = add_script_forms(f"{mem.keywords} {_marathi_words(text)}".strip(), mem.summary_en)
         saved = self.store.save(mem)
         self.audit.write("memory_saved", id=saved.id, type=saved.type, how="remember", enriched=bool(saved.summary_en))
         return saved
@@ -149,7 +161,7 @@ class Extractor:
                 continue
             mem = Memory(
                 name=cand["name"], type=cand["type"], subject=cand["subject"], summary_en=cand["summary_en"],
-                keywords=cand["keywords"], when_to_use=cand["when_to_use"], sensitivity=cand["sensitivity"],
+                keywords=add_script_forms(cand["keywords"], cand["summary_en"]), when_to_use=cand["when_to_use"], sensitivity=cand["sensitivity"],
                 evidence=cand["evidence"], source=cand["source"], body=cand["body"],
                 confidence="high" if cand["source"] == "user-said" else "medium",
             )
@@ -157,7 +169,7 @@ class Extractor:
         return results
 
     def _decide_and_apply(self, mem: Memory) -> tuple[str, str]:
-        similar = self.store.search(f"{mem.name} {mem.summary_en} {mem.keywords}", k=MAX_SIMILAR)
+        similar = self.store.search(f"{mem.name} {mem.summary_en} {mem.keywords}", k=MAX_SIMILAR, time_range=None)
         if not similar:
             return self._apply("ADD", mem, "")
         listing = "\n".join(
