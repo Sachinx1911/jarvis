@@ -23,13 +23,23 @@ from jarvis.memory.sensitivity import inherit_sensitive, raise_sensitivity, sens
 from jarvis.memory.store import MemoryRejected, MemoryStore
 from jarvis.memory.translit import add_script_forms
 from jarvis.paths import PROMPTS_DIR
-from jarvis.privacy import find_p3
+from jarvis.privacy import SENSITIVITY_TO_CLASS, find_p3
 from jarvis.providers.base import LLMRequest, Message, ProviderError, ReasoningProvider
 from jarvis.routing.policy import RouteDecision
 from jarvis.schema import validate as _valid
 
 ROUTE = "memory_extractor"
 MAX_SIMILAR = 10
+PRIVATE_DUPLICATE = 0.9   # trigram similarity at or above this to a private memory = already known
+
+
+def _private(m: Memory) -> bool:
+    """Sensitive (P2) memories never go to the memory_extractor route, which allows P1 only."""
+    return SENSITIVITY_TO_CLASS.get(m.sensitivity, "P2") not in ("P0", "P1")
+
+
+def _text_of(m: Memory) -> str:
+    return m.body.strip() or m.summary_en.strip() or m.name
 
 _FIELDS: dict[str, Any] = {
     "name": {"type": "string"},
@@ -177,7 +187,25 @@ class Extractor:
         return results
 
     def _decide_and_apply(self, mem: Memory, auto: list[str] | None = None) -> tuple[str, str]:
-        similar = self.store.search(f"{mem.name} {mem.summary_en} {mem.keywords}", k=MAX_SIMILAR, time_range=None)
+        found = self.store.search(f"{mem.name} {mem.summary_en} {mem.keywords}", k=MAX_SIMILAR, time_range=None)
+        # Sensitive neighbours stay on this computer: a duplicate of one is caught here without a model,
+        # and only P0/P1 neighbours are listed for the model to decide against.
+        from jarvis.memory.maintenance import similarity
+
+        for h in found:
+            if _private(h.memory) and similarity(_text_of(mem), _text_of(h.memory)) >= PRIVATE_DUPLICATE:
+                self.audit.write("memory_skipped", action="NOOP", target=h.memory.id,
+                                 reason="duplicate of a private memory (checked locally)")
+                return ("NOOP", h.memory.id)
+        subject = mem.subject.strip().lower()
+        for h in found:  # a newer version of a private memory: same subject, type and name, decided locally
+            o = h.memory
+            if (_private(o) and subject and o.type == mem.type and o.subject.strip().lower() == subject
+                    and similarity(o.name, mem.name) >= PRIVATE_DUPLICATE):
+                self.audit.write("memory_decided_locally", action="SUPERSEDE", target=o.id,
+                                 reason="newer version of a private memory (same subject, type and name)")
+                return self._apply("SUPERSEDE", mem, o.id, auto)
+        similar = [h for h in found if not _private(h.memory)]
         if not similar:
             return self._apply("ADD", mem, "", auto)
         listing = "\n".join(

@@ -126,3 +126,38 @@ def test_extracted_candidates_get_both_scripts(env):
     assert ex.extract_session(["my bike needs servicing every 3000 km"])[0][0] == "ADD"
     saved = mem.list()[0]
     assert "गादि" in saved.keywords.split() and "bike" in saved.keywords.split()
+
+def test_sensitive_neighbours_never_reach_the_model(env):
+    mem, audit = env
+    private = mem.save(Memory(name="bike loan", subject="bike", sensitivity="sensitive",
+                              summary_en="Bike loan EMI of 4000 rupees on the 5th.", body="bike loan EMI 4000 on the 5th",
+                              keywords="bike loan emi", evidence="bike loan emi 4000"))
+    normal = mem.save(Memory(name="bike service", subject="bike", summary_en="Bike service every 2000 km.",
+                             keywords="bike service km", evidence="bike service every 2000 km"))
+    provider = FakeProvider(script=[{"json": {"candidates": [_cand()]}},
+                                    {"json": {"action": "SUPERSEDE", "target_id": normal.id}}])
+    results = Extractor(mem, provider, DECISION, audit).extract_session(["my bike needs servicing every 3000 km"])
+    decide_prompt = provider.requests[1].messages[0].text_content()
+    assert normal.id in decide_prompt
+    assert private.id not in decide_prompt and "EMI" not in decide_prompt and "4000" not in decide_prompt
+    assert results[0] == ("SUPERSEDE", results[0][1])
+
+
+def test_duplicate_of_a_private_memory_is_caught_locally(env):
+    mem, audit = env
+    private = mem.save(Memory(name="bp tablet", subject="health", sensitivity="sensitive", body="every 3000 km",
+                              summary_en="private", keywords="bike service km", evidence="x"))
+    provider = FakeProvider(script=[{"json": {"candidates": [_cand()]}}])
+    results = Extractor(mem, provider, DECISION, audit).extract_session(["my bike needs servicing every 3000 km"])
+    assert results[0] == ("NOOP", private.id) and len(provider.requests) == 1   # no decide call at all
+
+
+def test_private_memory_with_a_different_name_is_not_superseded_blindly(env):
+    mem, audit = env
+    old = mem.save(Memory(name="mom morning tablet", subject="mom", sensitivity="sensitive", body="8 am",
+                          summary_en="Mom's morning tablet at 8.", keywords="mom tablet", evidence="x"))
+    provider = FakeProvider(script=[{"json": {"candidates": [
+        _cand(name="mom evening walk", subject="mom", keywords="mom tablet walk", summary_en="Mom walks at 6 pm.",
+              evidence="aai sandhyakali 6 la firayla jate", body="6 pm walk")]}}])
+    results = Extractor(mem, provider, DECISION, audit).extract_session(["aai sandhyakali 6 la firayla jate"])
+    assert results[0][0] == "ADD" and mem.get(old.id).status == "active" and len(provider.requests) == 1

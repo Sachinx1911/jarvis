@@ -37,3 +37,14 @@ def test_allowed():
     assert allowed("P1", "P1") and allowed("P0", "P1")
     assert not allowed("P2", "P1")
     assert not allowed("P3", "P3")
+
+
+def test_p3_in_devanagari_digits_is_found_and_redacted_in_place():
+    from jarvis.privacy import find_p3, redact_p3
+
+    text = "माझा आधार २३४५ ६७८९ ०१२३ आहे, बिल ८४० रुपये"   # made-up number, pattern only
+    assert "aadhaar" in find_p3(text)
+    out, n = redact_p3(text)
+    assert n == 1 and "२३४५" not in out and "[WITHHELD]" in out
+    assert out.startswith("माझा आधार ") and out.endswith("आहे, बिल ८४० रुपये")   # the rest is untouched
+    assert find_p3("OTP ४८२९१७ आहे") == ["otp"]

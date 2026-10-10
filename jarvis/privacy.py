@@ -7,6 +7,7 @@ before any provider adapter sees a payload.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 
 CLASSES = ("P0", "P1", "P2", "P3")
@@ -36,8 +37,15 @@ def _luhn_ok(digits: str) -> bool:
     return total % 10 == 0
 
 
+def ascii_digits(text: str) -> str:
+    """Devanagari (and other) decimal digits as ASCII digits, one character for one, so the
+    P3 patterns see "२३४५ ६७८९ ०१२३" as an Aadhaar number. Positions stay the same."""
+    return "".join(str(unicodedata.decimal(ch)) if not ch.isascii() and ch.isdecimal() else ch for ch in text)
+
+
 def find_p3(text: str) -> list[str]:
     """Kinds of secret found in text (empty list if none)."""
+    text = ascii_digits(text)
     kinds = [kind for kind, pat in _P3_PATTERNS if pat.search(text)]
     for m in _CARD.finditer(text):
         digits = re.sub(r"\D", "", m.group())
@@ -48,21 +56,28 @@ def find_p3(text: str) -> list[str]:
 
 
 def redact_p3(text: str) -> tuple[str, int]:
-    """Replace secrets with [WITHHELD]. Returns (text, number of replacements)."""
-    count = 0
+    """Replace secrets with [WITHHELD]. Returns (text, number of replacements).
+
+    Matching runs on a copy with ASCII digits (so Devanagari digits are caught too); the
+    replacements are applied at the same positions of the original, which is otherwise kept."""
+    norm, count = ascii_digits(text), 0
+
+    def cut(spans: list[tuple[int, int]]) -> None:
+        nonlocal text, norm, count
+        for start, end in reversed(spans):
+            text = text[:start] + "[WITHHELD]" + text[end:]
+            norm = norm[:start] + "[WITHHELD]" + norm[end:]
+        count += len(spans)
+
     for _, pat in _P3_PATTERNS:
-        text, n = pat.subn("[WITHHELD]", text)
-        count += n
+        cut([m.span() for m in pat.finditer(norm)])
 
-    def card(m: re.Match[str]) -> str:
-        nonlocal count
+    def is_card(m: re.Match[str]) -> bool:
         digits = re.sub(r"\D", "", m.group())
-        if 13 <= len(digits) <= 19 and _luhn_ok(digits):
-            count += 1
-            return "[WITHHELD]"
-        return m.group()
+        return 13 <= len(digits) <= 19 and _luhn_ok(digits)
 
-    return _CARD.sub(card, text), count
+    cut([m.span() for m in _CARD.finditer(norm) if is_card(m)])
+    return text, count
 
 
 def allowed(item_class: str, max_class: str) -> bool:
