@@ -13,6 +13,12 @@
 
 timezone: Asia/Kolkata
 
+brief:
+  # The morning brief is sent over Telegram. Bills and wallet records are P2 (private), so by
+  # default the brief shows only counts; details stay on this computer (jarvis bills list,
+  # jarvis wallet list). Set true only if Sachin wants the details on Telegram.
+  details: false
+
 nav:
   enabled: true
   # AMFI's public daily NAV file (semicolon-separated). amfiindia.com/spages/NAVAll.txt

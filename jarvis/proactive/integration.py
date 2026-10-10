@@ -72,3 +72,8 @@ def agent_task_executor(ctx) -> str:
 
 
 register_section(CalendarSection())
+
+# India sections: public alerts, NAVs, bills/documents due (counts by default), Marathi headlines.
+from jarvis.india.brief_sections import register_india_sections  # noqa: E402
+
+register_india_sections()

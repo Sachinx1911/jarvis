@@ -8,8 +8,9 @@ Sections fetch only fixed official URLs from config/india.yaml, use no model, an
 (left out of the brief) when they have nothing to say or are switched off. Tests pass a
 fetcher through ctx.extras["india_fetcher"] (or to register_india_sections).
 
-The brief is sent over Telegram. It shows NAVs, public alerts, headlines, and for bills only
-biller, amount and due date; wallet lines show type, holder and expiry, never numbers.
+The brief is sent over Telegram. It shows NAVs, public alerts and headlines. Bills and wallet
+records are P2: by default only counts; with india brief.details: true, biller, amount and due
+date for bills, and type, holder and expiry for documents (never numbers).
 """
 
 from __future__ import annotations
@@ -111,17 +112,31 @@ class DueSoonSection(_Base):
 
         cfg = self.cfg()
         zone, today = tz(cfg), self.now(ctx).date()
+        bills = BillStore(ctx.conn, zone, cfg=section(cfg, "bills")).due_within(today, 7)
+        wallet = WalletStore(ctx.conn, ctx.home, zone, cfg=section(cfg, "wallet"))
+        docs = [r for r in wallet.list() if r.expiry and (r.expiry - today).days <= r.lead_days]
+        if not bills and not docs:
+            return None
+        if not section(cfg, "brief").get("details"):
+            # P2: the brief goes over Telegram, so only counts leave this computer by default.
+            overdue = sum(1 for b in bills if b.due_date and b.due_date < today)
+            expired = sum(1 for r in docs if r.expiry < today)
+            parts = []
+            if bills:
+                parts.append(f"{len(bills)} bill(s) due within 7 days" + (f", {overdue} overdue" if overdue else ""))
+            if docs:
+                parts.append(f"{len(docs)} document(s) expiring soon" + (f", {expired} expired" if expired else ""))
+            return ("- " + "; ".join(parts) + ".\n- Details stay on this computer: "
+                    "jarvis bills list / jarvis wallet list.")
         lines = []
-        for b in BillStore(ctx.conn, zone, cfg=section(cfg, "bills")).due_within(today, 7):
+        for b in bills:
             late = " (OVERDUE)" if b.due_date and b.due_date < today else ""
             lines.append(f"- {b.biller} {format_inr(b.amount_paise)} due {b.due_date:%d %b}{late}"
                          + (" [AutoPay]" if b.autopay else ""))
-        wallet = WalletStore(ctx.conn, ctx.home, zone, cfg=section(cfg, "wallet"))
-        for r in wallet.list():
-            if r.expiry and (r.expiry - today).days <= r.lead_days:
-                what = "EXPIRED" if r.expiry < today else "expires"
-                lines.append(f"- {(r.label or r.doc_type).replace('_', ' ')} of {r.holder} {what} {r.expiry:%d %b %Y}")
-        return "\n".join(lines) or None
+        for r in docs:
+            what = "EXPIRED" if r.expiry < today else "expires"
+            lines.append(f"- {(r.label or r.doc_type).replace('_', ' ')} of {r.holder} {what} {r.expiry:%d %b %Y}")
+        return "\n".join(lines)
 
 
 class NewsSection(_Base):

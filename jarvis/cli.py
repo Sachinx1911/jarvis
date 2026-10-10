@@ -348,12 +348,12 @@ def build_parser() -> argparse.ArgumentParser:
 def build_parser_with_extensions():
     """Core commands plus the command groups from other modules (each has register())."""
     from jarvis import cli_app, cli_browser, cli_connectors, cli_memory, cli_proactive, cli_tasks, cli_voice, cli_web
-    from jarvis import cli_approvals
+    from jarvis import cli_approvals, cli_india
 
     parser = build_parser()
     sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
     extra: dict = {}
-    for module in (cli_tasks, cli_browser, cli_web, cli_memory, cli_app, cli_approvals):
+    for module in (cli_tasks, cli_browser, cli_web, cli_memory, cli_app, cli_approvals, cli_india):
         extra.update(module.register(sub))
     cli_voice.register(sub)
     cli_connectors.register(sub)

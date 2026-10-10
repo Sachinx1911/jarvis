@@ -228,6 +228,12 @@ def build_registry(reg: ToolRegistry, d: ToolDeps) -> ToolRegistry:
     for tool in connector_tools(ConnectorDeps(d.home, d.store, d.audit, max_privacy=d.max_privacy)):
         add(tool)
 
+    # ---- India daily-life tools: AMFI NAVs, bills, document wallet (jarvis/india) ----
+    from jarvis.india.tools import IndiaDeps, india_tools
+
+    for tool in india_tools(IndiaDeps(d.home, d.store, d.audit, max_privacy=d.max_privacy)):
+        add(tool)
+
     # ---- store pages through Tavily Extract with price evidence (never Amazon/Flipkart) ----
     from jarvis.tools.extract_tool import make_web_extract_tool
 
