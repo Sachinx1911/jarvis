@@ -81,3 +81,64 @@ models:
     reasoning_control: false
     languages_verified: []
     source: documented
+  # ---- Stage B local models (llama.cpp llama-server, GGUF Q4_K_M). Provider "local" is NOT
+  # approved in routing.yaml; these profiles exist so the Stage B evals can run.
+  # Measured 2026-10-10/11 on this Mac (M4, 16 GB, macOS 26.5), llama.cpp 0.6.0 build 11429
+  # (Homebrew, Metal), server flags: -c 16384 -np 1 -ngl 99 -fa on --jinja --cache-ram 1024.
+  # Speeds vary a lot with other GPU work: "quiet" = only desktop apps (GPU 30-55% busy from
+  # them); "busy" = other ML jobs running too. Report: docs/stage-b/2026-10-10-local-models.md
+  # Files live in <JARVIS_HOME>/data/models/llm/ (git-ignored), never in the repo.
+  qwen3.5-9b-q4km:
+    provider: local
+    file: qwen3.5-9b/Qwen3.5-9B-Q4_K_M.gguf   # unsloth/Qwen3.5-9B-GGUF @3885219, Apache-2.0, 5,680,522,464 bytes
+    context_window: 16384      # the context llama-server was started with (-c), not the model maximum
+    max_output: 4096
+    tool_calling: single       # native tool calls via --jinja; one call per step measured, parallel not tested
+    structured_output: json_schema   # response_format json_schema -> grammar; 36/36 valid
+    vision: false
+    streaming: true
+    prompt_caching: true       # llama-server prompt cache: 5059 of 5077 tokens reused on a repeated chat prefix
+    reasoning_control: false
+    thinking: false            # Qwen3.5 thinks by default; switched off via chat_template_kwargs
+    # Qwen3.5 card, instruct (non-thinking) mode; fixed seed for repeatable evals.
+    sampling: {temperature: 0.7, top_p: 0.8, top_k: 20, min_p: 0.0, presence_penalty: 1.5, seed: 42}
+    languages_verified: [en]   # Marathi (mr-roman, mr-deva) measured and NOT verified
+    source: measured
+    measured:
+      date: "2026-10-11"
+      tok_per_s: 7             # decode, quiet: 6-9; busy: 4-7; llama-bench tg128 5.1
+      prefill_tok_per_s: 60    # quiet; llama-bench pp512 68, pp4096 62
+      ttft_ms_short: 780       # 30-token prompt, cold
+      ttft_ms_2900_cold: 47900 # 2,851-token prompt, nothing cached
+      ttft_ms_chat_cold: 73400 # Jarvis main-chat turn: 5,073 tokens (system prompt + 40 tools)
+      ttft_ms_chat_warm: 680   # same system prompt and tools already cached
+      peak_rss_mb: 7118        # incl. mapped weights; /usr/bin/time max RSS 7,463 MB
+      peak_footprint_mb: 2950  # anonymous memory (KV cache, buffers); weights are file-mapped
+      load_s: 4                # 32 s on the first, uncached load
+  gemma-4-e4b-q4km:
+    provider: local
+    file: gemma-4-e4b/gemma-4-E4B-it-Q4_K_M.gguf   # unsloth/gemma-4-E4B-it-GGUF @bfc15c3, Apache-2.0, 4,977,171,584 bytes
+    context_window: 16384
+    max_output: 4096
+    tool_calling: single       # native tool calls via --jinja; one call per step measured, parallel not tested
+    structured_output: json_schema   # 36/36 valid
+    vision: false              # text-only file (no mmproj)
+    streaming: true
+    prompt_caching: true       # 4301 of 4313 tokens reused on a repeated chat prefix
+    reasoning_control: false
+    thinking: false            # template switch enable_thinking=false
+    # Gemma 4 card recommendation; fixed seed for repeatable evals.
+    sampling: {temperature: 1.0, top_p: 0.95, top_k: 64, seed: 42}
+    languages_verified: [en]   # Marathi measured and NOT verified (often answers Marathi in English)
+    source: measured
+    measured:
+      date: "2026-10-11"
+      tok_per_s: 25            # decode, quiet: 25-27; busy: 10-25; llama-bench tg128 13.3 (desktop GPU load)
+      prefill_tok_per_s: 265   # quiet, plain text; 80-115 on the main-chat prompt; llama-bench pp512 125
+      ttft_ms_short: 260
+      ttft_ms_2800_cold: 10500 # 2,789-token prompt, nothing cached
+      ttft_ms_chat_cold: 38100 # Jarvis main-chat turn: 4,308 tokens; 54.9 s in a second run
+      ttft_ms_chat_warm: 630
+      peak_rss_mb: 6616        # incl. mapped weights; /usr/bin/time max RSS 7,004 MB
+      peak_footprint_mb: 2200
+      load_s: 5

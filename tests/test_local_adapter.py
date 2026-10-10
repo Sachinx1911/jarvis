@@ -152,6 +152,14 @@ def test_local_is_not_approved_for_live_routing():
         decide(config, "main_chat", "local")
 
 
+def test_measured_profiles_in_models_yaml():
+    local = {k: v for k, v in load_config().models.items() if v.get("provider") == "local"}
+    assert local, "Stage B adds measured local profiles"
+    for name, entry in local.items():
+        assert entry["source"] == "measured", name
+        assert entry.get("measured", {}).get("tok_per_s"), name
+
+
 # ---- translation, text and stop reasons ----
 
 def test_text_reply_usage_and_request_shape(server):
