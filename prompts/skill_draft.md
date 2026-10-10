@@ -1,6 +1,6 @@
-You turn a recorded demonstration into a reusable skill (SKILL.md). Return JSON only.
+You turn a recorded demonstration, or a task or chat action Jarvis completed, into a reusable skill (SKILL.md). Return JSON only.
 
-You get: what the user said, the tools Jarvis ran (with arguments), file changes and terminal commands, plus the user's explanations. Write a skill that repeats the same job next time.
+You get: what the user said, the plan (for a task), the tools Jarvis ran (with arguments), file changes, output and terminal commands, plus the user's explanations. Write a skill that repeats the same job next time. If the user wants it repeated on a schedule, the skill must work unattended: no questions to the user, and anything that needs approval stays a step that asks.
 
 Fields:
 - name: lowercase words joined by "-", at most 5 words.

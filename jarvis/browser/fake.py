@@ -30,6 +30,7 @@ class FakePage:
     elements: dict[str, FakeElement] = field(default_factory=dict)
     form_action: str = ""
     after_submit: str | None = None  # page the form leads to
+    title: str = ""
 
 
 class FakeDriver:
@@ -91,6 +92,12 @@ class FakeDriver:
 
     def text(self) -> str:
         return self._page().text
+
+    def title(self) -> str:
+        return self._page().title
+
+    def value(self, target: str) -> str:
+        return self._el(target).value
 
     def describe(self, target: str) -> ElementInfo:
         el = self._el(target)

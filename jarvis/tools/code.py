@@ -184,6 +184,7 @@ class CodeTools:
         self.config = config
         self.runner = runner or SubprocessRunner()
         self.commands = [str(c) for c in config.get("test_commands") or []]
+        self.last_test: RunResult | None = None  # for the run_tests post-check
 
     def resolve(self, raw: str) -> Path:
         path = self.policy.resolve(raw or ".")
@@ -246,12 +247,23 @@ class CodeTools:
         timeout = float(self.config.get("timeout_seconds", 300))
         cap = int(self.config.get("max_output_chars", 20000))
         start = time.monotonic()
+        self.last_test = None
         res = self.runner.run(argv, self.root, minimal_env(self.root, self.config.get("pass_env")), timeout, cap)
+        self.last_test = res
         took = time.monotonic() - start
         head = (f"TIMED OUT after {timeout:.0f}s; the process tree was killed." if res.timed_out
                 else f"Exit code {res.exit_code} ({'passed' if res.exit_code == 0 else 'failed'}) in {took:.1f}s.")
         tail = f"\n[... {res.dropped_chars} more characters of output dropped]" if res.dropped_chars else ""
         return f"{head}\n{res.output}{tail}"
+
+    def verify_tests(self, args: dict) -> tuple[bool, str]:
+        """Verify-after-act: the exit code of the process itself, never words in its output."""
+        res = self.last_test
+        if res is None:
+            return False, "no test run recorded"
+        if res.timed_out or res.exit_code is None:
+            return False, "the test command timed out"
+        return res.exit_code == 0, f"test command exited with code {res.exit_code}"
 
 
 def coder_tools(code: CodeTools) -> list[Tool]:
@@ -265,5 +277,6 @@ def coder_tools(code: CodeTools) -> list[Tool]:
                       _obj({"path": S, "content": S}, ["path", "content"])), "T1", code.code_write,
              verify=code.verify_write, precheck=code.precheck),
         Tool(ToolSpec("run_tests", f"Run the project's tests. command must be exactly one of: {allowed}.",
-                      _obj({"command": S}, ["command"])), "T1", code.run_tests, precheck=code.command_check),
+                      _obj({"command": S}, ["command"])), "T1", code.run_tests, precheck=code.command_check,
+             verify=code.verify_tests),
     ]

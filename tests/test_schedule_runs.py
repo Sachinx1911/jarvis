@@ -192,6 +192,12 @@ def test_unattended_run_never_executes_t2_or_t3(isolated):
     assert pending[0]["arguments"] == {"path": "notes.txt", "content": "changed"}
     assert decisions == ["denied", "denied"]
     assert "need your approval" in note.sent[0][1]
+    # The run receipt names each refused action (tool and tier only; arguments stay in the queue).
+    assert "- #1 overwrite_file (T2): refused unattended, waiting for approval" in note.sent[0][1]
+    assert "- #2 delete_file (T3): refused unattended, waiting for approval" in note.sent[0][1]
+    assert "changed" not in note.sent[0][1].split("need your approval")[1]
+    _, runs = _get(s.id)
+    assert "overwrite_file (T2)" in runs[0]["detail"] and "delete_file (T3)" in runs[0]["detail"]
     assert "Sachin is not watching" in chats.providers[0].requests[0].messages[-1].text_content()
 
 
@@ -303,9 +309,10 @@ def test_brief_schedule_runs_without_a_model():
 def test_default_schedules_created_once_and_deletion_is_respected():
     p = proactive(at(2026, 10, 10, 15, 0))
     added = p.ensure_default_schedules()
-    assert len(added) == 4
+    assert len(added) == 5
     rt, store = _store()
     kinds = {s.kind: s for s in store.list()}
+    assert kinds["review"].cron == "30 22 * * *" and kinds["review"].output == "file"
     assert kinds["brief"].cron == "0 8 * * *" and kinds["heartbeat"].cron == "*/30 * * * *"
     assert kinds["heartbeat"].misfire_grace_s == 300
     assert kinds["memory_extract"].cron == "*/10 * * * *" and kinds["memory_extract"].output == "file"

@@ -30,7 +30,9 @@ CHAT_HELP = """Commands:
   /remember-private <text>  save a sensitive memory (kept local, never sent to the cloud)
   /memory <words>           search memories
   /forget <id>              archive a memory
+  /why                      what Jarvis had in mind for its last answer (memories, past chats)
   /task <goal>              run a task now (plan, team, check, receipt)
+  /repeat [<task id>] <when> turn the last action (or a task) into a skill + schedule; /repeat yes|no
   /record start <name>      record a demonstration (/record stop, /note <why>)
   /project <name>|off       set the active project (its memories and documents come first)
   /exit                     end the chat (Jarvis then saves what it learned)"""
@@ -81,8 +83,32 @@ def _slash(session: ChatSession, rt: Runtime, text: str, out: TextIO) -> bool:
     if cmd == "/help":
         print(CHAT_HELP, file=out)
         return True
+    if cmd == "/why":
+        print(why_text(rt, getattr(session, "last_turn_id", None)), file=out)
+        return True
     from jarvis import cli_tasks
     return cli_tasks.chat_command(session, rt, cmd, rest, out)
+
+
+def why_text(rt: Runtime, turn_id: int | None) -> str:
+    """The last answer's context: memories and past-chat lines it was given (as the dashboard's
+    "why" panel). Sensitive memories show only their name; their text stays hidden."""
+    from jarvis.web.trust import turn_view
+
+    view = turn_view(rt, turn_id) if turn_id else None
+    if not view:
+        return "Nothing to explain yet: ask something first."
+    lines = ["Context Jarvis had for its last answer:"]
+    for m in view["memories"]:
+        detail = "" if m.get("masked") or not m.get("summary_en") else f": {m['summary_en']}"
+        lines.append(f"- memory {m['id']} {m['name']} ({m.get('type') or '-'}, {m.get('status') or '-'}){detail}")
+    for x in view["excerpts"]:
+        lines.append(f"- past chat {x.get('ts', '')} {x.get('role', '')}: {str(x.get('text', ''))[:160]}")
+    if len(lines) == 1:
+        lines.append("- no memories or past chats: the answer came from the conversation itself.")
+    if view.get("withheld"):
+        lines.append(f"{view['withheld']} private item(s) were kept from the cloud model.")
+    return "\n".join(lines)
 
 
 def terminal_approver(out: TextIO, inp: TextIO):
@@ -170,6 +196,17 @@ def cmd_memory(args: argparse.Namespace, out: TextIO) -> int:
             from jarvis.memory import session_facts
             print(f"Indexed {mem.reindex()} memory files.", file=out)
             session_facts.reindex_all(rt.store.conn)  # facts of chats extracted before this index existed
+        elif args.action == "conflicts":
+            from jarvis.memory.conflicts import find_conflicts
+            found = find_conflicts(mem.list(status="active"))
+            if not found:
+                print("No possible memory conflicts.", file=out)
+            for c in found:
+                print(f"Subject {c.subject!r} ({c.type}): {len(c.memories)} active memories disagree", file=out)
+                for m in c.memories:
+                    print(f"  {m.id} (from {m.valid_from}): {m.summary_en or m.name}: {m.body.strip()[:200]}", file=out)
+            if found:
+                print("Keep the right one; archive the other with `jarvis memory archive <id>`.", file=out)
         elif args.action == "add":
             saved = make_extractor(rt, args.provider).remember(" ".join(args.text), private=args.private)
             print(f"Remembered as {saved.id}: {saved.summary_en or saved.name}", file=out)
@@ -311,7 +348,7 @@ def build_parser() -> argparse.ArgumentParser:
     chat.add_argument("-m", "--message", help="send one message and exit")
 
     mem = sub.add_parser("memory", help="list, search, show, archive, export, reindex or add memories")
-    mem.add_argument("action", choices=["list", "search", "show", "archive", "export", "reindex", "add"])
+    mem.add_argument("action", choices=["list", "search", "show", "archive", "export", "reindex", "add", "conflicts"])
     mem.add_argument("text", nargs="*")
     mem.add_argument("--type", choices=["fact", "preference", "procedure", "constraint", "episode"])
     mem.add_argument("--all", action="store_true", help="include superseded and archived")
@@ -348,12 +385,12 @@ def build_parser() -> argparse.ArgumentParser:
 def build_parser_with_extensions():
     """Core commands plus the command groups from other modules (each has register())."""
     from jarvis import cli_app, cli_browser, cli_connectors, cli_memory, cli_proactive, cli_tasks, cli_voice, cli_web
-    from jarvis import cli_approvals, cli_india
+    from jarvis import cli_approvals, cli_backup, cli_india
 
     parser = build_parser()
     sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
     extra: dict = {}
-    for module in (cli_tasks, cli_browser, cli_web, cli_memory, cli_app, cli_approvals, cli_india):
+    for module in (cli_tasks, cli_browser, cli_web, cli_memory, cli_app, cli_approvals, cli_india, cli_backup):
         extra.update(module.register(sub))
     cli_voice.register(sub)
     cli_connectors.register(sub)
