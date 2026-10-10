@@ -39,3 +39,6 @@ dist/
 
 # Claude Code worktrees for parallel agents
 /.claude/worktrees/
+
+# Mac app build output (scripts/build_mac_app.sh)
+/mac/build/
