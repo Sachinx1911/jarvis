@@ -61,7 +61,9 @@ class ChatSession:
         self.history: list[Message] = []
         self.approver_for_tasks = approver
         max_privacy = config.routing.get("routes", {}).get(decision.route, {}).get("max_privacy", "P1")
-        self.context = ContextBuilder(home, memory, skills, max_privacy)
+        from jarvis.connectors.registry import ConnectorDeps, doc_library
+        self.context = ContextBuilder(home, memory, skills, max_privacy,
+                                      docs=doc_library(ConnectorDeps(home, store, audit, max_privacy)))
         self.stop = StopSwitch(home / "data")
         self.tools = ToolRegistry(store, audit, ApprovalGate(store, audit, approver))
         build_registry(self.tools, ToolDeps(
@@ -71,6 +73,8 @@ class ChatSession:
             system=system or SystemTools(),
         ))
         apply_registry(self.tools, registry_path(home), audit)
+        from jarvis.connectors.registry import apply_connector_registry
+        apply_connector_registry(self.tools, registry_path(home), audit)
         self.loop = AgentLoop(provider, decision, self.tools, store, audit, self.stop)
         audit.write(
             "route_decision", session_id=self.session_id, route=decision.route,

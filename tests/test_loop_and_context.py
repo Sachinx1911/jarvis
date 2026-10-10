@@ -55,7 +55,7 @@ def test_sensitive_memory_withheld_from_cloud_route(env):
     s, provider = _session(env)
     s.send("which tablet do I take?")
     system = provider.requests[0].system
-    assert "bp tablet" not in system and "1 sensitive memories were withheld" in system
+    assert "bp tablet" not in system and "1 sensitive memories or private document parts were withheld" in system
 
 
 def test_tool_loop_memory_search(env):

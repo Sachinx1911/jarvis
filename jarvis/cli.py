@@ -32,6 +32,7 @@ CHAT_HELP = """Commands:
   /forget <id>              archive a memory
   /task <goal>              run a task now (plan, team, check, receipt)
   /record start <name>      record a demonstration (/record stop, /note <why>)
+  /project <name>|off       set the active project (its memories and documents come first)
   /exit                     end the chat (Jarvis then saves what it learned)"""
 
 
@@ -245,6 +246,9 @@ def cmd_connectors(args: argparse.Namespace, out: TextIO) -> int:
         for name in ("claude_code",):
             h = make_provider(name, rt.config).health()
             print(f"  {name}: {'OK' if h.ok else 'NOT OK'} - {h.detail}", file=out)
+        from jarvis.connectors.registry import ConnectorDeps, connector_health
+        for cname, ok, detail in connector_health(ConnectorDeps(rt.paths.home, rt.store, rt.audit)):
+            print(f"  {cname}: {'OK' if ok else 'NOT OK'} - {detail}", file=out)
         return 0
     finally:
         rt.close()
@@ -336,7 +340,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def build_parser_with_extensions():
     """Core commands plus the command groups from other modules (each has register())."""
-    from jarvis import cli_tasks, cli_voice
+    from jarvis import cli_connectors, cli_tasks, cli_voice
 
     parser = build_parser()
     sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
@@ -344,6 +348,9 @@ def build_parser_with_extensions():
     for module in (cli_tasks,):
         extra.update(module.register(sub))
     cli_voice.register(sub)
+    cli_connectors.register(sub)
+    for name in cli_connectors.COMMANDS:
+        extra[name] = lambda args, out, inp, approvers: cli_connectors.handlers(args, out)[args.command]()
     for name, handler in cli_voice.HANDLERS.items():
         extra[name] = lambda args, out, inp, approvers, h=handler: h(args, out, inp)
     return parser, extra

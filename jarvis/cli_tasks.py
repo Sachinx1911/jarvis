@@ -196,12 +196,24 @@ def cmd_skill(args: argparse.Namespace, out: TextIO, inp: TextIO, approver_facto
 
 
 def chat_command(session, rt: Runtime, cmd: str, rest: str, out: TextIO) -> bool:
-    """Chat commands: /task, /record, /note. Returns False if not one of them."""
+    """Chat commands: /task, /record, /note, /project. Returns False if not one of them."""
+    if cmd == "/project":
+        if not rest:
+            print(f"Active project: {session.context.project or 'none'}. Projects: {', '.join(ProjectStore(rt.paths.home).list()) or 'none'}", file=out)
+        elif rest == "off":
+            session.context.project = None
+            print("No active project.", file=out)
+        elif ProjectStore(rt.paths.home).exists(rest):
+            session.context.project = rest
+            print(f"Active project: {rest}. Its memories and documents come first.", file=out)
+        else:
+            print(f"No project {rest} (create it: jarvis project new {rest}).", file=out)
+        return True
     if cmd == "/task":
         if not rest:
             print("Usage: /task <goal>", file=out)
         else:
-            run_task(rt, create_task(rt, rest), out, session.approver_for_tasks)
+            run_task(rt, create_task(rt, rest, session.context.project), out, session.approver_for_tasks)
         return True
     if cmd in ("/record", "/note"):
         rec = recorder(rt)

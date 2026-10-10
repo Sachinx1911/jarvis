@@ -11,6 +11,9 @@ dependencies = [
     "anthropic>=1.0",   # Claude adapter only (jarvis/providers/claude.py)
     "keyring>=25",      # secrets in macOS Keychain / Windows Credential Manager
     "pyyaml>=6",        # config/*.yaml
+    "pypdf>=6",         # document library: text per PDF page, so answers can cite the page
+    "python-docx>=1.2", # document library: DOCX text and headings
+    "tzdata; sys_platform == 'win32'",  # Windows has no IANA time zones (Asia/Kolkata)
 ]
 
 [project.optional-dependencies]
@@ -20,6 +23,8 @@ dev = ["pytest>=8"]
 voice = ["sounddevice>=0.5.6", "faster-whisper>=1.2.1"]
 voice-cloud = ["edge-tts>=7.2.8"]   # optional Marathi cloud voice, off by default
 wakeword = ["openwakeword==0.6.0"]  # optional "hey jarvis", off by default
+# Google Calendar + Gmail connectors (Phase 5): official API client and installed-app OAuth.
+google = ["google-api-python-client>=2.201", "google-auth-oauthlib>=1.5"]
 
 [project.scripts]
 jarvis = "jarvis.cli:main"

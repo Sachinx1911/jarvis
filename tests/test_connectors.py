@@ -101,7 +101,9 @@ def test_health_offline(deps, tmp_path):
     assert health["documents"][0] and "1 documents (1 private)" in health["documents"][1]
     assert health["google client file"] == (False, "not set (google.client_secret_file in config/local.yaml)")
     assert health["google token"][0] is False and "jarvis google auth" in health["google token"][1]
-    assert health["google libraries"][0] is True
+    import importlib.util
+    installed = importlib.util.find_spec("googleapiclient") is not None  # optional extra [google]
+    assert health["google libraries"][0] is installed
     assert "eventkit" in health
 
 

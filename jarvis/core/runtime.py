@@ -78,6 +78,8 @@ def make_chat(rt: Runtime, provider_override: str | None = None, approver: Appro
         quarantine=make_quarantine(rt, provider_override), web=web,
     )
     write_registry(session.tools, registry_path(rt.paths.home))
+    from jarvis.connectors.registry import write_connector_registry
+    write_connector_registry(session.tools.all(), registry_path(rt.paths.home))
     return session
 
 

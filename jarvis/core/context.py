@@ -34,11 +34,14 @@ def soul_text(home: Path) -> str:
 
 
 class ContextBuilder:
-    def __init__(self, home: Path, memory: MemoryStore | None, skills: SkillLibrary | None, max_privacy: str = "P1"):
+    def __init__(self, home: Path, memory: MemoryStore | None, skills: SkillLibrary | None, max_privacy: str = "P1",
+                 docs=None):
         self.home = home
         self.memory = memory
         self.skills = skills
         self.max_privacy = max_privacy
+        self.docs = docs          # DocLibrary; searched only while a project is active
+        self.project: str | None = None
 
     def _ok(self, sensitivity: str) -> bool:
         return allowed(SENSITIVITY_TO_CLASS.get(sensitivity, "P2"), self.max_privacy)
@@ -69,7 +72,8 @@ class ContextBuilder:
 
         if self.memory and user_text.strip():
             lines = []
-            for hit in self.memory.search(user_text, k=MAX_RETRIEVED):
+            scope = f"project:{self.project}" if self.project else None
+            for hit in self.memory.search(user_text, k=MAX_RETRIEVED, scope=scope):
                 m = hit.memory
                 if m.type == "constraint":
                     continue  # already included above
@@ -81,8 +85,16 @@ class ContextBuilder:
             if lines:
                 parts.append("## Memories relevant to this message\n" + "\n".join(lines))
 
+        if self.docs is not None and self.project and user_text.strip():
+            from jarvis.docs.tools import doc_context
+
+            section, withheld = doc_context(self.docs, user_text, self.project, self.max_privacy)
+            if section:
+                parts.append(section)
+            ctx.withheld += withheld
+
         if ctx.withheld:
-            parts.append(f"Note: {ctx.withheld} sensitive memories were withheld from you for privacy. "
+            parts.append(f"Note: {ctx.withheld} sensitive memories or private document parts were withheld from you for privacy. "
                          "If the answer may depend on them, tell the user it was withheld.")
         parts.append(f"Local time: {now.strftime('%Y-%m-%d %H:%M')}")
         ctx.system = "\n\n".join(p for p in parts if p)
