@@ -245,6 +245,26 @@ class RepeatProposal:
         lines.append("Nothing is saved until you confirm this draft.")
         return "\n".join(lines)
 
+    def show_brief(self, now: datetime | None = None, skills_dir: Path | None = None) -> str:
+        """The draft for Telegram, a cloud service: no skill text, goal or step wording, because they
+        may carry private (P2) details from the task. The full draft stays on this computer
+        (`jarvis task draft <id>`), and Save still applies to exactly that draft."""
+        d = self.schedule_draft()
+        steps = len(re.findall(r"^\d+\. ", self.skill_text, re.MULTILINE))
+        lines = [f"Automation draft {self.id}: skill '{self.skill}' with {steps} step(s).", "",
+                 f"Schedule: {d.description} ({d.timezone})", f"Cron: {d.cron}", f"Output: {d.output}"]
+        held = [(n, tool, tier) for n, _text, tool, tier in _STEP_TIER_RE.findall(self.skill_text)
+                if tier not in ("T0", "T1")]
+        if held:
+            lines.append("Scheduled runs will NOT do these steps on their own (they need approval each time): "
+                         + ", ".join(f"step {n} {tool} ({tier})" for n, tool, tier in held))
+        if skills_dir is not None and (skills_dir / self.skill / "SKILL.md").exists():
+            lines.append(f"Note: a skill named {self.skill} exists; it will be kept as an older version.")
+        lines.append(f"The full draft may contain private details, so it is not sent here. Read it on your "
+                     f"computer first: jarvis task draft {self.id}")
+        lines.append("Nothing is saved until you press Save.")
+        return "\n".join(lines)
+
 
 def _min_gap_minutes(cron: str, tz: str, now: datetime) -> float | None:
     from jarvis.proactive.schedule_parse import next_runs

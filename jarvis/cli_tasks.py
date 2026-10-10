@@ -15,7 +15,7 @@ PROVIDERS = ["claude_code", "anthropic", "fake"]
 
 def register(sub) -> dict[str, Callable]:
     task = sub.add_parser("task", help="add, run, show, cancel or resume tasks")
-    task.add_argument("action", choices=["add", "run", "show", "cancel", "resume", "repeat"])
+    task.add_argument("action", choices=["add", "run", "show", "cancel", "resume", "repeat", "draft"])
     task.add_argument("text", nargs="*", help="goal text, or a task id (repeat: <task-id> \"<when>\")")
     task.add_argument("--project")
     task.add_argument("--priority", choices=["high", "normal", "low"], default="normal")
@@ -98,6 +98,15 @@ def cmd_task(args: argparse.Namespace, out: TextIO, inp: TextIO, approver_factor
                 run_task(rt, t.id, out, approver_factory(), args.workers, args.provider)
             if not pending:
                 print("Nothing to resume.", file=out)
+            return 0
+        if action == "draft":  # a pending /repeat draft, shown in full on this computer only
+            from jarvis.tasks.repeat import RepeatStore
+
+            p = RepeatStore(rt.paths.data).get(args.text[0]) if args.text else None
+            if p is None:
+                print("No such draft waiting (drafts expire after an hour). Give an id like rp-1a2b3c.", file=out)
+                return 1
+            print(p.show(None, rt.paths.home / "skills"), file=out)
             return 0
         task = ts.get(args.text[0]) if args.text else None
         if not task:

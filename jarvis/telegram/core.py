@@ -351,7 +351,8 @@ class BotCore:
         finally:
             if rt is not self._rt:
                 rt.close()
-        return proposal.show(self.p.now(), rt.paths.home / "skills") + "\n\nSave this skill and schedule?", proposal.id
+        # Telegram is a cloud service: only the P2-safe summary goes there (PLAN.md privacy controls).
+        return proposal.show_brief(self.p.now(), rt.paths.home / "skills") + "\n\nSave this skill and schedule?", proposal.id
 
     def confirm_repeat(self, proposal_id: str, save: bool) -> str:
         from jarvis.tasks.repeat import confirm

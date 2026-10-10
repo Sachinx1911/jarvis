@@ -556,7 +556,10 @@ def test_telegram_repeat_last_chat_action_saved_only_by_the_save_button(isolated
     replies = _cmd(bot, "/repeat every day at 21:00")
     shown, markup = replies[-1]
     full = "\n".join(r[0] for r in replies)
-    assert "Automation from chat" in full and "Cron: 0 21 * * *" in full and "Save this skill and schedule?" in shown
+    assert "Automation draft rp-" in full and "Cron: 0 21 * * *" in full and "Save this skill and schedule?" in shown
+    # Telegram is a cloud service: no skill text, goal or step wording goes there (P2 may hide in them)
+    assert "--- SKILL.md draft ---" not in full and "save today's laptop prices" not in full
+    assert "jarvis task draft rp-" in full
     assert "save today's laptop prices" in drafts[0]
     assert _schedules(isolated) == [] and not (isolated / "skills" / "weekly-price-check").exists()
     save, cancel = button_data(markup)
@@ -600,3 +603,24 @@ def test_telegram_registers_repeat_and_lists_it_in_help():
     from jarvis.telegram.core import HELP
 
     assert "/repeat <when>" in HELP
+
+
+def test_telegram_draft_summary_hides_text_and_cli_shows_the_full_draft(isolated, drafts):
+    import io
+    import re as _re
+
+    from jarvis.cli import main as cli_main
+
+    chats = ScriptedChats([{"tool": "write_file", "arguments": {"path": "prices.md", "content": "Laptop A"}},
+                           "Saved the prices, sir."])
+    bot, _ = _bot(chats)
+    asyncio.run(bot.on_text(update(SACHIN, "save today's laptop prices"), None))
+    full = "\n".join(r[0] for r in _cmd(bot, "/repeat every day at 21:00"))
+    pid = _re.search(r"rp-[0-9a-f]{6}", full).group()
+    out = io.StringIO()
+    assert cli_main(["task", "draft", pid], out=out) == 0
+    local = out.getvalue()
+    assert "--- SKILL.md draft ---" in local and "Automation from chat" in local
+    assert _schedules(isolated) == []                       # viewing never saves
+    out = io.StringIO()
+    assert cli_main(["task", "draft", "rp-000000"], out=out) == 1
