@@ -497,7 +497,7 @@ def test_voice_transcribe_and_unclear(isolated, cfgdir):
         r = c.post("/api/voice/transcribe", headers=H, content=wav()).json()
         assert r["status"] == "unclear" and r["text"] == ""
         assert c.post("/api/voice/transcribe", headers=H, content=b"not a wav").status_code == 400
-        assert c.post("/api/voice/transcribe", headers=H, content=wav(rate=8000)).status_code == 400
+        assert c.post("/api/voice/transcribe", headers=H, content=wav(rate=4000)).status_code == 400
 
 
 def test_speak_reply_uses_local_tts_and_withholds_p3(isolated, cfgdir):
@@ -564,3 +564,31 @@ def test_hands_free_wake_alone_and_no_wake(isolated, cfgdir):
     with _client(cfgdir, stt_factory=lambda: stt, wake_factory=lambda: wake) as c:
         r = c.post("/api/voice/transcribe", headers=H, content=wav(2.0)).json()  # push-to-talk: no wake check
         assert "wake" not in r and wake.scanned == 0
+
+
+def test_transcribe_accepts_the_microphone_rate_and_resamples(isolated, cfgdir):
+    from jarvis.voice.stt import FakeSTT
+
+    stt = FakeSTT(["namaskar"])
+    seen = []
+    orig = stt.transcribe
+    stt.transcribe = lambda audio, hint=None: (seen.append((audio.sample_rate, round(audio.seconds, 1))), orig(audio, hint))[1]
+    with _client(cfgdir, stt_factory=lambda: stt) as c:
+        r = c.post("/api/voice/transcribe", headers=H, content=wav(1.0, rate=48000)).json()
+    assert r["status"] == "ok" and seen == [(16000, 1.0)]
+
+
+def test_speaking_status_and_stop(isolated, cfgdir):
+    from jarvis.voice.tts import FakeTTS, SpeechOutput
+
+    tts = FakeTTS("local", keep_playing=True)
+    factory = Scripted(script=[{"text": "Good evening, sir."}])
+    with _client(cfgdir, factory=factory, speech_factory=lambda: SpeechOutput(tts)) as c:
+        assert c.get("/api/voice/speaking", headers=H).json() == {"speaking": False}
+        s = c.post("/api/chat/sessions", headers=H, json={}).json()
+        r = c.post(f"/api/chat/sessions/{s['id']}/messages", headers=H, json={"text": "hi", "speak": True}).json()
+        assert r["voice"]["spoken"] is True
+        assert c.get("/api/voice/speaking", headers=H).json() == {"speaking": True}
+        assert c.post("/api/voice/stop", headers=H).json() == {"stopped": True}
+        assert c.get("/api/voice/speaking", headers=H).json() == {"speaking": False}
+        assert c.post("/api/voice/stop", headers=H).json() == {"stopped": False}

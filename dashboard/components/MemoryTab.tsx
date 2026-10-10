@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { api, patch, post } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { api, patch, post, put } from "@/lib/api";
+import { Icon } from "./icons";
 import { errText, usePoll } from "@/lib/hooks";
 
 type Memory = {
@@ -90,6 +91,8 @@ export default function MemoryTab() {
   }
 
   return (
+    <>
+    <CoreMemoryPanel />
     <div className="split">
       <section className="panel">
         <div className="row">
@@ -194,6 +197,7 @@ export default function MemoryTab() {
         <section className="panel muted">Select a memory to see it.</section>
       )}
     </div>
+    </>
   );
 }
 
@@ -572,6 +576,100 @@ function SessionRef({ item, masked }: { item: Source["sessions"][number]; masked
           )}
         </>
       )}
+    </div>
+  );
+}
+
+
+// ---- core memory (profile/USER.md + profile/MEMORY.md, always in the prompt) ----
+
+type CoreStatus = Record<"user" | "memory", { file: string; entries: string[]; used: number; limit: number }>;
+
+const CORE_TITLES = {
+  user: { title: "USER.md: who you are", help: "Your lasting preferences, habits and how you like answers. Jarvis reads this with every message." },
+  memory: { title: "MEMORY.md: Jarvis's notes", help: "Facts, conventions, lessons and the active project Jarvis keeps in front of itself." },
+} as const;
+
+function CoreMemoryPanel() {
+  const status = usePoll(() => api<CoreStatus>("/api/core-memory"), 0);
+  return (
+    <section className="panel">
+      <div className="card-head">
+        <h2>
+          <Icon name="sparkles" size={16} /> Core memory
+        </h2>
+        <span className="small muted">Two small files in every prompt (idea from Hermes Agent). One entry per paragraph, separated by a line with §.</span>
+      </div>
+      {status.error && <div className="error">{status.error}</div>}
+      {status.data && (
+        <div className="split">
+          {(["user", "memory"] as const).map((target) => (
+            <CoreEditor key={target} target={target} data={status.data![target]} onSaved={status.reload} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CoreEditor({ target, data, onSaved }: { target: "user" | "memory"; data: CoreStatus["user"]; onSaved: () => void }) {
+  const [text, setText] = useState(data.entries.join("\n§\n"));
+  const [dirty, setDirty] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    if (!dirty) setText(data.entries.join("\n§\n"));
+  }, [data, dirty]);
+  const pct = Math.min(100, Math.round((100 * data.used) / data.limit));
+  async function save() {
+    setErr("");
+    setMsg("");
+    try {
+      const r = await put<{ saved: string }>(`/api/core-memory/${target}`, { text });
+      setMsg(r.saved);
+      setDirty(false);
+      onSaved();
+    } catch (e) {
+      setErr(errText(e));
+    }
+  }
+  return (
+    <div className="subpanel">
+      <h3>{CORE_TITLES[target].title}</h3>
+      <p className="small muted" style={{ marginTop: 0 }}>{CORE_TITLES[target].help}</p>
+      <div className="row small muted" style={{ marginBottom: 6 }}>
+        <span className="grow">
+          {data.used}/{data.limit} characters · {data.entries.length} entr{data.entries.length === 1 ? "y" : "ies"}
+        </span>
+        <span className={pct > 90 ? "warn" : ""}>{pct}%</span>
+      </div>
+      <div className={`progress${pct > 90 ? " warn" : ""}`} style={{ marginBottom: 8 }}>
+        <span style={{ width: `${pct}%` }} />
+      </div>
+      <textarea
+        rows={7}
+        value={text}
+        placeholder={target === "user" ? "e.g. Prefers short answers in Marathi\n§\nWorks best in the morning" : "e.g. Active project: kitchen renovation\n§\nUses tabs in Python files"}
+        onChange={(e) => {
+          setText(e.target.value);
+          setDirty(true);
+        }}
+      />
+      <div className="row" style={{ marginTop: 8 }}>
+        <button className="primary sm" onClick={save} disabled={!dirty}>
+          Save
+        </button>
+        {dirty && (
+          <button className="ghost sm" onClick={() => setDirty(false)}>
+            Undo changes
+          </button>
+        )}
+        {msg && <span className="small okbox">{msg}</span>}
+      </div>
+      {err && <div className="error">{err}</div>}
+      <p className="small faint" style={{ marginBottom: 0 }}>
+        Only everyday facts (P0/P1). Secrets, health, money or ID details are refused here: use /remember-private in Chat.
+      </p>
     </div>
   );
 }

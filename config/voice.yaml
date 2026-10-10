@@ -9,8 +9,10 @@ stt:
   compute_type: int8       # int8 is the fastest CPU setting in the faster-whisper benchmark
   # en = English only (Whisper). mr = Marathi only. auto = Whisper detects the language; English
   # stays with Whisper, anything else goes to the Marathi engine (Jarvis expects English or Marathi).
-  language: auto           # auto | en | mr
-  min_confidence: 0.45     # below this Jarvis asks you to repeat instead of acting
+  language: auto           # auto | en | mr (auto: English or Marathi only, see stt.py LanguageRouter)
+  hotwords: "Jarvis"       # words the decoder is nudged toward (the name was often heard as "that was")
+  min_confidence: 0.35     # below this Jarvis asks you to repeat instead of acting (Whisper's score is
+                           # pessimistic on short clips: 0.45 rejected half of good 2-second requests)
   # Marathi speech-to-text, local: indicconformer | none (none = Whisper for Marathi too, which is weak).
   # indicconformer = AI4Bharat IndicConformer Marathi (MIT), ONNX int8, 138 MB, via onnx-asr.
   # Measured 2026-10-10 on 18 FLEURS Marathi test clips: WER 23%, CER 7.6% (Whisper small is far worse).

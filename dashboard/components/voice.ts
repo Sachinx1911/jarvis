@@ -1,52 +1,64 @@
 "use client";
 
-// Voice input for Chat (and the Home ask box): push-to-talk and hands-free listening.
-// Both send the same thing to the same endpoint: a 16 kHz mono 16-bit WAV posted to
-// /api/voice/transcribe (built with lib/audio.ts). Audio is never stored in the browser.
-// Voice only ever produces chat text. It never approves anything, and text that starts
-// with "/" (a chat command, e.g. "/repeat yes") is put in the box instead of being sent.
+// The voice engine of the dashboard: one state machine for push-to-talk, "Hey Jarvis" and
+// conversation mode, shared by the Command Center and Chat.
+//
+// States follow the attention system voice assistants use (Alexa's Idle / Listening / Thinking /
+// Speaking, plus Alexa's Follow-Up Mode):
+//   off       microphone closed
+//   waiting   hands-free: microphone open, waiting for "Hey Jarvis" (judged by the server's
+//             wake-word model from the sound, not from the words)
+//   listening a request is being recorded; it ends after ~0.7 s of silence, at the latest after
+//             15 s, and gives up after 8 s with no speech at all
+//   thinking  the request was sent; waiting for Jarvis
+//   speaking  Jarvis is talking on the Mac's speakers (the server says when it ends)
+//   followup  5 s after a reply: the next request needs no wake word
+//   paused    an approval is waiting or the emergency stop is on
+// Rules: voice only ever produces chat text. It never approves anything, and "/" commands are put
+// in the box instead of being sent. Audio is never stored in the browser.
 
 import { useEffect, useRef, useState } from "react";
-import { api, upload } from "@/lib/api";
-import { micSupported, RAW_MIC, Recording, startRecording, toWav16k } from "@/lib/audio";
+import { api, post, upload } from "@/lib/api";
+import { earcon, encodeWav, MicCapture, micSupported } from "@/lib/audio";
 import { errText } from "@/lib/hooks";
 
-export const NOT_INSTALLED = "speech-to-text not installed (run voice setup)";
+export type VoiceMode = "ptt" | "wake" | "conversation";
+export type VoicePhase = "off" | "waiting" | "listening" | "thinking" | "speaking" | "followup" | "paused";
+export type VoicePrefs = { mode: VoiceMode; speak: boolean; autoSend: boolean; followUp: boolean; sounds: boolean };
+export const DEFAULT_PREFS: VoicePrefs = { mode: "wake", speak: true, autoSend: true, followUp: true, sounds: true };
+export const PREFS_KEY = "jarvis_voice_prefs";
 
-export type Stt = { ready: boolean; detail: string };
-export type Transcript = {
-  status: string; // ok | unclear | no_audio | wake_only
-  text: string;
-  heard?: string;
-  language?: string;
-  confidence?: number;
-  wake?: number; // hands-free: the local wake-word model's score for "hey Jarvis"
-  wake_hit?: boolean;
+export const MODE_LABEL: Record<VoiceMode, string> = {
+  ptt: "Push to talk",
+  wake: "“Hey Jarvis”",
+  conversation: "Conversation",
+};
+export const MODE_HELP: Record<VoiceMode, string> = {
+  ptt: "Tap the mic, speak, done. The mic is closed in between.",
+  wake: "The mic stays open; Jarvis only answers after “Hey Jarvis”.",
+  conversation: "The mic stays open and everything clear is sent. Mind other voices and the TV.",
 };
 
-// The server answers "ok" for a clear transcript (its audit log calls it "transcribed").
-export function isClear(status: string): boolean {
-  return status === "ok" || status === "transcribed";
+export function loadPrefs(): VoicePrefs {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (raw) return { ...DEFAULT_PREFS, ...JSON.parse(raw) };
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_PREFS;
 }
 
-export function transcribe(wav: ArrayBuffer, wake = false): Promise<Transcript> {
-  return upload<Transcript>(`/api/voice/transcribe${wake ? "?wake=1" : ""}`, wav, "audio/wav");
+export function savePrefs(p: VoicePrefs): void {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(p));
+  } catch {
+    /* ignore */
+  }
 }
 
-export function isCommand(text: string): boolean {
-  return text.trim().startsWith("/");
-}
-
-// "Jarvis, what's the weather?" -> "what's the weather?"; "Jarvis." -> ""; no wake word -> null.
-// Case- and punctuation-insensitive. Accepts a greeting first ("hey/ok/hi Jarvis", "हे जार्विस")
-// and the spellings speech-to-text often writes for an Indian "Jarvis" (Jervis, Javis, जर्विस...).
-const NAME = "(?:jarvis|jarvice|jarviss|jarwis|jarves|jarbis|jervis|javis|jaarvis|जार्विस|जारविस|जर्विस|जार्वीस|जारवीस|जार्विज|जारवीज)";
-const FILLER = "(?:(?:hey|hi|hello|ok|okay|हे|ए|हाय|ओके)[\\s\\p{P}]+)?";
-const WAKE = new RegExp(`^[\\s\\p{P}\\p{S}]*${FILLER}${NAME}(?=$|[\\s\\p{P}\\p{S}])[\\s\\p{P}\\p{S}]*`, "iu");
-export function stripWakeWord(text: string): string | null {
-  const m = text.match(WAKE);
-  return m ? text.slice(m[0].length).trim() : null;
-}
+export const NOT_INSTALLED = "speech-to-text not installed (run voice setup)";
+export type Stt = { ready: boolean; detail: string };
 
 export function useStt(): Stt | null {
   const [stt, setStt] = useState<Stt | null>(null);
@@ -62,340 +74,424 @@ export function notReadyText(stt: Stt): string {
   return stt.detail.startsWith(NOT_INSTALLED) ? stt.detail : `${NOT_INSTALLED}: ${stt.detail}`;
 }
 
-// Push to talk: first press records, second press transcribes. onHeard gets the text and
-// whether the server was sure (clear) or not (unclear: the caller leaves it for checking).
-export function usePushToTalk(stt: Stt | null, onHeard: (text: string, clear: boolean) => void) {
-  const [recording, setRecording] = useState<Recording | null>(null);
-  const [note, setNote] = useState("");
-  const recRef = useRef<Recording | null>(null);
-  recRef.current = recording;
-  const heard = useRef(onHeard);
-  heard.current = onHeard;
-
-  // Leaving the page while recording releases the microphone.
-  useEffect(() => () => recRef.current?.cancel(), []);
-
-  async function toggle() {
-    setNote("");
-    if (recording) {
-      setRecording(null);
-      setNote("Reading what you said…");
-      try {
-        const wav = await recording.stop();
-        const r = await transcribe(wav);
-        if (isClear(r.status)) {
-          setNote("");
-          heard.current(r.text, true);
-        } else if (r.status === "no_audio") setNote("Nothing was recorded. Try again.");
-        else if (r.heard) {
-          setNote(`Not sure I heard that right (heard "${r.heard}"). Check the text, then press Send.`);
-          heard.current(r.heard, false);
-        } else setNote("Sorry, I did not catch that. Please say it again.");
-      } catch (e) {
-        setNote(errText(e));
-      }
-      return;
-    }
-    if (stt && !stt.ready) {
-      setNote(notReadyText(stt));
-      return;
-    }
-    if (!micSupported()) {
-      setNote("This browser cannot record audio.");
-      return;
-    }
-    try {
-      setRecording(await startRecording());
-      setNote("Listening… press the button again when you are done.");
-    } catch (e) {
-      setNote(`Microphone not available: ${errText(e)}`);
-    }
-  }
-
-  return { recording, note, setNote, toggle };
-}
-
-// ---- hands-free ----
-
-export type HandsFreeMode = "wake" | "conversation";
-export type HandsFreePhase = "off" | "starting" | "listening" | "hearing" | "transcribing";
-
-const FRAME = 2048; // samples per audio callback (about 43 ms at 48 kHz)
-const END_SILENCE_S = 0.9;
-const MIN_SPEECH_S = 0.3;
-const MAX_UTTERANCE_S = 30;
-const PREROLL_S = 0.5; // keep the start of the first word ("Jarvis")
-const WAKE_MIN_CONFIDENCE = 0.28; // an unsure transcript is still used when it starts with the wake word
-const ARMED_MS = 8000; // after a bare "Jarvis", the next utterance needs no wake word
-
-type Handlers = {
-  onUtterance: (text: string) => void; // clear text, allowed to send
-  onDraft: (text: string) => void; // put in the box for checking (commands)
-  onNote: (text: string) => void;
-  onError: (text: string) => void; // the caller turns hands-free off
+export type Transcript = {
+  status: string; // ok | unclear | no_audio | wake_only
+  text: string;
+  heard?: string;
+  language?: string;
+  confidence?: number;
+  wake?: number;
+  wake_hit?: boolean;
 };
 
-// Keeps the microphone open while `enabled`. An energy detector (RMS of each audio frame
-// against a running noise floor) cuts the stream into utterances: speech starts after two
-// loud frames, ends after about 0.9 s of silence, needs about 0.3 s of speech, and is cut
-// at 30 s. Nothing is captured while `paused` (sending, Jarvis speaking, approval waiting).
-export function useHandsFree(opts: { enabled: boolean; mode: HandsFreeMode; paused: boolean } & Handlers) {
-  const [phase, setPhaseState] = useState<HandsFreePhase>("off");
-  const [armed, setArmed] = useState(false);
-  const analyserRef = useRef<AnalyserNode | null>(null); // live mic level for the waveform
+export function isCommand(text: string): boolean {
+  return text.trim().startsWith("/");
+}
+
+// "Jarvis, what's the weather?" -> "what's the weather?"; "Jarvis." -> ""; no name -> null.
+const NAME = "(?:jarvis|jarvice|jarviss|jarwis|jarves|jarbis|jervis|javis|jaarvis|जार्विस|जारविस|जर्विस|जार्वीस|जारवीस|जार्विज|जारवीज)";
+const FILLER = "(?:(?:hey|hi|hello|ok|okay|हे|ए|हाय|ओके)[\\s\\p{P}]+)?";
+const WAKE = new RegExp(`^[\\s\\p{P}\\p{S}]*${FILLER}${NAME}(?=$|[\\s\\p{P}\\p{S}])[\\s\\p{P}\\p{S}]*`, "iu");
+export function stripWakeWord(text: string): string | null {
+  const m = text.match(WAKE);
+  return m ? text.slice(m[0].length).trim() : null;
+}
+
+// ---- timing (seconds) ----
+const PREROLL = 0.5; // audio kept from before speech was noticed (the start of "Hey Jarvis")
+const END_SILENCE = 0.7; // silence that ends a request
+const MIN_SPEECH = 0.3; // shorter sounds are ignored (a cough, a click)
+const MAX_UTTERANCE = 15; // a request is cut here at the latest
+const NO_SPEECH_TIMEOUT = 8; // listening with nothing said gives up (Alexa's rule)
+const FOLLOW_UP = 5; // seconds after a reply without a wake word (Alexa's Follow-Up Mode)
+const WAKE_MIN_CONFIDENCE = 0.28; // an unsure transcript is still used after "Hey Jarvis"
+
+export type SendResult = { spoken?: boolean; chars?: number; handoff?: boolean };
+
+export type VoiceOptions = {
+  prefs: VoicePrefs;
+  handsFree: boolean; // the hands-free switch (wake or conversation mode)
+  blocked: "approval" | "stop" | null; // approvals stay click-only; the emergency stop closes the mic
+  stt: Stt | null;
+  onSend: (text: string) => Promise<SendResult>; // sends a request; resolves when the reply is in
+  onDraft: (text: string) => void; // text to show in the box (commands, unsure text)
+  onNote: (text: string) => void;
+};
+
+export function useVoice(opts: VoiceOptions) {
+  const [phase, setPhaseState] = useState<VoicePhase>("off");
+  const [heard, setHeard] = useState("");
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const micRef = useRef<MicCapture | null>(null);
+  const phaseRef = useRef<VoicePhase>("off");
   const optsRef = useRef(opts);
   optsRef.current = opts;
-  const phaseRef = useRef<HandsFreePhase>("off");
-  const setPhase = (p: HandsFreePhase) => {
+  const timers = useRef<number[]>([]);
+
+  const setPhase = (p: VoicePhase) => {
     if (phaseRef.current !== p) {
       phaseRef.current = p;
       setPhaseState(p);
     }
   };
+  const later = (ms: number, fn: () => void) => {
+    const id = window.setTimeout(fn, ms);
+    timers.current.push(id);
+    return id;
+  };
+  const clearTimers = () => {
+    timers.current.forEach((t) => window.clearTimeout(t));
+    timers.current = [];
+  };
+  const sound = (k: "start" | "end") => {
+    if (optsRef.current.prefs.sounds) earcon(k);
+  };
 
-  useEffect(() => {
-    if (!opts.enabled) {
-      setPhase("off");
-      setArmed(false);
-      return;
+  // ---- the recording session (one open microphone, cut into utterances) ----
+  const session = useRef<{
+    frames: Float32Array[];
+    preroll: Float32Array[];
+    speaking: boolean;
+    speechFrames: number;
+    silentFrames: number;
+    loudRun: number;
+    noise: number;
+    listenStart: number;
+    wantWake: boolean; // true while waiting for "Hey Jarvis" (server checks the sound)
+    busy: boolean;
+  } | null>(null);
+
+  async function openMic(): Promise<boolean> {
+    if (micRef.current) return true;
+    const o = optsRef.current;
+    if (o.stt && !o.stt.ready) {
+      o.onNote(notReadyText(o.stt));
+      return false;
     }
-    let cancelled = false;
-    let stream: MediaStream | null = null;
-    let ctx: AudioContext | null = null;
-    let source: MediaStreamAudioSourceNode | null = null;
-    let proc: ScriptProcessorNode | null = null;
-    let mute: GainNode | null = null;
-    let armedUntil = 0;
-    let armTimer = 0;
-
-    // detector state
-    let noise = 0.003;
-    let loudRun = 0;
-    let speaking = false;
-    let busy = false;
-    let frames: Float32Array[] = [];
-    let preroll: Float32Array[] = [];
-    let speechFrames = 0;
-    let silentFrames = 0;
-
-    const reset = () => {
-      speaking = false;
-      loudRun = 0;
-      frames = [];
-      speechFrames = 0;
-      silentFrames = 0;
-    };
-
-    const fail = (msg: string) => {
-      if (cancelled) return;
-      optsRef.current.onError(msg);
-    };
-
-    async function finish(chunks: Float32Array[], rate: number) {
-      busy = true;
-      setPhase("transcribing");
-      try {
-        const wav = await toWav16k(new Blob([pcmWav(chunks, rate)], { type: "audio/wav" }));
-        if (cancelled) return;
-        const o = optsRef.current;
-        const r = await transcribe(wav, o.mode === "wake");
-        if (cancelled) return;
-        if (o.mode === "wake" && r.status === "wake_only") {
-          // "Hey Jarvis" alone (heard by the wake-word model): the next request needs no wake word.
-          armedUntil = Date.now() + ARMED_MS;
-          setArmed(true);
-          window.clearTimeout(armTimer);
-          armTimer = window.setTimeout(() => setArmed(false), ARMED_MS);
-          o.onNote("Yes? I am listening.");
-          return;
-        }
-        let text = (isClear(r.status) ? r.text : "").trim();
-        if (o.mode === "wake" && r.wake_hit) {
-          // The server already cut "hey Jarvis" off; what is left is the request.
-          if (!text && r.heard && (r.confidence ?? 0) >= WAKE_MIN_CONFIDENCE) text = r.heard.trim();
-          if (!text) {
-            o.onNote(`I heard “Hey Jarvis” but not the rest${r.heard ? ` (“${r.heard}”)` : ""}. Please say it again.`);
-            return;
-          }
-          armedUntil = 0;
-          setArmed(false);
-          if (isCommand(text)) {
-            o.onDraft(text);
-            o.onNote("Commands are never sent by voice. Check the text in the box and press Send.");
-            return;
-          }
-          o.onUtterance(stripWakeWord(text) ?? text);
-          return;
-        }
-        if (!text && r.status !== "no_audio" && r.heard && o.mode === "wake") {
-          // Short phrases often come back just under the server's confidence bar. When the
-          // unsure text still starts with the wake word, the user clearly meant Jarvis: use it.
-          const rest = stripWakeWord(r.heard);
-          if (rest && (r.confidence ?? 0) >= WAKE_MIN_CONFIDENCE) text = r.heard.trim();
-        }
-        if (!text) {
-          if (r.status !== "no_audio") o.onNote(`Did not catch that${r.heard ? ` (heard "${r.heard}")` : ""}. Please say it again, a little slower.`);
-          return;
-        }
-        if (o.mode === "wake") {
-          const rest = stripWakeWord(text);
-          if (rest === null) {
-            if (Date.now() > armedUntil) {
-              // not for Jarvis: ignore it, but say what was heard so it is clear why nothing happened
-              o.onNote(`Heard “${text}”. Start with “Jarvis…” so I know it is for me (or switch to Conversation).`);
-              return;
-            }
-          } else if (!rest) {
-            armedUntil = Date.now() + ARMED_MS;
-            setArmed(true);
-            window.clearTimeout(armTimer);
-            armTimer = window.setTimeout(() => setArmed(false), ARMED_MS);
-            o.onNote("Yes? I am listening.");
-            return;
-          } else text = rest;
-        }
-        armedUntil = 0;
-        setArmed(false);
-        if (!text) return;
-        if (isCommand(text)) {
-          o.onDraft(text);
-          o.onNote("Commands are never sent by voice. Check the text in the box and press Send.");
-          return;
-        }
-        o.onUtterance(text);
-      } catch (e) {
-        fail(`Could not read speech: ${errText(e)}`);
-      } finally {
-        busy = false;
-        reset();
-        if (!cancelled) setPhase("listening");
-      }
+    if (!micSupported()) {
+      o.onNote("This browser cannot record audio.");
+      return false;
     }
-
-    async function start() {
-      setPhase("starting");
-      if (!micSupported()) return fail("This browser cannot record audio.");
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: RAW_MIC });
-      } catch (e) {
-        return fail(`Microphone not available: ${errText(e)}`);
-      }
-      if (cancelled) {
-        stream.getTracks().forEach((t) => t.stop());
-        return;
-      }
-      ctx = new AudioContext();
-      await ctx.resume().catch(() => undefined);
-      const rate = ctx.sampleRate;
-      const frameS = FRAME / rate;
-      const prerollN = Math.ceil(PREROLL_S / frameS);
-      source = ctx.createMediaStreamSource(stream);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 1024;
-      source.connect(analyser);
-      analyserRef.current = analyser;
-      proc = ctx.createScriptProcessor(FRAME, 1, 1);
-      mute = ctx.createGain();
-      mute.gain.value = 0; // the processor must reach the output to run; nothing is played
-      source.connect(proc);
-      proc.connect(mute);
-      mute.connect(ctx.destination);
-      proc.onaudioprocess = (ev) => {
-        if (cancelled || busy) return;
-        if (optsRef.current.paused) {
-          if (speaking || frames.length) reset();
-          preroll = [];
-          return;
-        }
-        const data = new Float32Array(ev.inputBuffer.getChannelData(0));
-        let sum = 0;
-        for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
-        const rms = Math.sqrt(sum / data.length);
-        const threshold = Math.max(0.008, noise * 3); // raw mic (no automatic gain) is quieter
-        if (!speaking) {
-          preroll.push(data);
-          if (preroll.length > prerollN) preroll.shift();
-          if (rms > threshold) {
-            loudRun += 1;
-            if (loudRun >= 2) {
-              speaking = true;
-              frames = [...preroll];
-              preroll = [];
-              speechFrames = loudRun;
-              silentFrames = 0;
-              setPhase("hearing");
-            }
-          } else {
-            loudRun = 0;
-            noise = noise * 0.95 + rms * 0.05;
-            if (phaseRef.current !== "listening") setPhase("listening");
-          }
-          return;
-        }
-        frames.push(data);
-        if (rms > threshold * 0.8) {
-          speechFrames += 1;
-          silentFrames = 0;
-        } else silentFrames += 1;
-        const ended = silentFrames * frameS >= END_SILENCE_S || frames.length * frameS >= MAX_UTTERANCE_S;
-        if (!ended) return;
-        const chunks = frames;
-        const enough = speechFrames * frameS >= MIN_SPEECH_S;
-        reset();
-        if (enough) void finish(chunks, rate);
-        else setPhase("listening");
-      };
-      setPhase("listening");
-    }
-
-    void start();
-    return () => {
-      cancelled = true;
-      window.clearTimeout(armTimer);
-      if (proc) proc.onaudioprocess = null;
-      analyserRef.current?.disconnect();
-      analyserRef.current = null;
-      proc?.disconnect();
-      source?.disconnect();
-      mute?.disconnect();
-      ctx?.close().catch(() => undefined);
-      stream?.getTracks().forEach((t) => t.stop()); // release the microphone
-      phaseRef.current = "off";
-      setPhaseState("off");
-      setArmed(false);
-    };
-    // Only switching on/off restarts the microphone; the rest is read through optsRef.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opts.enabled]);
-
-  return { phase, armed, analyserRef };
-}
-
-// Float samples at the AudioContext rate -> a plain WAV that toWav16k can decode and resample.
-function pcmWav(chunks: Float32Array[], rate: number): ArrayBuffer {
-  const n = chunks.reduce((a, c) => a + c.length, 0);
-  const buf = new ArrayBuffer(44 + n * 2);
-  const v = new DataView(buf);
-  const str = (o: number, s: string) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
-  str(0, "RIFF");
-  v.setUint32(4, 36 + n * 2, true);
-  str(8, "WAVE");
-  str(12, "fmt ");
-  v.setUint32(16, 16, true);
-  v.setUint16(20, 1, true);
-  v.setUint16(22, 1, true);
-  v.setUint32(24, rate, true);
-  v.setUint32(28, rate * 2, true);
-  v.setUint16(32, 2, true);
-  v.setUint16(34, 16, true);
-  str(36, "data");
-  v.setUint32(40, n * 2, true);
-  let o = 44;
-  for (const c of chunks) {
-    for (let i = 0; i < c.length; i++, o += 2) {
-      const s = Math.max(-1, Math.min(1, c[i]));
-      v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    try {
+      const mic = await MicCapture.open();
+      micRef.current = mic;
+      analyserRef.current = mic.analyser;
+      mic.onFrame = onFrame;
+      session.current = { frames: [], preroll: [], speaking: false, speechFrames: 0, silentFrames: 0, loudRun: 0,
+        noise: 0.003, listenStart: 0, wantWake: false, busy: false };
+      return true;
+    } catch (e) {
+      o.onNote(`Microphone not available: ${errText(e)}`);
+      return false;
     }
   }
-  return buf;
+
+  function closeMic() {
+    micRef.current?.close();
+    micRef.current = null;
+    analyserRef.current = null;
+    session.current = null;
+  }
+
+  // Begin a request: either armed (after a tap, "Hey Jarvis" or during follow-up) or waiting
+  // for the wake word (hands-free in wake mode).
+  function beginListening(wantWake: boolean) {
+    const s = session.current;
+    if (!s) return;
+    clearTimers();
+    s.frames = [];
+    s.preroll = [];
+    s.speaking = false;
+    s.speechFrames = s.silentFrames = s.loudRun = 0;
+    s.listenStart = Date.now();
+    s.wantWake = wantWake;
+    setPhase(wantWake ? "waiting" : "listening");
+    if (!wantWake) {
+      sound("start");
+      later(NO_SPEECH_TIMEOUT * 1000, () => {
+        if (phaseRef.current === "listening" && !session.current?.speaking) {
+          optsRef.current.onNote("I did not hear anything.");
+          afterRequest();
+        }
+      });
+    }
+  }
+
+  // What happens when a request is over: hands-free goes back to waiting, push-to-talk closes.
+  function afterRequest() {
+    const o = optsRef.current;
+    if (o.handsFree && o.prefs.mode !== "ptt" && o.blocked === null) beginListening(o.prefs.mode === "wake");
+    else {
+      closeMic();
+      setPhase("off");
+    }
+  }
+
+  function onFrame({ samples, rms }: { samples: Float32Array; rms: number }) {
+    const s = session.current;
+    const mic = micRef.current;
+    if (!s || !mic || s.busy) return;
+    const ph = phaseRef.current;
+    if (ph !== "waiting" && ph !== "listening" && ph !== "followup") return;
+    const frameS = samples.length / mic.rate;
+    const prerollN = Math.ceil(PREROLL / frameS);
+    const threshold = Math.max(0.008, s.noise * 3);
+    if (!s.speaking) {
+      s.preroll.push(samples);
+      if (s.preroll.length > prerollN) s.preroll.shift();
+      if (rms > threshold) {
+        s.loudRun += 1;
+        if (s.loudRun >= 2) {
+          s.speaking = true;
+          s.frames = [...s.preroll];
+          s.preroll = [];
+          s.speechFrames = s.loudRun;
+          s.silentFrames = 0;
+          if (ph !== "waiting") clearTimers(); // speech arrived: no no-speech timeout
+        }
+      } else {
+        s.loudRun = 0;
+        s.noise = s.noise * 0.95 + rms * 0.05;
+      }
+      return;
+    }
+    s.frames.push(samples);
+    if (rms > threshold * 0.8) {
+      s.speechFrames += 1;
+      s.silentFrames = 0;
+    } else s.silentFrames += 1;
+    const ended = s.silentFrames * frameS >= END_SILENCE || s.frames.length * frameS >= MAX_UTTERANCE;
+    if (!ended) return;
+    const chunks = s.frames;
+    const enough = s.speechFrames * frameS >= MIN_SPEECH;
+    s.frames = [];
+    s.speaking = false;
+    s.speechFrames = s.silentFrames = s.loudRun = 0;
+    if (enough) void finish(chunks, mic.rate, ph === "waiting" && s.wantWake);
+  }
+
+  async function finish(chunks: Float32Array[], rate: number, needWake: boolean) {
+    const s = session.current;
+    if (!s) return;
+    s.busy = true;
+    const o = optsRef.current;
+    try {
+      const wav = encodeWav(chunks, rate);
+      const r = await upload<Transcript>(`/api/voice/transcribe${needWake ? "?wake=1" : ""}`, wav, "audio/wav");
+      if (!session.current) return;
+      if (needWake) {
+        if (r.status === "wake_only") {
+          s.busy = false;
+          beginListening(false); // "Hey Jarvis" alone: now listen for the request
+          o.onNote("Yes?");
+          return;
+        }
+        if (!r.wake_hit) {
+          // Not for Jarvis (no wake word in the sound). Say what was heard, keep waiting.
+          if (r.heard && r.status !== "no_audio") setHeard(r.heard);
+          return;
+        }
+      }
+      let text = (r.status === "ok" ? r.text : "").trim();
+      if (!text && r.heard && (needWake || ph() === "listening" || ph() === "followup")) {
+        if ((r.confidence ?? 0) >= WAKE_MIN_CONFIDENCE && (needWake || stripWakeWord(r.heard) !== null)) text = r.heard.trim();
+      }
+      if (!text) {
+        if (r.status !== "no_audio") o.onNote(`I did not catch that${r.heard ? ` (heard “${r.heard}”)` : ""}. Please say it again.`);
+        return;
+      }
+      text = stripWakeWord(text) ?? text;
+      if (!text) {
+        beginListening(false);
+        o.onNote("Yes?");
+        return;
+      }
+      sound("end");
+      setHeard(text);
+      if (isCommand(text)) {
+        o.onDraft(text);
+        o.onNote("Commands are never sent by voice. Check the text in the box and press Send.");
+        return;
+      }
+      if (!o.prefs.autoSend) {
+        o.onDraft(text);
+        o.onNote("Check the text, then press Send.");
+        return;
+      }
+      await sendAndSpeak(text);
+      return; // sendAndSpeak decides what comes next
+    } catch (e) {
+      o.onNote(`Could not read speech: ${errText(e)}`);
+    } finally {
+      if (session.current) session.current.busy = false;
+    }
+    // back to the state we were in (waiting / listening continues)
+    if (phaseRef.current === "listening" && !needWake) afterRequest();
+  }
+
+  const ph = () => phaseRef.current;
+
+  async function sendAndSpeak(text: string) {
+    const o = optsRef.current;
+    clearTimers();
+    setPhase("thinking");
+    let res: SendResult = {};
+    try {
+      res = await o.onSend(text);
+    } catch (e) {
+      o.onNote(errText(e));
+    }
+    if (res.handoff) return; // another page took over (Command Center -> Chat)
+    if (res.spoken) {
+      setPhase("speaking");
+      await waitForSpeech(res.chars ?? 0);
+    }
+    const p = optsRef.current;
+    if (p.prefs.followUp && micRef.current && p.blocked === null) {
+      setPhase("followup");
+      const s = session.current;
+      if (s) {
+        s.frames = [];
+        s.preroll = [];
+        s.speaking = false;
+        s.wantWake = false;
+        s.busy = false;
+      }
+      later(FOLLOW_UP * 1000, () => {
+        if (phaseRef.current === "followup" && !session.current?.speaking) afterRequest();
+      });
+      return;
+    }
+    afterRequest();
+  }
+
+  // Jarvis speaks on the Mac's speakers; the server knows when the sound ends.
+  async function waitForSpeech(chars: number) {
+    const cap = Math.min(60, chars / 12 + 3) * 1000;
+    const start = Date.now();
+    while (Date.now() - start < cap) {
+      await new Promise((r) => window.setTimeout(r, 350));
+      if (phaseRef.current !== "speaking") return; // interrupted
+      try {
+        const r = await api<{ speaking: boolean }>("/api/voice/speaking");
+        if (!r.speaking) return;
+      } catch {
+        return;
+      }
+    }
+  }
+
+  // ---- public actions ----
+
+  /** The mic button. Listening -> finish now. Speaking -> interrupt. Otherwise start a request. */
+  async function tap() {
+    const p = phaseRef.current;
+    const o = optsRef.current;
+    if (o.blocked === "stop") return o.onNote("Emergency stop is on.");
+    if (o.blocked === "approval") return o.onNote("An approval is waiting. Approvals are click-only.");
+    if (p === "speaking") {
+      await post("/api/voice/stop").catch(() => undefined);
+      setPhase("thinking"); // waitForSpeech sees the change and ends
+      return;
+    }
+    if (p === "listening") {
+      const s = session.current;
+      const mic = micRef.current;
+      if (s && mic && s.speaking && s.frames.length) {
+        const chunks = s.frames;
+        s.frames = [];
+        s.speaking = false;
+        void finish(chunks, mic.rate, false);
+      } else afterRequest();
+      return;
+    }
+    if (p === "thinking") return;
+    if (!(await openMic())) return;
+    beginListening(false);
+  }
+
+  /** A request that arrived from elsewhere (the Command Center's stage): run it through the
+   * same thinking -> speaking -> follow-up path, with the mic open when hands-free is on. */
+  async function submit(text: string) {
+    const o = optsRef.current;
+    if (o.handsFree && o.prefs.mode !== "ptt" && o.blocked === null && !micRef.current) await openMic();
+    setHeard(text);
+    await sendAndSpeak(text);
+  }
+
+  /** Stop everything and close the microphone. */
+  function stopAll() {
+    clearTimers();
+    closeMic();
+    setPhase("off");
+    setHeard("");
+  }
+
+  // Hands-free switch and blocking (approval / emergency stop).
+  useEffect(() => {
+    const o = opts;
+    if (o.blocked !== null) {
+      if (phaseRef.current !== "off") {
+        clearTimers();
+        closeMic();
+        setPhase(o.blocked === "stop" ? "off" : "paused");
+      }
+      return;
+    }
+    if (o.handsFree && o.prefs.mode !== "ptt") {
+      if (!micRef.current && phaseRef.current !== "thinking" && phaseRef.current !== "speaking") {
+        void openMic().then((ok) => {
+          if (ok) beginListening(o.prefs.mode === "wake");
+        });
+      } else if (phaseRef.current === "waiting" || phaseRef.current === "paused") {
+        beginListening(o.prefs.mode === "wake");
+      }
+    } else if (phaseRef.current === "waiting" || phaseRef.current === "paused") {
+      stopAll();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opts.handsFree, opts.prefs.mode, opts.blocked]);
+
+  // Leaving the page releases the microphone.
+  useEffect(() => () => stopAll(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return { phase, heard, analyserRef, tap, submit, stopAll, micOpen: micRef.current !== null };
+}
+
+export function phaseWord(phase: VoicePhase, mode: VoiceMode): string {
+  switch (phase) {
+    case "waiting":
+      return mode === "conversation" ? "Listening" : "Say “Hey Jarvis”";
+    case "listening":
+      return "Listening…";
+    case "thinking":
+      return "Thinking…";
+    case "speaking":
+      return "Speaking";
+    case "followup":
+      return "Listening (follow-up)";
+    case "paused":
+      return "Paused";
+    default:
+      return mode === "ptt" ? "Tap to talk" : "Voice off";
+  }
+}
+
+export function phaseHint(phase: VoicePhase, mode: VoiceMode): string {
+  switch (phase) {
+    case "waiting":
+      return mode === "conversation" ? "Just talk. Tap to stop." : "The mic is open. Say “Hey Jarvis” and your request.";
+    case "listening":
+      return "Speak naturally. Tap to send now.";
+    case "thinking":
+      return "Working on it…";
+    case "speaking":
+      return "Tap to interrupt.";
+    case "followup":
+      return "Ask the next thing; no wake word needed.";
+    case "paused":
+      return "An approval is waiting. Approvals are click-only.";
+    default:
+      return mode === "ptt" ? "Tap the mic and speak." : "Turn on hands-free, or tap the mic.";
+  }
 }

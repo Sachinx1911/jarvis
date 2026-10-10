@@ -1,9 +1,11 @@
 """Voice in the dashboard.
 
-- The browser records with MediaRecorder, converts to 16 kHz mono 16-bit WAV itself (Web
-  Audio API), and posts the raw WAV here. The existing speech-to-text engine
-  (jarvis/voice/stt.py) transcribes it locally. If faster-whisper or its model is missing,
-  the answer says so; nothing is downloaded.
+- The page records plain 16-bit mono WAV at the microphone's own rate and posts it here; the
+  server resamples to 16 kHz and evens out the level (jarvis/voice/audio_tools.py). The
+  existing speech-to-text engine (jarvis/voice/stt.py) transcribes it locally. If faster-whisper
+  or its model is missing, the answer says so; nothing is downloaded.
+- GET /voice/speaking says whether a spoken reply is still playing (the page waits for it
+  before listening again); POST /voice/stop interrupts it (barge-in by tap).
 - Audio is transcribed in memory and dropped (stored only if voice.yaml says store_audio).
 - Low confidence returns "unclear" instead of guessing. The text goes into the chat box;
   Sachin sends it.
@@ -85,12 +87,15 @@ def build_router(ctx: WebContext) -> APIRouter:
         with ctx.runtime() as rt:
             home, audit = rt.paths.home, rt.audit
         cfg = voice_cfg()
+        from jarvis.voice.audio_tools import normalize_peak, to_16k
+
         try:
             audio = Audio.from_wav(data)
         except Exception:
             raise HTTPException(400, "expected a mono 16-bit WAV recording")
-        if audio.sample_rate != 16000:
-            raise HTTPException(400, "expected 16 kHz audio")
+        if not 8000 <= audio.sample_rate <= 96000:
+            raise HTTPException(400, "unsupported sample rate")
+        audio = normalize_peak(to_16k(audio))
         if audio.seconds < 0.2:
             return {"status": "no_audio", "text": ""}
         # Hands-free asks whether the clip starts with "hey Jarvis", judged from the sound by the
@@ -134,6 +139,22 @@ def build_router(ctx: WebContext) -> APIRouter:
         return {"status": status, "text": t.text if status == "ok" else "", "heard": t.text,
                 "language": t.language, "confidence": round(t.confidence, 3), **wake_info}
 
+    @r.get("/voice/speaking")
+    def voice_speaking() -> dict[str, Any]:
+        pb = ctx.extra.get("speech_playback")
+        playing = bool(pb is not None and pb.is_playing())
+        if not playing:
+            ctx.extra.pop("speech_playback", None)
+        return {"speaking": playing}
+
+    @r.post("/voice/stop")
+    def voice_stop() -> dict[str, Any]:
+        pb = ctx.extra.pop("speech_playback", None)
+        if pb is not None:
+            pb.stop()
+            ctx.audit.write("voice_tts_stopped", source="dashboard")
+        return {"stopped": pb is not None}
+
     @r.post("/voice/transcribe")
     async def voice_transcribe(request: Request) -> dict[str, Any]:
         chunks, size = [], 0
@@ -165,6 +186,10 @@ def speak_reply(ctx: WebContext, text: str) -> dict[str, Any]:
             speech = make_speech(load_voice_config(ctx.config_dir), default_paths().home, ctx.audit)
         # P1 = an ordinary reply. SpeechOutput withholds P3 text and keeps P2+ off the cloud voice.
         res = speech.speak(text, sensitivity="P1")
+        old = ctx.extra.get("speech_playback")
+        if old is not None and old is not res.playback:
+            old.stop()  # a new reply replaces one still playing
+        ctx.extra["speech_playback"] = res.playback
     except VoiceUnavailable as e:
         return {"spoken": False, "detail": str(e)}
     except Exception as e:  # speech must never break the chat
