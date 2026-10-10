@@ -34,6 +34,7 @@ def isolated(tmp_path, monkeypatch):
     The real OS secret store and the real data folders are never touched.
     """
     monkeypatch.setenv("JARVIS_HOME", str(tmp_path))
+    monkeypatch.setenv("JARVIS_LOCAL_CONFIG", str(tmp_path / "no-local.yaml"))  # ignore config/local.yaml
     previous = keyring.get_keyring()
     keyring.set_keyring(MemoryKeyring())
     yield tmp_path

@@ -31,7 +31,7 @@ from typing import Protocol
 
 import yaml
 
-from jarvis.paths import CONFIG_DIR
+from jarvis.paths import CONFIG_DIR, local_config_path
 from jarvis.providers.base import ToolSpec
 from jarvis.tools.files import PathDenied, PathPolicy
 from jarvis.tools.registry import Tool
@@ -53,7 +53,7 @@ def load_coder_config(config_dir: Path = CONFIG_DIR) -> dict:
         data = yaml.safe_load(p.read_text(encoding="utf-8")) if p.exists() else {}
         return data if isinstance(data, dict) else {}
     cfg = read(config_dir / "coder.yaml")
-    cfg.update(read(config_dir / "local.yaml").get("coder_file") or {})
+    cfg.update(read(local_config_path(config_dir)).get("coder_file") or {})
     return cfg
 
 
