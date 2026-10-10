@@ -119,3 +119,12 @@ def test_live_run_uses_the_chat_route_with_a_fake_provider(tmp_path, monkeypatch
     assert len(results) == 4 and path.exists()
     assert {r.id for r in results if r.passed} == {"ku-1", "ku-2"}
     assert "Stale-answer rate (knowledge-update): 0/4" in me.format_live(results)
+
+
+def test_past_marker_needs_a_whole_latin_word():
+    from jarvis.evals.memory_eval import _as_current
+
+    # "kadhi" (when) contains "adhi" but is not a past word: the value is still current.
+    assert _as_current("pune", "tu kadhi pune la jatos? tu pune madhe rahtos")
+    assert not _as_current("pune", "adhi pune madhe rahat hota")
+    assert not _as_current("पुणे", "पूर्वी पुणे येथे राहत होता")

@@ -247,10 +247,28 @@ def _clauses(low: str) -> list[str]:
     return [c.strip() for c in re.split(r"[.!?;()\n।]|\s-\s|^-\s", low) if c.strip()]
 
 
+# Romanized words that contain a past marker but are not past words ("kadhi" = when).
+NOT_PAST_WORDS = re.compile(r"(?<![a-z])kadhi[a-z]*")
+
+
+def _has_past_marker(clause: str) -> bool:
+    """Romanized Marathi attaches "adhi" to the word before it ("tyaadhi" = before that), so Latin
+    markers must end at a word edge but may start inside a word; known false words are removed first.
+    Devanagari markers match as substrings (vowel signs are not word characters)."""
+    latin = NOT_PAST_WORDS.sub(" ", clause)
+    for m in PAST_MARKERS:
+        if m.isascii():
+            if re.search(rf"{re.escape(m.strip())}(?![a-z])", latin):
+                return True
+        elif m in clause:
+            return True
+    return False
+
+
 def _as_current(value: str, low: str) -> bool:
     """The value appears in some clause that does not put it in the past."""
     v = value.lower()
-    return any(v in c and not any(m in f" {c} " for m in PAST_MARKERS) for c in _clauses(low))
+    return any(v in c and not _has_past_marker(c) for c in _clauses(low))
 
 
 def check_answer(q: dict[str, Any], output: str) -> tuple[bool, bool, str]:
