@@ -49,9 +49,16 @@ def _redact_messages(messages: list[Message]) -> tuple[list[Message], int]:
     return out, total
 
 
+class BudgetExceeded(Exception):
+    pass
+
+
 class AgentLoop:
+    """on_usage(resp) is called after every model call; it may raise BudgetExceeded."""
+
     def __init__(self, provider: ReasoningProvider, decision: RouteDecision, tools: ToolRegistry,
-                 store: Store, audit: AuditLog, stop: StopSwitch, max_steps: int = MAX_STEPS):
+                 store: Store, audit: AuditLog, stop: StopSwitch, max_steps: int = MAX_STEPS,
+                 task_id: str | None = None, on_usage=None, agent: str = "jarvis"):
         self.provider = provider
         self.decision = decision
         self.tools = tools
@@ -59,6 +66,9 @@ class AgentLoop:
         self.audit = audit
         self.stop = stop
         self.max_steps = max_steps
+        self.task_id = task_id
+        self.on_usage = on_usage
+        self.agent = agent
 
     def run(self, history: list[Message], system: str, session_id: str) -> LoopResult:
         for step in range(1, self.max_steps + 1):
@@ -74,6 +84,8 @@ class AgentLoop:
             )
             resp = self.provider.generate(req)
             self._record(resp, session_id)
+            if self.on_usage:
+                self.on_usage(resp)
             assistant = resp.to_message()
             history.append(assistant)
             self.store.add_message(session_id, assistant)
@@ -86,7 +98,7 @@ class AgentLoop:
             results = []
             for call in resp.tool_calls:
                 self.stop.check()
-                results.append(self.tools.execute(call, task_id=session_id))
+                results.append(self.tools.execute(call, task_id=self.task_id or session_id, agent=self.agent))
             tool_msg = Message("tool", list(results))
             history.append(tool_msg)
             self.store.add_message(session_id, tool_msg)
@@ -95,9 +107,9 @@ class AgentLoop:
         return LoopResult("I stopped after too many steps, sir. Please try a simpler request.", self.max_steps, "step_limit")
 
     def _record(self, resp: LLMResponse, session_id: str) -> None:
-        self.store.record_usage(session_id, self.decision.route, resp)
+        self.store.record_usage(session_id, self.decision.route, resp, task_id=self.task_id)
         self.audit.write(
-            "model_call", session_id=session_id, route=self.decision.route, provider=resp.provider,
+            "model_call", session_id=session_id, task_id=self.task_id, agent=self.agent, route=self.decision.route, provider=resp.provider,
             model=resp.model, stop_reason=resp.stop_reason, input_tokens=resp.usage.input_tokens,
             output_tokens=resp.usage.output_tokens, cost_usd=resp.cost_usd, latency_ms=resp.latency_ms,
             tool_calls=[c.name for c in resp.tool_calls],

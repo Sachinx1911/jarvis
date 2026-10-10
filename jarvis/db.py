@@ -9,7 +9,7 @@ from pathlib import Path
 
 from jarvis.providers.base import LLMResponse, Message, TextPart, ToolCall, ToolResult
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS tasks (
@@ -96,7 +96,35 @@ CREATE VIRTUAL TABLE IF NOT EXISTS session_text USING fts5(
 );
 """
 
-_MIGRATIONS = {1: _SCHEMA_V1, 2: _SCHEMA_V2}
+# v3: task system (PLAN.md section 10) and notional cost for subscription calls.
+_SCHEMA_V3 = """
+ALTER TABLE tasks ADD COLUMN goal TEXT NOT NULL DEFAULT '';
+ALTER TABLE tasks ADD COLUMN project TEXT;
+ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 2;
+ALTER TABLE tasks ADD COLUMN deadline TEXT;
+ALTER TABLE tasks ADD COLUMN owner TEXT NOT NULL DEFAULT 'jarvis';
+ALTER TABLE tasks ADD COLUMN budget TEXT;
+ALTER TABLE tasks ADD COLUMN plan TEXT;
+ALTER TABLE tasks ADD COLUMN checkpoint TEXT;
+ALTER TABLE tasks ADD COLUMN last_error TEXT;
+ALTER TABLE tasks ADD COLUMN retries INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE tasks ADD COLUMN current_step TEXT;
+ALTER TABLE model_usage ADD COLUMN notional_usd REAL;
+ALTER TABLE tool_runs ADD COLUMN agent TEXT;
+CREATE INDEX IF NOT EXISTS task_events_task ON task_events(task_id);
+CREATE INDEX IF NOT EXISTS model_usage_task ON model_usage(task_id);
+CREATE INDEX IF NOT EXISTS tool_runs_task ON tool_runs(task_id);
+"""
+
+_MIGRATIONS = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3}
+
+
+def notional_usd(resp: LLMResponse) -> float | None:
+    """What the call would cost at API prices: real cost if billed, else the CLI's estimate."""
+    if resp.cost_usd is not None:
+        return resp.cost_usd
+    value = (resp.adapter_state or {}).get("notional_usd")
+    return float(value) if isinstance(value, (int, float)) else None
 
 
 def _part_to_json(part: TextPart | ToolCall | ToolResult) -> dict:
@@ -145,12 +173,12 @@ class Store:
     def record_usage(self, session_id: str | None, route: str, resp: LLMResponse, task_id: str | None = None) -> None:
         self.conn.execute(
             """INSERT INTO model_usage (session_id, task_id, route, provider, model, input_tokens,
-               output_tokens, cached_tokens, cost_usd, latency_ms, stop_reason)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               output_tokens, cached_tokens, cost_usd, latency_ms, stop_reason, notional_usd)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 session_id, task_id, route, resp.provider, resp.model,
                 resp.usage.input_tokens, resp.usage.output_tokens, resp.usage.cached_tokens,
-                resp.cost_usd, resp.latency_ms, resp.stop_reason,
+                resp.cost_usd, resp.latency_ms, resp.stop_reason, notional_usd(resp),
             ),
         )
         self.conn.commit()

@@ -1054,8 +1054,8 @@ This project runs for many days. Work stops and resumes, sometimes on this lapto
 ## 20. Development rules (for Claude Code)
 
 1. Inspect existing files first; don't change code right away.
-2. One phase at a time, only after Sachin says "Start Phase X".
-3. After each phase: tests, a report of what changed, then stop.
+2. Keep working through the phases (Sachin, 2026-10-10). Items that need his confirmation are parked in PROGRESS.md ("Waiting for Sachin"); independent work continues. Parallel agents, each owning its own files.
+3. After each phase: tests and a record of what changed in PROGRESS.md, then continue. Final testing on Claude Fable.
 4. Explain the reason before adding a new package.
 5. No secrets, tokens or personal data in code.
 6. Permissions, approvals, logs and tests are core features, not polish.

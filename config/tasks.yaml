@@ -1,0 +1,20 @@
+# Task system and agent team settings (PLAN.md sections 9 and 10).
+# Machine-specific changes go in config/local.yaml under tasks_file.
+
+budget:                 # per task, all agents together
+  max_model_calls: 60
+  max_tokens: 1500000   # input + output
+  max_notional_usd: 3.0 # what the calls would cost at API prices (subscription is not billed per call)
+  max_steps_per_agent: 8
+
+team:
+  max_parallel_researchers: 3
+  max_revisions: 1      # writer gets one chance to fix what the checker found
+
+# Worker model profiles. "Sachin's decision, test both" (PLAN.md 16): run a task with
+# --workers opus or --workers sonnet and compare. The default is used when no flag is given.
+workers:
+  default: opus
+  profiles:
+    opus:   {model: claude-opus-5-5, effort: low}
+    sonnet: {model: claude-sonnet-5-5, effort: medium}

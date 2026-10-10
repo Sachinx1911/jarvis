@@ -60,7 +60,12 @@ class ToolRegistry:
     def specs(self) -> list[ToolSpec]:
         return [t.spec for t in self._tools.values() if t.enabled and t.tier != "T4"]
 
-    def execute(self, call: ToolCall, task_id: str | None = None) -> ToolResult:
+    def restrict(self, names: set[str]) -> None:
+        """Keep only these tools (agent allowlists)."""
+        self._tools = {k: v for k, v in self._tools.items() if k in names}
+
+    def execute(self, call: ToolCall, task_id: str | None = None, agent: str | None = None) -> ToolResult:
+        self._agent = agent
         tool = self._tools.get(call.name)
         if tool is None or not tool.enabled:
             return self._finish(call, tool, task_id, f"unknown or disabled tool: {call.name}", "refused", False)
@@ -105,12 +110,13 @@ class ToolRegistry:
                 ok: bool, verified: bool | None = None) -> ToolResult:
         tier = tool.tier if tool else "?"
         self.store.conn.execute(
-            "INSERT INTO tool_runs (task_id, tool, tier, arguments, result, ok) VALUES (?, ?, ?, ?, ?, ?)",
-            (task_id, call.name, tier, json.dumps(call.arguments, ensure_ascii=False), content[:2000], int(ok)),
+            "INSERT INTO tool_runs (task_id, tool, tier, arguments, result, ok, agent) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (task_id, call.name, tier, json.dumps(call.arguments, ensure_ascii=False), content[:4000], int(ok),
+             getattr(self, "_agent", None)),
         )
         self.store.conn.commit()
         self.audit.write(
-            "tool_run", tool=call.name, tier=tier, arguments=call.arguments, decision=decision, ok=ok,
+            "tool_run", tool=call.name, agent=getattr(self, "_agent", None), tier=tier, arguments=call.arguments, decision=decision, ok=ok,
             verified=verified, output_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
             tainted=self.tainted,
         )

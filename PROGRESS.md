@@ -5,7 +5,7 @@ Ending a session: update this file and commit.
 
 ## Current status
 
-- **Phase:** Phase 2 built. Done-when met on Claude via subscription: 10/10 tool tasks verified, prompt-injection page blocked, no T4 action ran. Waiting for Sachin to review before Phase 3.
+- **Phase:** Phase 3 in progress (task store, schema v3 done). Phase 2 built. Done-when met on Claude via subscription: 10/10 tool tasks verified, prompt-injection page blocked, no T4 action ran. Waiting for Sachin to review before Phase 3.
 - **AI provider now:** Claude through Sachin's Claude Max subscription, via the local Claude Code CLI (`claude -p`), adapter `jarvis/providers/claude_code.py`. No API key, no per-call billing; calls count against the plan's usage limits. Main chat: Opus 5.5 (medium). Memory enrichment/extraction: Haiku 5.5 (low). The Anthropic API adapter (`claude.py`) stays but is not approved in `config/routing.yaml`.
 - **Code:** Phase 0 (provider interface, fake + Claude Code + Claude API adapters, routing, SQLite, audit, keyring, CLI) plus Phase 1:
   - `jarvis/memory/`: markdown memory files + SQLite index (FTS5 unicode61 + trigram, RRF, gate, recency boost), `/remember`, two-step extractor (quote required, ADD/UPDATE/SUPERSEDE/NOOP/REJECT), MEMORY.md index.
@@ -30,6 +30,12 @@ Ending a session: update this file and commit.
 - **Half-done work:** None.
 - **Last update:** 2026-10-10, office laptop (Windows 11, Python 3.12).
 - **GitHub:** Pushed to `main` on 2026-10-10 (up to Phase 2) with Sachin's OK.
+
+## Waiting for Sachin
+
+Parked items. Work that does not depend on them continues.
+
+- (none yet)
 
 ## Next step
 
