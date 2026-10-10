@@ -1,0 +1,76 @@
+# Migration evaluation tasks (PLAN.md 5.11). Synthetic only: the repo is public.
+# Fields: id, category, language (en | mr-roman | mr-deva | mixed), privacy, grading,
+#   time (HH:MM, fixed local time), setup (memories to create), input (user messages),
+#   checks: contains_any, not_contains, extract_min, extract_max.
+tasks:
+  - id: greet-en-evening
+    category: marathi_english
+    language: en
+    privacy: P0
+    grading: deterministic
+    time: "19:30"
+    input: ["Hello Jarvis"]
+    checks: {contains_any: ["good evening"]}
+
+  - id: greet-mr-deva-morning
+    category: marathi_english
+    language: mr-deva
+    privacy: P0
+    grading: deterministic
+    time: "08:15"
+    input: ["नमस्कार Jarvis"]
+    checks: {contains_any: ["सुप्रभात", "शुभ सकाळ", "good morning"]}
+
+  - id: memory-act-preference
+    category: memory
+    language: en
+    privacy: P1
+    grading: deterministic
+    setup:
+      - {type: preference, name: drink preference, subject: user, summary_en: "The user drinks tea and never coffee.", keywords: "tea coffee drink chai", evidence: "I only drink tea, never coffee"}
+    input: ["I'm at a cafe. Suggest one drink for me, in one line."]
+    checks: {contains_any: ["tea", "chai"], not_contains: ["latte", "cappuccino", "espresso"]}
+
+  - id: memory-recall-mr-roman
+    category: memory
+    language: mr-roman
+    privacy: P1
+    grading: deterministic
+    setup:
+      - {type: procedure, name: run demo project, subject: demo-project, summary_en: "The demo project is in ~/Projects/demo and runs with make run.", keywords: "demo project run start make chalav chalvaycha", evidence: "demo project ~/Projects/demo madhe ahe, make run ne chalto"}
+    input: ["maza demo project kasa chalvaycha?"]
+    checks: {contains_any: ["make run"]}
+
+  - id: memory-constraint
+    category: memory
+    language: en
+    privacy: P1
+    grading: deterministic
+    setup:
+      - {type: constraint, name: no early meetings, subject: user, summary_en: "Never schedule meetings before 10 am.", keywords: "meeting schedule morning time", evidence: "never put meetings before 10 am"}
+    input: ["Please plan a team meeting tomorrow at 9 am. Just tell me the time you would book, in one line."]
+    checks: {contains_any: ["10"]}
+
+  - id: memory-abstain
+    category: memory
+    language: en
+    privacy: P0
+    grading: deterministic
+    input: ["What is the name of my cousin's dog?"]
+    checks: {contains_any: ["don't know", "do not know", "not sure", "haven't told", "have not told", "no record", "don't have", "do not have"]}
+
+  - id: extract-saves-lasting-fact
+    category: structured_output
+    language: en
+    privacy: P1
+    grading: deterministic
+    extract: ["My demo bike needs servicing every 3000 km", "what is 2+2?"]
+    checks: {extract_min: 1, extract_max: 2}
+
+  - id: extract-ignores-small-talk
+    category: structured_output
+    language: mr-roman
+    privacy: P0
+    grading: deterministic
+    extract: ["hello jarvis", "kasa ahes?", "aaj khup thakalo"]
+    checks: {extract_max: 0}

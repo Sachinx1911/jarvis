@@ -12,3 +12,9 @@ routes:
     needs: []
     max_privacy: P1
     cloud_fallback: never    # never | ask | allowed (used from Stage C)
+  memory_extractor:          # also: "remember this" enrichment
+    candidates:
+      - {provider: claude_code, model: claude-haiku-5-5, effort: low}
+    needs: [structured_output]
+    max_privacy: P1
+    cloud_fallback: never

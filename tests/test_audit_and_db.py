@@ -7,9 +7,11 @@ from jarvis.providers.base import Message, ToolCall
 
 def test_audit_redacts_secrets(tmp_path):
     log = AuditLog(tmp_path / "audit.jsonl")
-    log.write("x", api_key="abc", nested={"Authorization": "Bearer z"}, note="key sk-ant-abc123 leaked")
+    log.write("x", api_key="abc", access_token="t", input_tokens=12, nested={"Authorization": "Bearer z"},
+              note="key sk-ant-abc123 leaked")
     record = json.loads((tmp_path / "audit.jsonl").read_text(encoding="utf-8"))
-    assert record["api_key"] == REDACTED
+    assert record["api_key"] == REDACTED and record["access_token"] == REDACTED
+    assert record["input_tokens"] == 12
     assert record["nested"]["Authorization"] == REDACTED
     assert "sk-ant" not in record["note"]
 

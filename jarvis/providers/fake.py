@@ -15,6 +15,7 @@ from jarvis.providers.base import (
     ProviderHealth,
     StructuredResult,
     TokenCount,
+    ToolCall,
     Usage,
     estimate_tokens,
 )
@@ -26,9 +27,12 @@ GREETING = re.compile(
 
 
 class FakeProvider:
+    """Script items: a string (text reply), {"tool": name, "arguments": {...}} (tool call),
+    or {"json": {...}} (structured output). Without a script: greeting rule, else echo."""
+
     name = "fake"
 
-    def __init__(self, script: list[str] | None = None, models: dict[str, Any] | None = None):
+    def __init__(self, script: list[Any] | None = None, models: dict[str, Any] | None = None):
         self._script = deque(script or [])
         self._models = models or {}
         self.requests: list[LLMRequest] = []
@@ -36,7 +40,7 @@ class FakeProvider:
     def capabilities(self, model: str) -> ModelCapabilities:
         return ModelCapabilities.from_config(self._models.get(model))
 
-    def _reply(self, req: LLMRequest) -> str:
+    def _reply(self, req: LLMRequest) -> Any:
         if self._script:
             return self._script.popleft()
         last_user = next((m for m in reversed(req.messages) if m.role == "user"), None)
@@ -47,11 +51,19 @@ class FakeProvider:
 
     def generate(self, req: LLMRequest) -> LLMResponse:
         self.requests.append(req)
-        text = self._reply(req)
+        item = self._reply(req)
+        calls: list[ToolCall] = []
+        if isinstance(item, dict) and "tool" in item:
+            calls = [ToolCall(f"fake_{len(self.requests)}", item["tool"], item.get("arguments", {}))]
+            text = ""
+        elif isinstance(item, dict):
+            text = json.dumps(item.get("json", item), ensure_ascii=False)
+        else:
+            text = str(item)
         return LLMResponse(
             text=text,
-            tool_calls=[],
-            stop_reason="end",
+            tool_calls=calls,
+            stop_reason="tool_use" if calls else "end",
             usage=Usage(input_tokens=estimate_tokens(req), output_tokens=max(1, len(text) // 4)),
             provider=self.name,
             model=req.model,

@@ -9,9 +9,9 @@ from pathlib import Path
 
 from jarvis.providers.base import LLMResponse, Message, TextPart, ToolCall, ToolResult
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
-_SCHEMA = """
+_SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS tasks (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
@@ -75,6 +75,29 @@ CREATE TABLE IF NOT EXISTS adapter_state (
 );
 """
 
+# v2: memory index (files in memory/ are the source of truth) and session search.
+_SCHEMA_V2 = """
+CREATE TABLE IF NOT EXISTS memory_index (
+    id TEXT PRIMARY KEY,
+    path TEXT NOT NULL,
+    type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    name TEXT NOT NULL,
+    subject TEXT,
+    scope TEXT,
+    sensitivity TEXT NOT NULL,
+    valid_from TEXT,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS memory_words USING fts5(id UNINDEXED, text, tokenize='unicode61');
+CREATE VIRTUAL TABLE IF NOT EXISTS memory_trigrams USING fts5(id UNINDEXED, text, tokenize='trigram');
+CREATE VIRTUAL TABLE IF NOT EXISTS session_text USING fts5(
+    message_id UNINDEXED, session_id UNINDEXED, role UNINDEXED, ts UNINDEXED, text, tokenize='trigram'
+);
+"""
+
+_MIGRATIONS = {1: _SCHEMA_V1, 2: _SCHEMA_V2}
+
 
 def _part_to_json(part: TextPart | ToolCall | ToolResult) -> dict:
     return {"type": type(part).__name__, **asdict(part)}
@@ -89,13 +112,13 @@ class Store:
 
     def migrate(self) -> None:
         version = self.conn.execute("PRAGMA user_version").fetchone()[0]
-        if version < SCHEMA_VERSION:
-            self.conn.executescript(_SCHEMA)
-            self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        for target in range(version + 1, SCHEMA_VERSION + 1):
+            self.conn.executescript(_MIGRATIONS[target])
+            self.conn.execute(f"PRAGMA user_version = {target}")
             self.conn.commit()
 
     def tables(self) -> set[str]:
-        rows = self.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        rows = self.conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'view')")
         return {r[0] for r in rows}
 
     def add_message(self, session_id: str, msg: Message) -> int:
@@ -104,6 +127,12 @@ class Store:
             (session_id, msg.role, json.dumps([_part_to_json(p) for p in msg.parts], ensure_ascii=False)),
         )
         message_id = cur.lastrowid
+        text = msg.text_content()
+        if text and msg.role in ("user", "assistant"):
+            self.conn.execute(
+                "INSERT INTO session_text (message_id, session_id, role, ts, text) VALUES (?, ?, ?, datetime('now'), ?)",
+                (message_id, session_id, msg.role, text),
+            )
         state = msg.adapter_state
         if state and "provider" in state and "model" in state:
             self.conn.execute(
@@ -125,6 +154,20 @@ class Store:
             ),
         )
         self.conn.commit()
+
+    def search_sessions(self, query: str, limit: int = 5, exclude_session: str | None = None) -> list[dict]:
+        """Past conversation lines matching any 3+ character word of the query."""
+        words = [w for w in query.split() if len(w) >= 3]
+        if not words:
+            return []
+        match = " OR ".join('"' + w.replace('"', '""') + '"' for w in words)
+        rows = self.conn.execute(
+            """SELECT session_id, role, ts, text FROM session_text WHERE session_text MATCH ?
+               ORDER BY bm25(session_text) LIMIT ?""",
+            (match, limit + 20),
+        ).fetchall()
+        out = [dict(zip(("session_id", "role", "ts", "text"), r)) for r in rows if r[0] != exclude_session]
+        return out[:limit]
 
     def close(self) -> None:
         self.conn.close()

@@ -10,7 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-_SECRET_KEY = re.compile(r"(api[_-]?key|token|secret|password|authorization)", re.IGNORECASE)
+# Key names that hold secrets. "input_tokens" etc. are counts, not secrets.
+_SECRET_KEY = re.compile(r"(api[_-]?key|(^|_)token$|secret|password|authorization)", re.IGNORECASE)
 _SECRET_VALUE = re.compile(r"(sk-ant-[A-Za-z0-9_\-]+|tvly-[A-Za-z0-9_\-]+)")
 REDACTED = "[REDACTED]"
 
