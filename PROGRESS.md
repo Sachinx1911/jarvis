@@ -26,7 +26,7 @@ Ending a session: update this file and commit.
 - **Phase 5 — connectors:** document library (md/txt/pdf/docx, page citations, P2 by default), `doc_search`, active project context, Google Calendar + Gmail via OAuth desktop flow (create event T2 with read-back verify, send T3), time parser (English + Marathi), EventKit (Mac only), connector health.
 - **Phase 6 — voice:** push-to-talk loop, Windows System.Speech and macOS `say`, faster-whisper speech-to-text (model download pending), optional Marathi cloud voice and wake word (off), voice approvals default to deny.
 - **Phase 7 — dashboard:** FastAPI on 127.0.0.1 with a token, strict origin checks, approvals queue with argument hash, emergency stop; Next.js static export with Chat, Memory, Tasks & Approvals, Agents, Connectors, Schedules, Settings & Usage. `jarvis dashboard`.
-- **Phase 8 — extras:** isolated Playwright browser (domain allowlist, fresh context, T3 submit with exact fields, passwords never logged, download checks), browser step recording, Operator and Coder agents, `run_tests` allowlist. Not built: OCR, smart home, signed .app, meeting notes, magic search.
+- **Phase 8 — extras:** isolated Playwright browser (domain allowlist, fresh context, T3 submit with exact fields, passwords never logged, download checks), browser step recording, Operator and Coder agents, `run_tests` allowlist. Not built: OCR, signed .app, meeting notes, magic search. (Smart home dropped by Sachin.)
 
 ### Phase 3 live results
 
@@ -67,8 +67,6 @@ Blocked by the "no P2 to the cloud" rule until a category is enabled or a local 
 - Screen understanding on request (screenshots are P2).
 - Telegram photo/receipt input, OCR of scanned PDFs, magic search across photos/files.
 - Meeting/lecture notes (recording, transcript, summary).
-
-Only if devices exist: smart home control.
 
 ## Waiting for Sachin
 
@@ -124,6 +122,7 @@ On a new machine first: `git clone`, run `scripts/setup.ps1` (Windows) or `scrip
 | 2026-10-10 | Keep working through all phases without stopping; park items that need Sachin's confirmation; use parallel agents; final testing on Claude Fable (CLAUDE.md updated) |
 | 2026-10-10 | Researcher/Writer model: test both opus (low) and sonnet (medium), then choose |
 | 2026-10-10 | Everything should be usable from the app (one-click start, all features in the dashboard) and tasks should be automatable (triggers, standing approvals, repeat-this) |
+| 2026-10-10 | Smart home control (skill #24) is not wanted: dropped from the plan |
 | 2026-10-10 | Vetted the Hermes Agent Masterclass (Jack Roberts, hermes-masterclass.vercel.app). Taken: a global daily cap for unattended work (runaway-loop risk), a nightly review into `memory/episodes/` with memory conflicts in the brief, local dated backups (destination still open decision #10). Already in Jarvis: soul file, markdown memory + FTS, risk tiers/approvals/kill switch, Telegram allow-list, cron/heartbeat/brief, planner-worker-critic, budgets, dashboard. Dropped: VPS/Docker hosting (data leaves the laptop), OpenRouter (new key/cost), WhatsApp (banned for AI assistants), public webhooks (security), the selling/money module, the unproven "CLI uses 100x fewer tokens" claim |
 
 ## Decisions made by Claude (for Sachin to review)

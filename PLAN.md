@@ -125,7 +125,7 @@ Voice and the dashboard are only interfaces. The real Jarvis is memory + tools +
 | 21 | Media & quick controls | Music, volume, brightness, Do Not Disturb | 2 |
 | 22 | Language & translation | Romanized Marathi, Devanagari, translation | 1 |
 | 23 | Meeting / lecture notes | Record, transcript, summary | 8 |
-| 24 | Smart home | Lights, fan, AC (only if devices exist) | Optional |
+| 24 | ~~Smart home~~ | Dropped by Sachin on 2026-10-10 | — |
 
 **Skills needed for version 1:** #1, #2, #4, #11, #14, #17, #19, #22.
 
@@ -1029,7 +1029,7 @@ routes:
 | **5. Connectors** | EventKit, Google Calendar, Gmail (read/draft, send after approval), registry entries and health checks, document library | "Put a call tomorrow at 11" creates a verified event. Answers from project docs cite sources |
 | **6. Voice** | Push-to-talk, Whisper, Rishi/Manohar, then hey_jarvis, barge-in, voice verification, Marathi STT test | 5 voice commands work |
 | **7. Dashboard** | FastAPI + Next.js: Chat, Memory, Task board & Approvals, Agents, Connectors, Schedules, Settings & Usage | Everything controllable from the browser |
-| **8. Extras** | Coder/Operator agents, magic search, meeting notes, Playwright with isolated profiles, browser step recording, OCR, smart home, signed .app | As needed |
+| **8. Extras** | Coder/Operator agents, magic search, meeting notes, Playwright with isolated profiles, browser step recording, OCR, signed .app | As needed |
 
 Stages C (local-first) and D (fully local) start only after Stage B results and Sachin's approval. See "Migration roadmap".
 
