@@ -1,4 +1,4 @@
-# Jarvis — Master Plan (v3.3)
+# Jarvis — Master Plan (v3.4)
 
 **Date:** 2026-10-09 (updated 2026-10-10)
 **Status:** Planning is nearly complete. No code has been written yet.
@@ -6,6 +6,7 @@
 **v3.1 (2026-10-10):** Added teach-by-demonstration, task queue, connector registry, schedules, model routing, task receipts, project workspace and isolated browser profiles. Kept the useful part of each and dropped the excessive or risky parts.
 **v3.2 (2026-10-10):** Files are written in English. Conversations with Sachin happen in Marathi.
 **v3.3 (2026-10-10):** Migration-ready architecture: hybrid now (Claude for reasoning, everything else local), fully local AI later without a rewrite. Added the AI provider layer, privacy controls, migration roadmap (Stages A–D) and migration evaluation suite. The brain-loop recommendation changed from the Claude Agent SDK to a Jarvis-owned loop. Nothing implemented; fully local inference is not verified.
+**v3.4 (2026-10-10):** Sachin decided: Jarvis-owned loop, Tavily for web search, no P2 (sensitive) data sent to the cloud at the start.
 
 ---
 
@@ -314,7 +315,7 @@ Machine-specific overrides go in `config/local.yaml`, which Phase 0 adds to `.gi
 |---|---|---|---|
 | P0 Public | General questions, public web pages | Allowed | Yes |
 | P1 Personal | Preferences, project names, schedule outlines, Jarvis's own notes | Allowed | Yes |
-| P2 Sensitive | Email and message bodies, contacts' details, health, money, private documents, screenshots | Withheld by default. Allowed per category only after Sachin opts in | Yes, marked sensitive |
+| P2 Sensitive | Email and message bodies, contacts' details, health, money, private documents, screenshots | **Withheld.** Sachin decided on 2026-10-10 that no P2 category goes to the cloud at the start. Categories can be enabled one at a time later, only with his OK | Yes, marked sensitive |
 | P3 Secret | Passwords, API keys, tokens, OTPs, card numbers, government ID numbers | Never | Never |
 
 - Every context item carries a class: memory `sensitivity`, a class set when a document is approved, a class per tool output, P2 by default for screenshots and for untrusted email or web content.
@@ -326,6 +327,7 @@ Machine-specific overrides go in `config/local.yaml`, which Phase 0 adds to `.gi
 - The receipt lists what was withheld from the cloud.
 - Global `cloud_allowed` switch, also as a Telegram `/cloud off` command.
 - Anthropic's API data retention and training terms must be checked before Stage A goes live. Nothing is assumed here.
+- **Effect of "no P2 at start":** features that need email or message bodies, private documents or screenshots cannot use Claude until Sachin enables that category, or until a local model handles them (Stage C). This limits email summaries in the daily brief, screenshot analysis and Q&A over private documents. Jarvis says clearly when a task is blocked for this reason. Whether email sender and subject count as P1 or P2 is decided before Phase 5.
 
 ### 5.9 Migration roadmap
 
@@ -342,7 +344,7 @@ Machine-specific overrides go in `config/local.yaml`, which Phase 0 adds to `.gi
   - A Claude baseline of the migration evaluation suite is recorded (summary committed, no personal data).
   - Memory, task state, audit logs, receipts and indexes exist only on the Mac.
 - **Risks:** More code than the Agent SDK path. Claude-only features creeping into the core. P2 leaks through mislabeled data. API cost.
-- **Dependencies:** Anthropic Python SDK, API key, monthly budget, Sachin's P2 opt-in choices.
+- **Dependencies:** Anthropic Python SDK, Anthropic API key, Tavily API key, monthly budget. P2 to cloud: none at the start (decided).
 - **Tests:** Import-boundary, adapter contract, fake-provider end-to-end, privacy gate, evaluation baseline.
 
 **Stage B — Local model evaluation** (a separate, approved step; earliest after Phase 3)
@@ -410,9 +412,9 @@ Machine-specific overrides go in `config/local.yaml`, which Phase 0 adds to `.gi
 
 ### 5.11 Unresolved technical decisions
 
-1. Confirm the brain loop: a Jarvis-owned loop with a Claude adapter (recommended) or the Claude Agent SDK.
-2. Which P2 categories may go to Claude in Stage A.
-3. Web search provider for the Jarvis search tool.
+1. ~~Brain loop~~ Decided 2026-10-10: Jarvis-owned loop with a Claude adapter.
+2. ~~P2 categories for Claude~~ Decided 2026-10-10: none at the start. Still open: whether email sender and subject count as P1 (before Phase 5).
+3. ~~Web search provider~~ Decided 2026-10-10: Tavily.
 4. When to run Stage B, and approval to download local runtimes and models.
 5. Pass thresholds per route.
 6. Evaluation judge policy, including whether a cloud judge is acceptable for evaluation only.
@@ -807,7 +809,7 @@ Browser automation arrives in Phase 8, with these rules:
 | Order | Connector | How | Effort |
 |---|---|---|---|
 | 1 | Telegram | python-telegram-bot, long-polling (no server), only Sachin's user ID allowed, Approve/Deny buttons | Low |
-| 2 | Web search | Jarvis search and fetch tools, independent of the AI provider (provider is an open decision; Tavily free tier recommended, ddgs as fallback). Anthropic's server-side web search only as an optional Claude-only extra | Low |
+| 2 | Web search | Jarvis search and fetch tools using **Tavily** (Sachin's decision, 2026-10-10), independent of the AI provider. Anthropic's server-side web search only as an optional Claude-only extra | Low |
 | 3 | Reminders + reading Calendar | EventKit (pyobjc), one-time permission from Terminal | Low–Medium |
 | 4 | Google Calendar + Gmail | Direct Google API, OAuth "Desktop app" | Medium |
 | 5 | Gmail send | `gmail.send`, always after approval | Low |
@@ -820,7 +822,7 @@ Browser automation arrives in Phase 8, with these rules:
 - Google's official Gmail/Calendar MCP servers are still in Developer Preview. The Gmail MCP can only draft.
 - Sending email via Mail.app AppleScript is unreliable on macOS 26.
 - **WhatsApp:** since 15 Jan 2026 Meta bans general-purpose AI assistants on the Business API. Unofficial libraries risk a number ban. Hence Telegram.
-- Anthropic web search: $10 per 1,000 searches + tokens. Tavily: 1,000 free credits a month. Search runs as a Jarvis tool so any AI provider, including a future local one, can use it.
+- Anthropic web search: $10 per 1,000 searches + tokens. Tavily: 1,000 free credits a month. Search runs as a Jarvis tool so any AI provider, including a future local one, can use it. Tavily needs its own API key in the Keychain (from Phase 2).
 
 ### Connector and MCP registry
 
@@ -865,7 +867,7 @@ One list of every connector and tool: `connectors/registry.yaml`.
 
 ## 15. Brain loop: how to build it
 
-**Recommendation (changed in v3.3): Jarvis owns the agent loop. Claude is called through the Claude adapter, built on the Anthropic Python SDK (Messages API with tool use). The Claude Agent SDK is not part of the core.** Sachin still has to confirm this (see "Open decisions").
+**Recommendation (changed in v3.3): Jarvis owns the agent loop. Claude is called through the Claude adapter, built on the Anthropic Python SDK (Messages API with tool use). The Claude Agent SDK is not part of the core.** Sachin confirmed this on 2026-10-10.
 
 **Why the change:** The Agent SDK runs Claude Code's own loop, built-in tools, permission hooks, subagents and session files. Those are exactly the parts that must stay provider-independent for the move to local AI. Building on it would force a rewrite at migration time. Until v3.2 the recommendation was the Agent SDK.
 
@@ -911,9 +913,9 @@ The Haiku price applies to prompts up to 100K tokens.
 
 | Route | Provider / model | Effort | Highest privacy class | Needs | Why |
 |---|---|---|---|---|---|
-| Jarvis main conversation | anthropic / Opus 5.5 | medium | P1, plus approved P2 categories | tools, structured output | Default, strong understanding |
-| Big plans, team manager | anthropic / Opus 5.5 | high | P1, plus approved P2 | tools, structured output | Hard reasoning |
-| Memory extractor, query rewrite, intent/risk label, heartbeat check, receipt summary | anthropic / Haiku 5.5 | low | P1, plus approved P2 | structured output | Simple and frequent; Sachin asked for a cheap, fast model here |
+| Jarvis main conversation | anthropic / Opus 5.5 | medium | P1 (no P2 approved yet) | tools, structured output | Default, strong understanding |
+| Big plans, team manager | anthropic / Opus 5.5 | high | P1 (no P2 approved yet) | tools, structured output | Hard reasoning |
+| Memory extractor, query rewrite, intent/risk label, heartbeat check, receipt summary | anthropic / Haiku 5.5 | low | P1 (no P2 approved yet) | structured output | Simple and frequent; Sachin asked for a cheap, fast model here |
 | Researcher, Writer | anthropic / Opus 5.5 low **or** Sonnet 5.5 medium | — | P1 | tools | **Sachin's decision.** Test both |
 | Checker | No weaker than the workers | high | P1 | structured output | Verification must not be weak |
 | Coder (later) | anthropic / Opus 5.5 | high | P1 | tools | Effort matters for code |
@@ -962,7 +964,7 @@ routes:
 | Agent loop | Jarvis-owned orchestrator with a manual tool loop | Provider-independent, no lock-in |
 | Models | Opus 5.5 main, Haiku 5.5 for simple calls, workers after testing | See "Provider and model routing" |
 | Local AI runtime | Not chosen. Candidates to evaluate in Stage B: Ollama, llama.cpp server, MLX-LM | Decide on measurements from this Mac |
-| Web search | Jarvis search tool; provider open (Tavily free tier recommended, ddgs fallback) | Independent of the AI provider |
+| Web search | Jarvis search tool using Tavily (decided) | Independent of the AI provider; free tier to start |
 | Memory | Markdown + SQLite (FTS5 + numpy vectors) | No server, editable, no extensions |
 | Embeddings | multilingual-e5-small | Small, MIT, swap after testing |
 | Skills | SKILL.md standard | Open standard |
@@ -985,7 +987,7 @@ routes:
 |---|---|---|
 | **0. Setup** | venv, config (providers, models, routing), Keychain, folders, SQLite, audit log, provider interface and fake provider, CLI chat | Jarvis replies "Good evening, sir." through the Claude adapter. The same CLI test passes offline with the fake provider. The import-boundary test passes |
 | **1. Brain + Memory** | Agent loop, SOUL.md, profile interview, Marathi understanding, memory write/read, session search, memory commands, skill-system foundation, model-routing foundation (Opus main, Haiku extractor), Claude adapter with contract tests, privacy gate v1 (P0–P3 tags, P3 filters), migration evaluation scaffold and first Claude baseline (memory, Marathi/English, structured output) | Memory test: teach 10 facts; in a new session at least 9 are used correctly. "Act" test passes too |
-| **2. Tools + Safety** | Typed tools, T0–T4, approvals, taint flag, kill switch, verifier, audit, daily info, media controls, connector registry (built-in tools), portable tool schemas, Jarvis web search and fetch tools | 10 tasks verified. No T4 action ever runs. Prompt-injection samples fail |
+| **2. Tools + Safety** | Typed tools, T0–T4, approvals, taint flag, kill switch, verifier, audit, daily info, media controls, connector registry (built-in tools), portable tool schemas, Jarvis web search (Tavily) and fetch tools | 10 tasks verified. No T4 action ever runs. Prompt-injection samples fail |
 | **3. Tasks + Agent team** | Task queue and states, planner, task folders, receipts, project workspace, teach-by-demonstration (chat, terminal, files), model routing, Researcher/Writer/Checker as sub-loops of the Jarvis orchestrator, budgets, resume | A laptop-compare style job finishes with a report and a correct receipt, within budget. A demonstrated task replays as a skill. Tool-calling and task-success baselines recorded |
 | **Stage B. Local model evaluation** (separate step, needs Sachin's approval; earliest after Phase 3) | Install candidate local runtimes and models, build the local adapter, run the migration evaluation suite on this Mac | Evaluation report per candidate with per-route verdicts. Live routing unchanged |
 | **4. Telegram + Proactive** | Bot (Sachin only), approve buttons, /stop, /tasks, heartbeat, daily brief, reminders, skill and agent schedules | Morning brief arrives on the phone. Approvals work from the phone. A weekly schedule runs and handles a missed run |
@@ -1086,7 +1088,7 @@ These rules are already in the repo's `CLAUDE.md`.
 |---|---|---|
 | 1 | **5 things Jarvis should do for Sachin every day** | Most important. Needed from Sachin |
 | 2 | Is there a Claude API key? | Cloud-first |
-| 3 | Brain loop | Jarvis-owned loop with a Claude adapter (Anthropic SDK). Changed from the Agent SDK in v3.3 for local-migration readiness |
+| 3 | Brain loop | **Decided 2026-10-10:** Jarvis-owned loop with a Claude adapter (Anthropic SDK) |
 | 4 | Voice language | English voice + Marathi text first; Marathi voice later |
 | 5 | Connector order | Telegram, web search, Calendar, Gmail |
 | 6 | Monthly API budget | Sachin decides |
@@ -1095,13 +1097,14 @@ These rules are already in the repo's `CLAUDE.md`.
 | 9 | Worker agent model | Opus 5.5 at low effort vs Sonnet 5.5; test both |
 | 10 | Backup and sync of Jarvis's personal data | Separate **private** GitHub repo (e.g. `jarvis-memory`) |
 | 11 | Keep the code repo public? | Sachin's choice. Personal data never goes in it either way |
-| 12 | Which P2 (sensitive) categories may go to Claude in Stage A | Withhold all P2 by default; enable category by category |
-| 13 | Web search provider for the Jarvis search tool | Tavily free tier, ddgs fallback. Anthropic web search optional |
+| 12 | Which P2 (sensitive) categories may go to Claude in Stage A | **Decided 2026-10-10:** none at the start. Enable later one category at a time, only with Sachin's OK |
+| 13 | Web search provider for the Jarvis search tool | **Decided 2026-10-10:** Tavily |
 | 14 | When to run Stage B, and OK to download local runtimes and models (several GB; ~32 GB free) | After Phase 3 |
 | 15 | Pass thresholds for local models per route | Set after the Claude baseline |
 | 16 | Evaluation judge policy (cloud judge for evaluation only?) | Deterministic checks first, one fixed judge, human spot checks |
 | 17 | If local models fall short on this Mac: stay hybrid for some routes, or upgrade hardware | Decide after Stage B |
 | 18 | Offline Marathi voice for Stage D | Evaluate options in Stage B |
+| 19 | Do email sender and subject count as P1 or P2? | Decide before Phase 5 (affects the daily brief) |
 
 ---
 
