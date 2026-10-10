@@ -531,6 +531,8 @@ def _book_plan(args: dict) -> _Book:
         _cap(len(rows_in), MAX_SHEET_ROWS, f"rows in sheet {name!r}")
         rows = []
         for r, row in enumerate(rows_in, 1):
+            if not isinstance(row, list):
+                raise OfficeError(f"sheet {name!r} row {r} must be a list of cells")
             _cap(len(row), MAX_SHEET_COLS, f"cells in row {r} of sheet {name!r}")
             rows.append([_xl_value(v, f"sheet {name!r} row {r}") for v in row])
             cells += len(row)
