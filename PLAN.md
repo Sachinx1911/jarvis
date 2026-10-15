@@ -1121,8 +1121,14 @@ Part One extras (voice routes for stop/remember, `jarvis preflight`). Each step:
 ### 18.2 Phase 10 (proposed, 2026-10-15): Agent HQ, teams and the office
 
 Source: "I Built an AI Office With 31 Agents (Full Build)", Bekhruz AI, YouTube, 9 Oct 2026 (watched
-2026-10-15: description, chapters and frames at 0:30, 1:10, 1:40, 2:30, 3:05; the auto transcript could not be
-fetched). The video shows "Agent HQ": an isometric office where every room is a team (Inbox, Research,
+2026-10-15: description, chapters, frames at 0:30, 1:10, 1:40, 2:30, 3:05, and the transcript Sachin pasted).
+The video's teams: Research (every morning scans GitHub with 128 crawlers, picks the top three repos), Scripts
+(hooks, scripts, fact-checks everything before it goes out), Social (schedules every post), Analytics (what
+worked), TBX Shop (listings, orders, support), Dev (ships code), Inbox (email and brand deals), Creative
+(Drive, CapCut, Canva, Slack; seven skills; the video editor leads; "grab the three new clips from Drive and
+edit them in parallel" spins up one sub-agent per clip, each cutting, burning captions and making a thumbnail).
+Status line "22 tasks running, 214 done today, 3 waiting for him"; nothing public or with money goes out
+without his approval. The video shows "Agent HQ": an isometric office where every room is a team (Inbox, Research,
 Scripts, Dev, Shop, Creative, Analytics, Social), the glowing "Brain" in the middle (shared memory, "1,842
 notes"), a top bar Office / Tasks / Calendar / Brain with "31 agents · 12 running" and "Ask any agent", a team
 panel (overview stats, tools connected through MCP, skills with progress bars, agents with lead and status),
