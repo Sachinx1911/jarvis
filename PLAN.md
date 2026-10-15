@@ -1030,10 +1030,91 @@ routes:
 | **6. Voice** | Push-to-talk, Whisper, Rishi/Manohar, then hey_jarvis, barge-in, voice verification, Marathi STT test | 5 voice commands work |
 | **7. Dashboard** | FastAPI + Next.js: Chat, Memory, Task board & Approvals, Agents, Connectors, Schedules, Settings & Usage | Everything controllable from the browser |
 | **8. Extras** | Coder/Operator agents, magic search, meeting notes, Playwright with isolated profiles, browser step recording, OCR, signed .app | As needed |
+| **9. X-ray vision (proposed 2026-10-15, waits for Sachin's "start")** | REA (reverse-engineering kit) installed outside the repo and pinned; a clean Chrome profile per job; capture, fingerprints and asset log; a teardown note with evidence; voice routes and a live panel; a drill and a preflight that prove it | "How does igloo.inc do that?" spoken once gives a spoken answer plus a teardown note in Jarvis's documents and memory, headless drill clean, preflight clean, no Chrome left running |
 
 Stages C (local-first) and D (fully local) start only after Stage B results and Sachin's approval. See "Migration roadmap".
 
 **Build status (2026-10-10):** Phases 0–8 are built and merged; live checks and items waiting for Sachin are tracked in PROGRESS.md. Stage B (local models) has not started.
+
+
+### 18.1 Phase 9 (proposed, 2026-10-15): X-ray vision with REA
+
+Source: "Give Your Jarvis X-ray Vision" prompt pack (Zubair Trabzada, AI Workshop, October 2026), twelve
+prompts in two parts. Vetted 2026-10-15 against official sources, as the rules require:
+
+- `rea-agents` 6.5.0 on npm, MIT, repository `github.com/morluto/rea` (the pack's repo; ~248k stars,
+  active). Node `^22.19 || ^24.11 || >=26`; this Mac has 24.20. The commands the pack uses exist in REA's
+  own docs (`list-browser-targets`, `inspect-web-page`, `analyze-web-bundle`, `capture-web-screenshot`,
+  `--json`). REA attaches to a browser the user owns through the Chrome DevTools Protocol and "never
+  launches, drives, evaluates or mutates" the page (docs/browser-observation.md). Since Chrome 136 the
+  debugging port is ignored for the default profile, so a fresh profile folder per job is required anyway.
+- Exact flag names (`--observation-ms`, `--include-script-sources`) are checked with `rea <command> --help`
+  at install time before any code depends on them.
+
+**Part One of the pack vs. what Jarvis already has** (the pack is written for a from-scratch build):
+
+| Pack prompt | Jarvis today | Take / adapt / drop |
+|---|---|---|
+| 01 Galaxy + brain | Brain exists: memory + document library with retrieval, "answers only from notes" for docs, Jarvis-owned loop, provider interface | Brain: keep ours. 3D galaxy viewer: **dropped for now** (needs a CDN/npm graph library; not needed for X-ray). Can return later as a "Knowledge galaxy" page |
+| 02 Voice both ways | Voice v2 (local Whisper + IndicConformer, local voices, Alexa-style states). The pack's FINISH_MS 900 ms = our END_SILENCE 0.7 s | **Take:** a voice-route table checked before the brain (instant words "stop" / "wait" / "थांब", "remember that…", teardown sentences). Browser speech APIs: drop (ours is local and Marathi-capable) |
+| 03 Proof of source | "Why?" panel shows the memories and excerpts behind a reply | Keep ours; no camera |
+| 04 Butler | SOUL.md persona ("sir", honest, never claims an action it did not do) | Keep; control tags are replaced by Jarvis's typed tools (safer) |
+| 05 Total Recall | `/remember`, live FTS index, failures shown | **Take:** spoken trigger ("remember that", "लक्षात ठेव") as a voice route |
+| 06 Preflight | 1,518 offline tests, live suites, `jarvis health` | **Take:** `jarvis preflight`: live end-to-end chain checks with one summary line; "done" means preflight passed (PLAN 20) |
+
+**Part Two → Phase 9 (new), adapted to Jarvis's rules** (PLAN 11, 16, 20):
+
+1. **Kit** (`jarvis/xray/kit.py`): install REA pinned at 6.5.0 in `~/.jarvis-tools/rea` (outside the repo) with
+   `npm install rea-agents@6.5.0 --save-exact --ignore-scripts` after `npm view rea-agents repository.url`
+   confirms the repo; find node (PATH or common folders) and Chrome; `jarvis xray diag` and
+   `GET /api/xray/diag` report ready / versions / problems; Jarvis boots and answers politely without it.
+2. **Clean browser** (`jarvis/xray/browser.py`, standard library): Sachin's installed Chrome binary with a
+   brand-new profile folder per job, loopback debugging port, `--disable-extensions`, 1280x820; poll
+   `/json/version` (25 s), wait for `readyState` complete + 2.5 s; a minimal CDP WebSocket client for
+   read-only `Runtime.evaluate` and `Input.dispatchMouseEvent` wheel scrolls only; headless flag for tests;
+   `finally`: terminate, kill stragglers on that profile, delete the folder. Never his everyday profile,
+   cookies or logins (PLAN 11.4).
+3. **Capture** (`jarvis/xray/capture.py`): REA `inspect-web-page` with an observation window while Jarvis
+   scrolls (~16 wheel steps), `analyze-web-bundle`, scroll to top, `capture-web-screenshot`; Jarvis adds
+   the asset log from `performance.getEntriesByType('resource')` grouped by kind (12 largest) and version
+   fingerprints from licence banners (Three.js, GSAP, postprocessing, Lenis, Locomotive, Swiper, Barba,
+   React/Next/Vue/Svelte, Vite/webpack, Draco/KTX2) in one ordered table. Every evidence line says who saw
+   it: REA or Jarvis.
+4. **Teardown** (`jarvis/xray/teardown.py`): digest ≤ 15,000 chars → one model call on a new route
+   `teardown` (Opus, high effort, max_tokens ≥ 7,000; P1) with the rules "every claim traces to evidence,
+   'likely' for inferences, never invent, keep attribution straight"; output LABEL / SPOKEN / SUMMARY /
+   NOTE. The note goes to `workspace/teardowns/HOST-DATE.md` with the snapshot in `assets/`, is added to
+   the document library as project `teardowns` (searchable at once) and gets a memory entry (type
+   reference) under a `[[REA]]` concept note; a task receipt is written; one job at a time; audit log.
+5. **Voice and panel**: voice routes "reverse engineer X", "tear down X", "how does X do that", "what is X
+   built with", "this site" / "this page" (spoken address parsing: dot/slash/colon, localhost allowed);
+   "this site" reads the front Chrome tab's address with osascript (needs macOS Automation permission;
+   T1, confirmed on screen); a `teardown` tool so the brain can start a job from a typed sentence
+   ("reverse engineer Stripe's homepage"); a Teardown card on the Command Center and in Chat with 8 live
+   steps, then a one-line fold, snapshot, up to 10 stack chips, totals and a reader; routes "show me the
+   last teardown", "open / close / cancel the teardown". Spoken line in Marathi or English per the
+   question's language.
+6. **Drill and preflight** (`jarvis xray drill`): offline checks (five spoken addresses, a synthetic
+   fingerprint string → Three.js r165 and GSAP 3.12.5, every digest line names its source) and a headless
+   live drill that snapshots the document index, memory and teardowns folder, runs one teardown of a public
+   page, checks steps / note sections / spoken line / nodes / time, then restores the snapshot. Safety: the
+   note and image endpoints refuse paths outside the teardowns folder; no investigation Chrome left running;
+   profile folders gone. `jarvis preflight` grows three checks.
+
+**Jarvis rules that apply:** websites only, public ones Sachin may look at; REA observes, never clicks, logs
+in or changes anything; the job is a T1 read-only observation, but page content taints the session like
+any web page (PLAN 11.1); the only thing that leaves the machine is the site address (egress check on the
+address the user gave) and the evidence digest sent to the model route; one model call per teardown, inside
+the daily cap for unattended runs; every evidence line labelled; guesses labelled; tests use fakes (fake
+CDP frames, recorded REA JSON) and clean up; the live drill is opt-in.
+
+**Decisions for Sachin before starting:** (1) install REA (npm, pinned 6.5.0) in `~/.jarvis-tools`;
+(2) use his installed Google Chrome with a fresh profile per job; (3) allow Jarvis → Chrome Automation for
+"this site"; (4) galaxy viewer skipped for now; (5) teardown notes live in `workspace/teardowns` as project
+`teardowns`.
+
+**Order of work:** kit → clean browser → capture → teardown note → voice routes + panel → drill + preflight →
+Part One extras (voice routes for stop/remember, `jarvis preflight`). Each step: tests, then PROGRESS.md.
 
 ---
 
