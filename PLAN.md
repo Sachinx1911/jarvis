@@ -1031,6 +1031,7 @@ routes:
 | **7. Dashboard** | FastAPI + Next.js: Chat, Memory, Task board & Approvals, Agents, Connectors, Schedules, Settings & Usage | Everything controllable from the browser |
 | **8. Extras** | Coder/Operator agents, magic search, meeting notes, Playwright with isolated profiles, browser step recording, OCR, signed .app | As needed |
 | **9. X-ray vision (proposed 2026-10-15, waits for Sachin's "start")** | REA (reverse-engineering kit) installed outside the repo and pinned; a clean Chrome profile per job; capture, fingerprints and asset log; a teardown note with evidence; voice routes and a live panel; a drill and a preflight that prove it | "How does igloo.inc do that?" spoken once gives a spoken answer plus a teardown note in Jarvis's documents and memory, headless drill clean, preflight clean, no Chrome left running |
+| **10. Agent HQ (proposed 2026-10-15, waits for Sachin's "start")** | Teams (lead + members, one job each, only the tools each needs, team skills), an Office page with live team rooms and the Brain in the middle, "ask any agent" and voice commands that run a team, team panel with tools / skills / agents / stats, approvals for anything public or with money | A spoken "Jarvis, research team, compare three laptops" lights the Research room, runs the team in parallel, and the result lands on the task board; the Office shows "N agents · M running" truthfully from live data |
 
 Stages C (local-first) and D (fully local) start only after Stage B results and Sachin's approval. See "Migration roadmap".
 
@@ -1115,6 +1116,63 @@ CDP frames, recorded REA JSON) and clean up; the live drill is opt-in.
 
 **Order of work:** kit → clean browser → capture → teardown note → voice routes + panel → drill + preflight →
 Part One extras (voice routes for stop/remember, `jarvis preflight`). Each step: tests, then PROGRESS.md.
+
+
+### 18.2 Phase 10 (proposed, 2026-10-15): Agent HQ, teams and the office
+
+Source: "I Built an AI Office With 31 Agents (Full Build)", Bekhruz AI, YouTube, 9 Oct 2026 (watched
+2026-10-15: description, chapters and frames at 0:30, 1:10, 1:40, 2:30, 3:05; the auto transcript could not be
+fetched). The video shows "Agent HQ": an isometric office where every room is a team (Inbox, Research,
+Scripts, Dev, Shop, Creative, Analytics, Social), the glowing "Brain" in the middle (shared memory, "1,842
+notes"), a top bar Office / Tasks / Calendar / Brain with "31 agents · 12 running" and "Ask any agent", a team
+panel (overview stats, tools connected through MCP, skills with progress bars, agents with lead and status),
+one voice command that sets a team running, a task board, and five build steps: one agent one job (a short
+brief: who it is, what it does, what it must never do); only the tools it needs, through MCP; one shared
+brain every agent reads and writes; leads + sub-agents in parallel; a human in the loop for anything public
+or with money.
+
+**What Jarvis already has:** the agent team (planner, researchers in parallel, writer, checker, coder,
+operator; PLAN 9) with per-role prompts and tool allowlists (`AgentSpec`); the shared brain (memory +
+documents + core memory; PLAN 6); tiers and approvals for public or money actions (PLAN 11); the task board
+and receipts (PLAN 10); voice (PLAN 14); schedules and the daily cap (PLAN 12); the Agents page (tool runs
+and model calls). The five build steps are already Jarvis's rules. What is new is the **organisation**
+(named teams with their own briefs, tools and skills) and the **office view** that shows it.
+
+**Take and adapt:**
+
+1. **Teams** (`config/teams.yaml` for the shipped examples; Sachin's real teams in `config/local.yaml`
+   under `teams_file:` or `data/teams/`, git-ignored because they describe his work): each team has a
+   name, purpose, a lead (a planner prompt for that team), members (role, one-line brief "who / what /
+   never", allowed tools only from the registry, worker model profile) and team skills (SKILL.md files
+   the team may load). Built on the existing orchestrator: a team run = the lead plans, members run in
+   parallel inside the existing budgets, the checker verifies, receipt as today. Roles stay the building
+   blocks (researcher, writer, checker, coder, operator) so nothing is rewritten. Starting set, for
+   Sachin to confirm: Research, Writing & Content, Dev, Admin (bills, schedules, reminders), with X-ray
+   (Phase 9) later as a Research-team tool.
+2. **Office page** (dashboard "Office" / Command Center section): rooms for the teams drawn by us in
+   SVG/CSS (isometric look, no 3D engine, no new packages), the Brain in the middle (live counts:
+   memories, documents, core-memory usage), a top status "N agents · M running" and "waiting for you"
+   badges, all from live APIs (`/api/teams`, `/api/tasks`, `/api/approvals`, `/api/memory`); a room opens
+   the team panel: overview (tasks done / running / waiting, last run), tools connected (from the connector
+   registry and health), skills (with use counts from the audit log), agents (lead, members, status and
+   current step from running tasks). Subtle animation only (dots pulse, rooms light while running).
+3. **Ask any agent / voice:** an "Ask any team" box and voice routes ("Jarvis, research team, …",
+   "जार्विस, रिसर्च टीमला सांग …"); the planner picks the team when none is named. Runs appear on the task
+   board and light the room.
+4. **Human in the loop:** unchanged (T3/T4 approvals); the Office shows which room is waiting.
+5. **Always on:** team schedules (a team's recurring job) reuse the schedule system and the daily cap.
+
+**Drop or later:** the 3D engine and walking characters (our own SVG rooms instead); 31 agents on day one
+(start with 4 teams); the creator's tools (Canva, CapCut, Slack); external MCP servers as team tools
+(decision later, PLAN 13 registry first).
+
+**Decisions for Sachin:** (1) the first teams and what each may do; (2) where his real team definitions
+live (config/local.yaml vs data/teams/, both private); (3) office art: isometric SVG rooms or a plainer
+card grid; (4) order: Agent HQ first (teams are structural), then X-ray as a Research-team tool, or X-ray
+first; (5) external MCP servers: not now.
+
+**Order of work:** teams model + config + tests → team runs through the orchestrator → `/api/teams` and
+team stats → Office page and team panel → ask-any-team box and voice routes → team schedules → PROGRESS.
 
 ---
 
