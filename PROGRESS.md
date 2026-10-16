@@ -5,6 +5,18 @@ Ending a session: update this file and commit.
 
 ## Current status
 
+- **Design pause (2026-10-17, home MacBook, Sachin's rule):** no more code until the design is final.
+  Sachin asked for a fresh design on the laws-of-creation principle: a few fundamental laws, and the three
+  powers (create, preserve, end) on every kind. Written in PLAN.md section 27 ("The laws of Jarvis") on the
+  branch `feature/workspaces` (worktree `.claude/worktrees/ws`, WIP commit, NOT merged, NOT tested, NOT
+  pushed). That branch also holds the half-built Phase 10 step 0 (workspaces): model/store with archive,
+  workspace tag on memories/tasks/schedules/messages/usage (DB migration v4), `/workspace` in chat and API.
+  Still missing there: `jarvis/workspaces/session.py` (imported by cli_tasks and workers, so the branch does
+  not run yet), `cli_workspaces.py`, `web/routes_workspaces.py`, `core/kinds.py`, tests.
+  **Next step:** Sachin finalises the design (the seven laws, archive-instead-of-delete, personal memories
+  visible in companies by default or not, companies list, roles as code or data). Then merge PLAN.md
+  section 27 to main, finish step 0 under the laws, run the suite, merge.
+
 - **Phase:** All phases 0–8 are built and merged into `main` (2026-10-10). 494 offline tests pass. Live checks on Claude (subscription) passed for Phases 0–2; Phase 3 live checks are being rerun after quality fixes (see "Phase 3"). Phases 4–8 are tested offline with fakes; their live checks wait for items in "Waiting for Sachin". Final testing on Claude Fable comes last (Sachin's rule).
 - **How the work was done:** Phase 3 by the lead session; Phases 4, 5, 6, 7, 8 by parallel agents in git worktrees (`.claude/worktrees/`, git-ignored), each owning its own files, then merged and wired in by the lead.
 - **AI provider now:** Claude through Sachin's Claude Max subscription, via the local Claude Code CLI (`claude -p`), adapter `jarvis/providers/claude_code.py`. No API key, no per-call billing; calls count against the plan's usage limits. Main chat Opus 5.5 (medium); memory, quarantine, summaries Haiku 5.5 (low); planner and checker Opus 5.5 (high); workers per profile (`config/tasks.yaml`). The Anthropic API adapter (`claude.py`) stays but is not approved in `config/routing.yaml`.
