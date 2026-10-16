@@ -112,6 +112,7 @@ class ScheduleDraft:
     output: str = "telegram"
     budget: dict[str, Any] = field(default_factory=dict)
     source: str = "rules"       # rules | model | explicit
+    workspace: str = "personal"  # the office this schedule works for
 
     def show(self, now: datetime | None = None) -> str:
         what = {"prompt": f"ask Jarvis: {self.input!r}",

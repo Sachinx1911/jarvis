@@ -9,6 +9,9 @@ from jarvis.core.runtime import Runtime, make_chat, make_task_runner, open_runti
 from jarvis.projects import ProjectStore
 from jarvis.providers import make_provider
 from jarvis.tasks.store import PRIORITIES, TransitionError
+from jarvis.workspaces.model import PERSONAL, WorkspaceError
+from jarvis.workspaces.session import enter_workspace
+from jarvis.workspaces.store import WorkspaceStore
 
 PROVIDERS = ["claude_code", "anthropic", "fake"]
 
@@ -47,11 +50,16 @@ def register(sub) -> dict[str, Callable]:
 
 
 def create_task(rt: Runtime, goal: str, project: str | None = None, priority: int = 2,
-                deadline: str | None = None, budget_usd: float | None = None) -> str:
+                deadline: str | None = None, budget_usd: float | None = None, workspace: str | None = None) -> str:
+    """A task belongs to one workspace (law 4): the one given, else its project's owner, else personal.
+    An archived or unknown workspace raises WorkspaceError (a ValueError)."""
     if project and not ProjectStore(rt.paths.home).exists(project):
         ProjectStore(rt.paths.home).create(project)
     budget = {"max_notional_usd": budget_usd} if budget_usd else None
-    return task_store(rt).create(goal, project=project, priority=priority, deadline=deadline, budget=budget).id
+    ws = WorkspaceStore(rt.paths.home)
+    workspace = ws.active(workspace).slug if workspace else ws.workspace_of_project(project)
+    return task_store(rt).create(goal, project=project, priority=priority, deadline=deadline, budget=budget,
+                                 workspace=workspace).id
 
 
 def run_task(rt: Runtime, task_id: str, out: TextIO, approver, workers: str | None = None,
@@ -284,7 +292,7 @@ def _recent_task(session, rt: Runtime) -> str | None:
 
 
 def chat_command(session, rt: Runtime, cmd: str, rest: str, out: TextIO) -> bool:
-    """Chat commands: /task, /repeat, /record, /note, /project. Returns False if not one of them."""
+    """Chat commands: /task, /repeat, /record, /note, /project, /workspace. Returns False if not one of them."""
     if cmd == "/project":
         if not rest:
             print(f"Active project: {session.context.project or 'none'}. Projects: {', '.join(ProjectStore(rt.paths.home).list()) or 'none'}", file=out)
@@ -292,16 +300,37 @@ def chat_command(session, rt: Runtime, cmd: str, rest: str, out: TextIO) -> bool
             session.context.project = None
             print("No active project.", file=out)
         elif ProjectStore(rt.paths.home).exists(rest):
+            ws = WorkspaceStore(rt.paths.home)
+            try:
+                w = enter_workspace(session, ws, ws.workspace_of_project(rest))  # the project's owner (law 4)
+            except WorkspaceError as e:
+                print(str(e), file=out)
+                return True
             session.context.project = rest
-            print(f"Active project: {rest}. Its memories and documents come first.", file=out)
+            where = "" if w.personal else f" Workspace: {w.name}."
+            print(f"Active project: {rest}. Its memories and documents come first.{where}", file=out)
         else:
             print(f"No project {rest} (create it: jarvis project new {rest}).", file=out)
+        return True
+    if cmd == "/workspace":
+        ws = WorkspaceStore(rt.paths.home)
+        if not rest:
+            names = ", ".join(w.slug for w in ws.list()) or PERSONAL
+            print(f"Active workspace: {session.context.workspace}. Workspaces: {names}", file=out)
+        else:
+            try:
+                w = enter_workspace(session, ws, PERSONAL if rest == "off" else rest)
+            except WorkspaceError as e:
+                print(str(e), file=out)
+                return True
+            shared = "" if w.personal else (" Personal memories are in view too." if w.share_personal else " Personal memories stay out of view.")
+            print(f"Workspace: {w.name} ({w.slug}).{shared}", file=out)
         return True
     if cmd == "/task":
         if not rest:
             print("Usage: /task <goal>", file=out)
         else:
-            tid = create_task(rt, rest, session.context.project)
+            tid = create_task(rt, rest, session.context.project, workspace=session.context.workspace)
             session.last_task_id = tid  # /repeat after /task automates the task
             run_task(rt, tid, out, session.approver_for_tasks)
         return True

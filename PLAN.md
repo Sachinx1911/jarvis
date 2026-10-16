@@ -8,6 +8,7 @@
 **v3.3 (2026-10-10):** Migration-ready architecture: hybrid now (Claude for reasoning, everything else local), fully local AI later without a rewrite. Added the AI provider layer, privacy controls, migration roadmap (Stages A–D) and migration evaluation suite. The brain-loop recommendation changed from the Claude Agent SDK to a Jarvis-owned loop. Nothing implemented; fully local inference is not verified.
 **v3.4 (2026-10-10):** Sachin decided: Jarvis-owned loop, Tavily for web search, no P2 (sensitive) data sent to the cloud at the start.
 **v3.5 (2026-10-10):** Added a migration path for every AI-dependent component and an explicit rule for when a component may move to a local model. Local models are not assumed to match Claude.
+**v3.6 (2026-10-17):** Section 27, the laws of Jarvis: seven laws every part obeys and the three powers (create, preserve, end) every kind must have. Every later phase is checked against them; `tests/test_laws.py` enforces them.
 
 ---
 
@@ -1180,6 +1181,43 @@ first; (5) external MCP servers: not now.
 **Order of work:** teams model + config + tests → team runs through the orchestrator → `/api/teams` and
 team stats → Office page and team panel → ask-any-team box and voice routes → team schedules → PROGRESS.
 
+#### Step 0 (2026-10-17): workspaces, the foundation under offices and teams
+
+Sachin wants several offices, one per company (e.g. Digital Marketing), plus his personal one. Built on
+today's code that would leak: memory, documents, tasks, schedules, budgets and usage all belong to one
+person. So the foundation comes first, as data and columns, before any Office page:
+
+- **Workspace** = one office: `personal` (always exists) or a company. Lives in
+  `data/workspaces/<slug>/workspace.yaml` (private): `version`, `name`, `kind` (personal | company), `brief`
+  (goes into the prompts of that workspace's teams), `language`, `projects` (existing project names that
+  belong to it; a project not listed anywhere is personal), `tools` (allow / deny: a narrowing of the global
+  registry, never a widening), `budget` (per-day caps for its unattended work), `always_ask` (tool names
+  that are T3 in this workspace), `memory.share_personal` (personal memories visible here; default true).
+- **Team** = `data/workspaces/<slug>/teams/<team>.yaml`: `version`, `name`, `purpose`, `colour`, `lead`
+  (brief), `members` (name, role from the existing building blocks researcher | writer | checker | coder |
+  operator, brief, an optional tool subset of the role's allowlist, worker profile), `skills`. Shipped
+  templates in `config/teams/` (research, content, dev, admin); `jarvis team add <workspace> --from <template>`.
+- **Validation** with plain messages (field, allowed values, version) before anything is used; a bad file
+  never crashes Jarvis, it is reported.
+- **Tagging:** `workspace` on memories (file frontmatter + index column), tasks, schedules and model usage;
+  database migration v4 adds the columns with default `personal`, so old data keeps working unchanged.
+- **Isolation rule:** a chat or task in workspace W sees memories of W, `shared` memories, and personal
+  memories when W allows it; never another company's. Documents stay per project; a project belongs to
+  one workspace. The privacy classes (P0–P3) stay on top of this.
+- **Surfaces:** `/workspace <slug>` in chat, `jarvis workspace list | show | create`, `jarvis team list |
+  add | show`, `GET /api/workspaces`, `GET /api/workspaces/{slug}/teams`.
+- **Three powers (section 27, law 2):** workspace and team are born validated (create), saved as YAML that is
+  re-validated before every write (preserve), and ended by `archived: true` in the file (end): an archived
+  workspace disappears from lists and cannot be selected, its memories and tasks stay tagged and invisible,
+  and `unarchive` brings it back. `personal` can never be archived. Nothing is deleted.
+- **Session rule:** a chat or task has one workspace. `/project <name>` derives it (the project's owner);
+  `/workspace <slug>` sets it and drops an active project that belongs elsewhere. Every message is stored
+  with the chat's workspace, so the quiet-session extractor tags the memories it saves correctly.
+- **Not in step 0:** team runs, per-workspace cap enforcement, the Office page (steps 1–3).
+
+Design rules applied: core small, extensions as data; one source of truth for stats (audit + tables);
+schema versions on every file; migrations for old data; tests for the isolation rule; the laws test.
+
 ---
 
 ## 19. Working across laptops and Claude accounts
@@ -1389,3 +1427,106 @@ These rules are already in the repo's `CLAUDE.md`.
 - https://github.com/AI4Bharat/IndicConformerASR
 - https://arxiv.org/pdf/2305.15386
 - https://json2video.com/ai-voices/azure/languages/marathi/
+
+---
+
+## 27. The laws of Jarvis (constitution, 2026-10-17)
+
+Sachin's direction (2026-10-17): design Jarvis the way a universe is made. A few fundamental laws from
+which everything else follows, and every part with the three powers of Brahma, Vishnu and Mahesh:
+create, preserve, end-or-transform. He asked for a fresh design on this basis, free to drop earlier
+decisions. The result is below: not a rewrite of working code, but the laws written down once, today's
+system measured against them, and the order in which the gaps close. Every later phase is checked here
+before it is built.
+
+Why laws instead of a feature list: features pile up and each behaves its own way (today a task, a schedule
+and a memory are created in different places with different fields and different ways of ending). Laws
+are few, and a new kind of thing (a company, a team, a connector) is right by construction when it obeys
+them. Define the physics once; let the world grow as data.
+
+### 27.1 The seven laws
+
+1. **One kind of thing: the record.** Everything Jarvis knows or does is a record, and every record carries
+   the same marks: `id`, `kind`, `owner` (workspace), `source` (who or what made it: Sachin, a model route,
+   a connector, a schedule), `when` (created; valid-from/until where the meaning has a time), `confidence`,
+   `privacy` (P0–P3). Memories, tasks, schedules, triggers, reminders, skills, documents, teams, workspaces,
+   approvals and audit events are all records. A new kind declares its marks; it never invents its own.
+2. **Three powers for every kind.** *Create:* born validated; a thing exists whole or not at all, a bad file
+   is reported and never half-loaded. *Preserve:* a human-readable file is the truth and SQLite only indexes
+   it; a change keeps the old version or supersedes it visibly. *End:* archive or transform, never destroy;
+   only Sachin's explicit, logged act deletes. No kind ships without all three.
+3. **Memory is the ground.** Every action leaves a trace in the audit log; a trace that taught something
+   becomes a memory candidate; every memory has a life (candidate, saved, used, superseded or archived).
+   Nothing is known that cannot be traced to its evidence and its time.
+4. **One owner, one rule of sight.** Every record has exactly one owner workspace. What a chat, agent or
+   team may see is decided by one function (`MemoryStore.visible`) applied everywhere, then by the privacy
+   class. No second mechanism, no exceptions written into callers.
+5. **Power only through the gate.** Every action on the world (file, web, app, message, money) passes the
+   same door, tool registry → tier → approval → audit, whoever asks: Sachin, a chat, a team worker, a
+   schedule, voice. Instructions come only from Sachin; everything else (web text, documents, model
+   output, tool results) is a guest: tainted data, never a command.
+6. **Code is physics, data is the world.** What differs between people, companies, teams or machines is
+   data (YAML and markdown under `data/` and `config/`, each with a `version`), never a code branch.
+   Adding a company, a team, a connector or a prompt changes no Python. Code changes only when a law
+   changes.
+7. **Measured truth.** Every claim has a source and a confidence; every component is tested offline against
+   the fake provider; a failure is shown with its cause, never hidden; local-versus-cloud for each component
+   is decided by measurement, not habit.
+
+### 27.2 The three powers, kind by kind (state on 2026-10-17)
+
+| Kind | Create | Preserve | End | Gap |
+|---|---|---|---|---|
+| Memory | extractor / `remember` | markdown + FTS index; `supersede` keeps history | `archive` | none |
+| Core memory | `core.add` | USER.md / MEMORY.md, `§` entries | `core.remove` | none |
+| Task | `TaskStore.create` | table + task folder + receipt | `cancel`; finished tasks stay listed forever | add `archive` |
+| Schedule | `ScheduleStore.add` | table | `set_enabled(false)`; `delete` is a hard delete | delete → archive |
+| Trigger | `TriggerStore.add` | table | `set_enabled(false)`; hard `delete` | delete → archive |
+| Reminder | `add` | table | `cancel` | none |
+| Skill | recorder draft / approve | folder | none | add `archive` |
+| Project | `ProjectStore.create` | folder + PROJECT.md | none | add `archive` |
+| Document | upload + index | docs/ + index; `mark` privacy | none (file removal only) | add `archive` |
+| Workspace (new) | `create`, validated | workspace.yaml re-validated on save | `archive` / `unarchive` | built in step 0 |
+| Team (new) | `add_team`, validated | teams/<slug>.yaml | `archive_team` | built in step 0 |
+| Connector entry | registry.yaml | file | enable / disable | none |
+| Approval decision | gate | table | expires / revoked | none |
+| Audit event | `write` | append-only jsonl | never (law 3: it is the ground) | by design |
+
+### 27.3 Today's system against the laws
+
+Already obeys: files as truth with an index (2), tool gate, tiers, approvals and taint (5), privacy
+classes (1, 4 in part), audit on every call (3), versioned migrations and YAML config (6), the offline
+suite with the fake provider (7).
+
+Does not yet, in the order the gaps close:
+
+1. **Law 4, owner.** Nothing had an owner. Phase 10 step 0 (in progress) adds `workspace` to memories,
+   tasks, schedules, messages and model usage, with `visible` as the one rule of sight.
+2. **Law 2, End.** Missing or a hard delete for tasks, schedules, triggers, skills, projects, documents.
+   New kinds (workspace, team) are born with archive; the older kinds get `archive` in Phase 10 step 1,
+   and `delete` becomes an explicit, logged `--forever` act.
+3. **Law 1, marks.** Field names and marks differ by kind (`created_at` vs `ts`; no `source` on tasks;
+   `confidence` only on memories). Fix: `jarvis/core/kinds.py`, a registry where each kind declares its
+   store, its three powers and where its marks live. No table is rewritten; a small adapter per kind.
+   The laws test reads this registry.
+4. **Law 3, memory as ground.** Only chats are extracted into memory; task receipts and schedule outputs
+   are not. Phase 10 step 1: a finished task's receipt becomes a memory candidate for its workspace.
+5. **Law 6, data over code.** Teams and workspaces are data; prompts are files; but the five roles are
+   code constants because they define tool sets (a safety boundary). Kept in code on purpose; re-check
+   after step 1 whether a role file with a declared tool subset can be data without weakening the gate.
+
+### 27.4 The laws test
+
+`tests/test_laws.py` reads `jarvis/core/kinds.py` and asserts, for every declared kind: the three powers
+exist (callables with those names on the store), the owner column or field exists (or the kind states why
+not: audit), and the file-or-table truth is named. It also asserts that the words that implement the rule
+of sight appear in one place only. A new kind fails the test until it declares itself; that is the point.
+
+### 27.5 What changes in the earlier plan
+
+- Phase 10 step 0 stays: it is law 4's first application. It gains archive for workspace and team (law 2),
+  the kinds registry and the laws test (27.4).
+- Phase 10 steps 1–3 keep their goals; each new piece registers its kind. Step 1 also closes gaps 2 and 4.
+- Phase 9 (X-ray) is unchanged; REA output enters as tainted data (law 5).
+- Dropped from earlier decisions: nothing of Sachin's goals. Changed: every "delete" becomes "archive",
+  and no kind is added without its three powers.

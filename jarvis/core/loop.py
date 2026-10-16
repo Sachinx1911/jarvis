@@ -69,6 +69,7 @@ class AgentLoop:
         self.stop = stop
         self.max_steps = max_steps
         self.task_id = task_id
+        self.workspace: str | None = None  # set by the chat session / orchestrator; recorded with usage
         self.on_usage = on_usage
         self.agent = agent
 
@@ -113,7 +114,7 @@ class AgentLoop:
         return LoopResult("I stopped after too many steps, sir. Please try a simpler request.", self.max_steps, "step_limit")
 
     def _record(self, resp: LLMResponse, session_id: str) -> None:
-        self.store.record_usage(session_id, self.decision.route, resp, task_id=self.task_id)
+        self.store.record_usage(session_id, self.decision.route, resp, task_id=self.task_id, workspace=self.workspace)
         self.audit.write(
             "model_call", session_id=session_id, task_id=self.task_id, agent=self.agent, route=self.decision.route, provider=resp.provider,
             model=resp.model, stop_reason=resp.stop_reason, input_tokens=resp.usage.input_tokens,

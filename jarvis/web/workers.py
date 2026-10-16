@@ -20,12 +20,15 @@ from jarvis.core.chat import ChatSession
 from jarvis.core.runtime import Runtime, make_chat, make_task_runner, open_runtime
 from jarvis.projects import ProjectStore
 from jarvis.web.approvals import ApprovalBroker
+from jarvis.workspaces.model import PERSONAL
+from jarvis.workspaces.session import enter_workspace
+from jarvis.workspaces.store import WorkspaceStore
 from jarvis.web.trust import TurnRecorder
 
 ChatFactory = Callable[[Runtime, object], ChatSession]  # (runtime, approver) -> session
 
 # Terminal chat commands that also work in the dashboard chat (jarvis/cli.py _slash).
-CHAT_COMMANDS = ("/memory", "/forget", "/help", "/project", "/record", "/note", "/repeat")
+CHAT_COMMANDS = ("/memory", "/forget", "/help", "/project", "/workspace", "/record", "/note", "/repeat")
 
 
 @dataclass
@@ -90,7 +93,9 @@ class ChatManager:
             if cmd in ("/remember", "/remember-private"):
                 if chat.session.extractor is None:
                     return {"reply": "Memory is not available.", "kind": "command"}
-                mem = chat.session.extractor.remember(rest.strip(), private=cmd == "/remember-private")
+                mem = chat.session.extractor.remember(rest.strip(), private=cmd == "/remember-private",
+                                                      workspace=chat.session.workspace,
+                                                      share_personal=chat.session.context.share_personal)
                 return {"reply": f"Remembered as {mem.id}: {mem.summary_en or mem.name}", "kind": "command"}
             if cmd == "/why":
                 from jarvis.cli import why_text
@@ -105,7 +110,7 @@ class ChatManager:
                 buf = io.StringIO()
                 _slash(chat.session, chat.rt, text, buf)
                 return {"reply": buf.getvalue().strip() or "Done.", "kind": "command",
-                        "project": chat.session.context.project}
+                        "project": chat.session.context.project, "workspace": chat.session.workspace}
             reply = chat.session.send(text)
             turn_id = None
             if chat.turns is not None:
@@ -131,14 +136,31 @@ class ChatManager:
             assert chat.session and chat.rt
             if project and not ProjectStore(chat.rt.paths.home).exists(project):
                 raise ValueError(f"no project {project}")
+            if project:  # the project's owner becomes the chat's workspace (law 4); WorkspaceError is a ValueError
+                ws = WorkspaceStore(chat.rt.paths.home)
+                enter_workspace(chat.session, ws, ws.workspace_of_project(project))
             chat.session.context.project = project or None
             return chat.session.context.project
+
+        return chat.executor.submit(work).result()
+
+    def set_workspace(self, cid: str, workspace: str | None) -> str:
+        """Like /workspace: the chat works in that office; a project owned elsewhere is dropped."""
+        chat = self._get(cid)
+
+        def work() -> str:
+            assert chat.session and chat.rt
+            return enter_workspace(chat.session, WorkspaceStore(chat.rt.paths.home), workspace or PERSONAL).slug
 
         return chat.executor.submit(work).result()
 
     def project(self, cid: str) -> str | None:
         chat = self._get(cid)
         return getattr(chat.session.context, "project", None) if chat.session else None
+
+    def workspace(self, cid: str) -> str:
+        chat = self._get(cid)
+        return getattr(chat.session.context, "workspace", PERSONAL) if chat.session else PERSONAL
 
     def end(self, cid: str) -> list:
         with self._lock:
@@ -171,7 +193,8 @@ class ChatManager:
     def list(self) -> list[dict]:
         with self._lock:
             return [{"id": c.id, "busy": c.busy, "last_used": c.last_used,
-                     "project": getattr(c.session.context, "project", None) if c.session else None}
+                     "project": getattr(c.session.context, "project", None) if c.session else None,
+                     "workspace": getattr(c.session.context, "workspace", PERSONAL) if c.session else PERSONAL}
                     for c in self._chats.values()]
 
     def close_all(self) -> None:

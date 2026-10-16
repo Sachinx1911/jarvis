@@ -35,6 +35,7 @@ CHAT_HELP = """Commands:
   /repeat [<task id>] <when> turn the last action (or a task) into a skill + schedule; /repeat yes|no
   /record start <name>      record a demonstration (/record stop, /note <why>)
   /project <name>|off       set the active project (its memories and documents come first)
+  /workspace <slug>|off     work in an office (company); its memories are in view, others' are not
   /exit                     end the chat (Jarvis then saves what it learned)"""
 
 
@@ -61,7 +62,8 @@ def _slash(session: ChatSession, rt: Runtime, text: str, out: TextIO) -> bool:
             print("Memory is not available.", file=out)
             return True
         try:
-            mem = session.extractor.remember(rest, private=cmd == "/remember-private")
+            mem = session.extractor.remember(rest, private=cmd == "/remember-private", workspace=session.workspace,
+                                             share_personal=session.context.share_personal)
             print(f"Remembered as {mem.id}: {mem.summary_en or mem.name}", file=out)
         except (MemoryRejected, ValueError) as e:
             print(f"Not saved: {e}", file=out)

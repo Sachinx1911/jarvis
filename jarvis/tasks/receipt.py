@@ -152,7 +152,9 @@ def _summary(runner: "TaskRunner", task_id: str, facts: str) -> str | None:
                          messages=[Message.text("user", facts[:6000])], reasoning=d.effort,  # type: ignore[arg-type]
                          response_schema=SUMMARY_SCHEMA, task_id=task_id)
         res = runner.provider_for(d).structured(req, SUMMARY_SCHEMA)
-        runner.store.record_usage(None, "task_summary", res.response, task_id=task_id)
+        task = runner.tasks.get(task_id)
+        runner.store.record_usage(None, "task_summary", res.response, task_id=task_id,
+                                  workspace=task.workspace if task else None)
         if res.valid and validate(res.data, SUMMARY_SCHEMA):
             return str(res.data["summary"]).strip()[:400]  # type: ignore[index]
     except (ProviderError, NotImplementedError, Exception):  # the receipt must never fail

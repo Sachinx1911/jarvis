@@ -63,7 +63,8 @@ def agent_task_executor(ctx) -> str:
 
     s = ctx.schedule
     tasks = task_store(ctx.rt)
-    task = tasks.create(goal=s.input or s.name, title=s.name, budget=s.budget or None)
+    task = tasks.create(goal=s.input or s.name, title=s.name, budget=s.budget or None,
+                        workspace=getattr(s, "workspace", "personal") or "personal")
     tasks.update(task.id, owner=s.target)
     tasks.event(task.id, "scheduled", {"schedule_id": s.id, "run_id": ctx.run_id, "agent": s.target})
     done = RUNNER_FACTORY(ctx.rt).run(task.id)

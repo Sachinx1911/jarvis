@@ -106,6 +106,8 @@ class AgentEnv:
     max_steps: int = 8
     tainted_input: bool = False  # the orchestrator hands this agent untrusted (web-derived) text
     goal: str = ""               # the user's own task goal (trusted words for the egress policy)
+    workspace: str = "personal"  # the task's office: memory in view and usage records (PLAN.md 18.2 step 0)
+    share_personal: bool = True
 
 
 def run_agent(spec: AgentSpec, name: str, order: WorkOrder, env: AgentEnv) -> LoopResult:
@@ -121,6 +123,7 @@ def run_agent(spec: AgentSpec, name: str, order: WorkOrder, env: AgentEnv) -> Lo
             session_id=lambda: name, max_privacy="P1", tools_config=tools_config,
             web=env.web or WebClient(), quarantine=env.quarantine_for(),
             tavily_key=lambda: get_secret("tavily_api_key"), system=SystemTools(),
+            workspace=env.workspace, share_personal=env.share_personal,
         ))
         registry.restrict(set(spec.tools))
         prepare_taint(registry, spec, order, env, name)
@@ -129,6 +132,7 @@ def run_agent(spec: AgentSpec, name: str, order: WorkOrder, env: AgentEnv) -> Lo
                 registry.register(replace(tool, enabled=False))
         loop = AgentLoop(env.provider_for(decision), decision, registry, store, env.audit, env.stop,
                          max_steps=env.max_steps, task_id=env.task_id, on_usage=env.on_usage, agent=name)
+        loop.workspace = env.workspace
         system = (PROMPTS_DIR / spec.prompt_file).read_text(encoding="utf-8")
         history = [Message.text("user", order.render())]
         env.audit.write("agent_start", task_id=env.task_id, agent=name, route=spec.route, model=decision.model)

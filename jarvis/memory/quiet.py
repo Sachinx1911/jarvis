@@ -132,6 +132,16 @@ def unextracted_user_messages(conn: sqlite3.Connection, session_id: str) -> list
     return [t for t in (_text_of(r[0]) for r in rows) if t.strip()]
 
 
+def session_workspace(conn: sqlite3.Connection, session_id: str) -> str:
+    """The workspace the chat worked in when its last user message was stored ('personal' for old chats)."""
+    try:
+        row = conn.execute("SELECT workspace FROM messages WHERE session_id=? AND role='user' AND workspace IS NOT NULL "
+                           "ORDER BY id DESC LIMIT 1", (session_id,)).fetchone()
+    except sqlite3.OperationalError:  # a database from before workspaces
+        return "personal"
+    return (row[0] if row and row[0] else None) or "personal"
+
+
 def quiet_sessions(conn: sqlite3.Connection, now: datetime, quiet_minutes: float = 20,
                    max_age_hours: float = 24, max_failures: int = 3) -> list[str]:
     """Chat sessions that went quiet and have user messages no extraction has covered, oldest first."""
@@ -225,7 +235,7 @@ def extract_quiet_sessions(conn: sqlite3.Connection, extractor: Any, now: dateti
         watch = _AuditWatch(extractor.audit)
         extractor.audit = watch
         try:
-            results = extractor.extract_session(msgs)
+            results = extractor.extract_session(msgs, workspace=session_workspace(conn, sid))
         finally:
             extractor.audit = watch.inner
         if not results and _ERROR_EVENTS & set(watch.events):

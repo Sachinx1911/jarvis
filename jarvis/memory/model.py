@@ -39,6 +39,7 @@ class Memory:
     confidence: str = "high"
     sensitivity: str = "normal"
     scope: str = ""
+    workspace: str = "personal"  # the office this memory belongs to ("shared" = every office)
     valid_from: str = field(default_factory=lambda: date.today().isoformat())
     valid_until: str = ""
     superseded_by: str = ""

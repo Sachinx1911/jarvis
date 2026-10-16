@@ -115,9 +115,10 @@ class MemoryStore:
         self.db.execute("DELETE FROM memory_words WHERE id=?", (mem.id,))
         self.db.execute("DELETE FROM memory_trigrams WHERE id=?", (mem.id,))
         self.db.execute(
-            """INSERT INTO memory_index (id, path, type, status, name, subject, scope, sensitivity, valid_from)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (mem.id, str(path), mem.type, mem.status, mem.name, mem.subject, mem.scope, mem.sensitivity, mem.valid_from),
+            """INSERT INTO memory_index (id, path, type, status, name, subject, scope, sensitivity, valid_from, workspace)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (mem.id, str(path), mem.type, mem.status, mem.name, mem.subject, mem.scope, mem.sensitivity, mem.valid_from,
+             mem.workspace or "personal"),
         )
         text = mem.search_text().lower()
         if self.script_forms:
@@ -287,14 +288,27 @@ class MemoryStore:
             return extract_range(query, today or date.today()) if self.time_aware else None
         return time_range if self.time_aware else None  # type: ignore[return-value]
 
+    @staticmethod
+    def visible(mem: Memory, workspace: str | None, share_personal: bool = True) -> bool:
+        """The isolation rule (PLAN.md 18.2 step 0): a workspace sees its own memories, shared ones,
+        and personal ones when it allows that; never another company's. No workspace = no filter."""
+        if workspace is None:
+            return True
+        own = mem.workspace or "personal"
+        if own == workspace or own == "shared":
+            return True
+        return own == "personal" and share_personal
+
     def search(self, query: str, k: int = 5, include_sensitive: bool = True, scope: str | None = None,
-               time_range: DateRange | str | None = AUTO, today: date | None = None) -> list[SearchHit]:
+               time_range: DateRange | str | None = AUTO, today: date | None = None,
+               workspace: str | None = None, share_personal: bool = True) -> list[SearchHit]:
         """scope (e.g. "project:laptop"): memories in that scope rank first (PLAN.md 7).
-        time_range: AUTO reads it from the query; a DateRange is used as given; None turns it off."""
+        time_range: AUTO reads it from the query; a DateRange is used as given; None turns it off.
+        workspace: only memories visible in that office (see visible())."""
         rng = self.resolve_range(query, time_range, today)
         words = self.query_words(query, rng)
         if not words:
-            return self._in_range(rng, k, include_sensitive) if rng else []
+            return self._in_range(rng, k, include_sensitive, workspace, share_personal) if rng else []
         ranked: dict[str, float] = {}
 
         word_rows = self.db.execute(
@@ -336,12 +350,15 @@ class MemoryStore:
             mem = self.get(mid)
             if not mem or (not include_sensitive and mem.sensitivity in ("sensitive", "secret")):
                 continue
+            if not self.visible(mem, workspace, share_personal):
+                continue
             boost = 1.5 if scope and mem.scope == scope else 1.0
             hits.append(SearchHit(mem, score * self._recency(mem) * boost))
         hits.sort(key=lambda h: h.score, reverse=True)
         return hits[:k]
 
-    def _in_range(self, rng: DateRange, k: int, include_sensitive: bool) -> list[SearchHit]:
+    def _in_range(self, rng: DateRange, k: int, include_sensitive: bool,
+                  workspace: str | None = None, share_personal: bool = True) -> list[SearchHit]:
         """A question that names only a time ("what did I tell you last week"): the active
         memories saved in that period, newest first."""
         rows = self.db.execute(
@@ -352,6 +369,8 @@ class MemoryStore:
                 continue
             mem = self.get(mid)
             if not mem or (not include_sensitive and mem.sensitivity in ("sensitive", "secret")):
+                continue
+            if not self.visible(mem, workspace, share_personal):
                 continue
             hits.append(SearchHit(mem, 1.0 / (RRF_K + len(hits) + 1)))
             if len(hits) >= k:
