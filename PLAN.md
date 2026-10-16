@@ -1664,7 +1664,8 @@ Decisions for Sachin before this is final:
    channels, from Sachin.
 8. The astra discipline (27.4a) as the rule set for T2/T3, with its three new gate rules (recommended: yes,
    built in step 1 with the archive work).
-9. Order: step 0 (lokas and teams as data, the owner tag) → step 1 (adhipati, dharma routing, archive
+9. The eleven additions of the survey (27.10), all or a shorter list.
+10. Order: step 0 (lokas and teams as data, the owner tag) → step 1 (adhipati, dharma routing, archive
    everywhere, kinds registry, receipts into memory, per-loka budgets) → step 2 (Office page, Narada
    between lokas) → Phase 9 (X-ray).
 
@@ -1676,3 +1677,58 @@ Decisions for Sachin before this is final:
 - Phase 9 (X-ray) is unchanged; REA output enters through Patala (law 5).
 - Dropped from earlier decisions: Sachin choosing a team per task (the lord of the loka does). Changed:
   every "delete" becomes "archive"; no kind is added without its three powers.
+
+### 27.10 The whole tradition, checked concept by concept (2026-10-17)
+
+Sachin asked that every concept of the Hindu order be checked for use here. Checked means: each family of
+ideas was looked at and given one of four verdicts. **Take** = it names a mechanism Jarvis needs and does not
+have, so it becomes a rule or a component. **Adapt** = it names something Jarvis already has; the name and
+the rule sharpen it. **Name only** = a good word for an existing thing, no new rule (used in documents and
+the Office page). **Drop** = no software counterpart, or it would make the system worse (said why). The
+design stays small because only "take" adds code. Sources: Arthashastra 1.19 and the saptanga chapters
+(Shamasastry translation), Nyaya Sutra 1.1.3, the Gita on karma-yoga, Patanjali's yama/niyama, the
+Grihya-sutras on the sanskaras, Bhagavata and Vishnu Purana for the cosmology.
+
+| Concept | Verdict | In Jarvis | What it adds |
+|---|---|---|---|
+| Rta / dharma (order; each one's duty) | adapt | the seven laws (27.1); `duties` of a loka, `brief` of a role | law 4 routing by duties |
+| Trimurti (create, preserve, end) | take | the three powers on every kind (law 2) | archive everywhere, kinds registry |
+| Lokas, Indra's court | take | workspaces with lord, team, duties, tools, memory, rituals, inbox (27.3, 27.4) | step 0 and 1 |
+| Astras, shastras (hold, release, withdraw) | take | the T2/T3 discipline and the three new gate rules (27.4a) | step 1 |
+| **Saptanga** (Kautilya: the seven limbs of a state: swami, amatya, janapada, durga, kosha, danda, mitra) | take | the seven parts every loka file must have: lord (`lead`), ministers (`members`), domain (`duties` and `projects`), fort (`tools` allow/deny, `always_ask`), treasury (`budget`), the rod (tiers, approvals; the same for all), allies (`connectors` and other lokas it may ask) | the schema of `workspace.yaml` and the team file is complete by this list; the validator checks all seven are present or explicitly empty |
+| **Nyaya pramanas** (four means of valid knowledge: pratyaksha perception, anumana inference, upamana comparison, shabda testimony; memory and doubt are not knowledge) | take | the `source` and `confidence` of every memory and claim: shabda from the yajamana (Sachin said it) = high; pratyaksha (a tool result Jarvis saw) = high; anumana (inferred by the model) = medium; upamana (like something known) = low; a memory is not itself a pramana, it must point to one (law 3 evidence) | one scale for confidence across memories, research findings and receipts; a claim without a pramana is not stored |
+| **Shruti and smriti** (what was heard: fixed, revealed; what is remembered: derived, may change) | take | shruti = `SOUL.md`, the laws, `config/` rules; smriti = `memory/`, core memory. Shruti is never edited by a model; smriti is | a hard rule: no route may write to shruti; the laws test checks the write paths |
+| Itihasa, purana, vidhi (what happened; stories; how a rite is done) | name only | memory types: episode = itihasa, procedure = vidhi, fact/preference = smriti, constraint = shruti | vocabulary for the Memory page |
+| **Mimamsa** (rules for reading injunctions when they conflict: the specific overrides the general, the later overrides the earlier, the explicit overrides the implied) | take | the precedence rule for every setting and instruction: `config/local.yaml` over `config/*.yaml` over defaults; Sachin's words in this session over his standing rules over memory; a tool's own tier over the role's; but never upward in power (a lower rule can narrow, not widen) | written once in `jarvis/config.py` and the gate; today it is implicit in several places |
+| Karma, phala (deed and fruit) | adapt | audit (Chitragupta), receipts, memory candidates (law 3) | receipts into memory (step 1) |
+| **Karma-yoga** (do the duty, do not judge your own fruit) | take | a worker never grades its own result: the checker and the verifier are other agents or deterministic code; the writer cannot mark its own work done | already so for teams; made a rule for every agent, including the solo path and the coder |
+| Samsara, moksha | adapt | the life of a record (candidate → saved → used → superseded → archived); moksha = release from the cloud: Stage D fully local (section 16) | nothing new |
+| Yugas, pralaya, avatara (decline of dharma; the descent that restores it) | take | quality drifts: memory junk grows, prompts age, evals slip. An avatara is a corrective job that descends when a measured threshold is crossed: eval score below baseline, junk rate above the weekly limit, a route's error rate up | the nightly review and the migration eval exist; the trigger "when the measure falls, run the repair and tell Sachin" is new (step 1) |
+| **Gunas** (sattva clear, rajas restless, tamas inert) | take | the health of a memory or a loka: sattva = used and confirmed, rajas = recently changed or conflicting, tamas = stale and unused. The nightly review labels; tamas candidates are proposed for archive, rajas ones for Sachin's look | replaces today's ad-hoc "stale" rules with three named states |
+| **Ashramas** (student, householder, forest, renunciant) | adapt | a skill or a loka: learning (draft), active, retiring (unused for a season), archived; the stage changes by use, not by hand | the gunas decide the move; same mechanism |
+| **Sanskaras** (rites of passage: birth, naming, initiation, marriage, last rites) | take | the lifecycle events every kind emits: created, named (id), initiated (granted its first tool), joined (added to a loka or team), ended (archived). One audit event name per rite, the same for every kind | the kinds registry declares them; stats and the Office page read them |
+| **Pancha-mahayajna** (five daily duties: to the gods, the ancestors, all beings, people, and study) | take | the daily upkeep set, one job each: rituals run (deva), backup and history kept (pitru), system upkeep: disk, indexes, stale sessions (bhuta), serving Sachin: the morning brief (manushya), self-study: the eval and nightly review (brahma). `jarvis daemon` runs all five; the heartbeat reports which ran | backups, brief, review exist; "bhuta" upkeep and the one-page daily report are new |
+| **Arthashastra 1.19** (the king divides the day into eight parts, each with a duty; spies report at fixed hours) | adapt | the heartbeat and the schedule of unattended work: fixed hours for triggers' reports (chara), for accounts (usage and budget), for the brief; quiet hours at night | a default daily timetable in `config/proactive.yaml` |
+| Yama and niyama (Patanjali's restraints and observances) | take | ahimsa: no harm = the tiers and never T4; satya: law 7; asteya: no taking = copyright and privacy rules (one short quote, cite the source); **aparigraha: no hoarding = data minimisation: Jarvis stores only what has a use and a pramana, and the review drops the rest**; shaucha: cleanliness = dedupe and index upkeep; tapas: the test suite on every change; svadhyaya: self-study = evals; ishvara-pranidhana: defer to Sachin when unsure | aparigraha is new as a stated rule; the rest exist |
+| Guru-shishya parampara | adapt | teach-by-demonstration, `/remember`, the interview; the pupil repeats before it is trusted (skill approval) | nothing new |
+| Sankalpa, yajna, vrata | adapt | task goal, schedule, standing approval | nothing new |
+| Yajamana, purohita | adapt | Sachin commissions; Jarvis performs the rite and reports | nothing new |
+| Purusharthas (dharma, artha, kama, moksha) | adapt | the order in which conflicts are settled: duty and safety (dharma) before cost (artha) before what is wanted (kama); moksha as above | the order is stated once; it is how the gate already behaves |
+| Maya (appearance is not truth) | adapt | a model's answer is appearance until verified: sources, verify-after-act, the checker | nothing new |
+| Atman (the unchanging self) | adapt | `SOUL.md` and the core memory: identity that routes do not rewrite | shruti rule above |
+| Chitragupta, Yama, Varuna, Kubera, Saraswati, Agni, Narada, Kala, Brihaspati, Vishvakarma | adapt / name | kernel services (27.4) | per-loka budget, inter-loka requests |
+| Ganesha (beginnings, remover of obstacles) | name only | `jarvis init`, the setup script, `jarvis health` | nothing new |
+| Panchabhuta, koshas, chakras | name only / drop | five elements as the five layers (hardware, runtime, data, reasoning, interface) is a diagram label at most; chakras and koshas name no mechanism | not used in code |
+| Navagraha, dikpalas, muhurta (astrology, directions, auspicious times) | drop | no measurable counterpart; schedules run by Sachin's clock, not by stars | |
+| Naraka (punishment), rebirth of records, ranking of lokas by merit | drop | a failed task is retried or reported; history is kept, not recycled; budgets and duties are set by Sachin | |
+| Varna as hierarchy of persons | drop | roles are duties with tool sets, not ranks; any member of a team may be any role; no role is above another in worth | the gate treats every caller the same |
+| Ayurveda tridosha | name only | `jarvis health` groups: movement (scheduler, network), transformation (models, compute), structure (storage, indexes) | labels only |
+
+What this survey adds to the plan (all in step 1 unless said): the saptanga as the complete schema of a loka
+(step 0, validator); pramana-based confidence as the one scale; the shruti rule (no model writes identity or
+law); the Mimamsa precedence rule written once; karma-yoga for every agent; avatara as the measured
+corrective job; gunas as the three health states driving review and archive; sanskaras as the lifecycle
+events of the kinds registry; the five daily duties as the daemon's upkeep set with a one-page report;
+Kautilya's timetable as the default day; aparigraha as data minimisation. Everything else is vocabulary.
+
+Decision for Sachin (added to 27.8 as item 10): the eleven additions above, as listed, or a shorter list.
