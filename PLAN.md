@@ -1547,6 +1547,43 @@ services, each already present or planned, now with one name and one owner each.
 | Vrata (vow) | a standing rule one keeps | standing approvals, config rules | exist |
 | Asura | one who seeks power without the order | prompt injection, untrusted content trying to command; kept in Patala | defended today |
 
+### 27.4a Astras: the powers and their discipline
+
+Sachin asked (2026-10-17) that the astras be used too. In the epics there are two kinds of weapon:
+**shastra**, the hand weapon anyone trained may use, and **astra**, the weapon charged by a mantra, granted
+by a deity to one who has earned it, released by invocation, and dangerous when it cannot be withdrawn.
+Shiva names the three competencies when he gives Arjuna the Pashupatastra: *holding, releasing and
+withdrawing* (dharana, prayoga, samhara). Ashwatthama's Brahmastra is the lesson: he could release but not
+withdraw, and two Brahmastras in flight at once would have made the land barren. In Jarvis the astras are
+the powerful tools and the discipline is the gate; the metaphor gives today's tiers (11.1) three rules they
+did not have.
+
+| Kind | Tier | Who may use | Rule |
+|---|---|---|---|
+| Shastra (hand weapon) | T0, T1 | any member whose role allows the tool, in any loka that allows it | runs; T1 is verified after |
+| Astra (mantra weapon) | T2, T3 | granted to the loka and the role by Sachin (dharana) | released only by the mantra: Sachin's approval for this one use, full details shown (prayoga); never by an unattended run; never from a tainted session; must declare its withdrawal (samhara): an undo, or verify-after-act plus a receipt |
+| Brahmastra (the irreversible astra) | T3 irreversible: send, post, pay, delete | as above, with the Brahmastra rules | one target, named exactly (recipient, amount, file; no wildcards, no bulk); one in flight at a time across all lokas; released once per approval; if the deed cannot be verified afterwards, the grant is withdrawn and Sachin must regrant it |
+| Pashupatastra | T4 | nobody | exists in the world, not built in Jarvis: no command wipes data, bypasses security or touches passwords; the attempt is logged |
+
+Named astras that already exist in Jarvis, now with one name each:
+
+| Astra | In the order | In Jarvis |
+|---|---|---|
+| Gandiva (Arjuna's bow) | every astra is loosed from the one bow | the tool registry: nothing acts except through it (law 5) |
+| Vajra (Indra's bolt) | one strike ends the fight | the emergency stop: everything halts at the next step |
+| Sudarshana chakra (Vishnu's disc) | strikes and returns to the hand | verify-after-act: the verifier goes out, checks the deed, always comes back with a result |
+| Varuna-pasha (the noose) | binds the oath-breaker | the approval hold: a pending action is bound until Sachin releases it or it expires |
+| Naga-pasha | binds the body | taint: content from outside is bound so it cannot act or command |
+| Kavacha (Karna's armour) | cannot be pierced; part of the body | the privacy gate: P3 never leaves the Mac, P2 stays local |
+| Agneyastra and Varunastra (weapon and counter-weapon) | each attack has its answer | the prompt-injection attack suite (`tests/test_injection_attacks.py`) fires the attacks; the defences must answer every one; abhyasa (practice) is running it on every change |
+
+New rules this adds to the gate (today it has tiers, approvals, taint and grants, but not these three):
+(a) one irreversible action in flight at a time, across lokas; (b) a failed verification withdraws the
+grant for that tool in that loka until Sachin regrants it; (c) every T2/T3 tool declares its samhara
+(undo or verify path) in its spec, and a tool without one is T3 irreversible. Not taken: a catalogue of
+every astra in the epics (Brahmashirsha, Narayanastra, Nagastra and the rest name no mechanism Jarvis
+needs); power ranked by lore (tiers are set by consequence, as in 11.1).
+
 ### 27.5 How work flows (an intention becomes a deed)
 
 1. **Sankalpa.** Sachin states the work (chat, voice, Telegram) or a ritual fires. The words are trusted;
@@ -1603,7 +1640,9 @@ Glossary (design word → code word): loka → `workspace`; adhipati → team `l
 `members`; dharma → `duties` in `workspace.yaml`; sadhana → `tools`, `budget`; ritual → `schedule`;
 sankalpa → task `goal`; Chitragupta → `audit`; Varuna → `ToolRegistry` / `ApprovalGate`; Kubera →
 `Budget`; Agni → `providers`; Narada → `notify`; Patala → `quarantine` / taint; Yama → `verify`,
-`archive`; Saraswati → `memory`, `voice`.
+`archive`; Saraswati → `memory`, `voice`. Shastra → T0/T1 tools; astra → T2/T3 tools; Brahmastra → T3
+irreversible; Pashupatastra → T4; Gandiva → `ToolRegistry`; Vajra → emergency stop; Sudarshana → verify-after-act;
+Varuna-pasha → pending approval; Naga-pasha → taint; Kavacha → privacy gate.
 
 ### 27.8 Not taken, and decisions for Sachin
 
@@ -1623,7 +1662,9 @@ Decisions for Sachin before this is final:
 6. The five roles stay code (recommended) or become data.
 7. The first lokas: `personal` and Digital Marketing are certain; the rest, with their duties, tools and
    channels, from Sachin.
-8. Order: step 0 (lokas and teams as data, the owner tag) → step 1 (adhipati, dharma routing, archive
+8. The astra discipline (27.4a) as the rule set for T2/T3, with its three new gate rules (recommended: yes,
+   built in step 1 with the archive work).
+9. Order: step 0 (lokas and teams as data, the owner tag) → step 1 (adhipati, dharma routing, archive
    everywhere, kinds registry, receipts into memory, per-loka budgets) → step 2 (Office page, Narada
    between lokas) → Phase 9 (X-ray).
 
