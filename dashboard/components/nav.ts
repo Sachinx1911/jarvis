@@ -6,6 +6,7 @@ import type { IconName } from "./icons";
 export type Tab =
   | "home"
   | "chat"
+  | "office"
   | "tasks"
   | "projects"
   | "schedules"
@@ -31,6 +32,7 @@ export const GROUPS: { title: string; pages: Page[] }[] = [
   {
     title: "Work",
     pages: [
+      { key: "office", label: "Office", icon: "agents", subtitle: "Your offices, their teams and who is working now" },
       { key: "tasks", label: "Tasks", icon: "tasks", subtitle: "Approvals, the task board and receipts" },
       { key: "projects", label: "Projects & Docs", icon: "folder", subtitle: "Project notes and the documents Jarvis may read" },
       { key: "schedules", label: "Schedules", icon: "calendar", subtitle: "Schedules, reminders, triggers and the morning brief" },

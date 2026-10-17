@@ -17,6 +17,7 @@ import SettingsTab from "./SettingsTab";
 import GrantsTab from "./GrantsTab";
 import IndiaTab from "./IndiaTab";
 import HomeTab from "./HomeTab";
+import OfficeTab from "./OfficeTab";
 import Sidebar, { NavBadge, Service } from "./Sidebar";
 import TopBar, { Notice } from "./TopBar";
 import CommandPalette from "./CommandPalette";
@@ -338,6 +339,7 @@ function Main() {
               stopEngaged={engaged}
             />
           )}
+          {tab === "office" && <OfficeTab />}
           {tab === "memory" && <MemoryTab />}
           {tab === "tasks" && (
             <TasksTab
