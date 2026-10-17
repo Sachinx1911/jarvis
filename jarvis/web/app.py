@@ -396,11 +396,11 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
     # ---- tasks ----
 
     @api.get("/tasks")
-    def task_list(all: bool = True) -> dict[str, Any]:
+    def task_list(all: bool = True, archived: bool = False) -> dict[str, Any]:
         running = set(tasks.running())
         with runtime() as rt:
             items = [data.task_json(rt, t, t.id in running, tasks.progress.get(t.id))
-                     for t in task_store(rt).list(include_final=all)]
+                     for t in task_store(rt).list(include_final=all, include_archived=archived)]
         return {"items": items, "running": sorted(running)}
 
     @api.post("/tasks")
@@ -499,6 +499,31 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
             if p["task_id"] == task_id:
                 broker.resolve(p["id"], False)
         return {"id": task_id, "state": "CANCELLED"}
+
+    @api.post("/tasks/{task_id}/archive")
+    def task_archive(task_id: str) -> dict[str, Any]:
+        """End (law 2): a finished task is put away, never deleted; its folder and events are kept."""
+        with runtime() as rt:
+            ts = task_store(rt)
+            try:
+                t = ts.archive(task_id)
+            except KeyError:
+                raise HTTPException(404, "no such task")
+            except TransitionError as e:
+                raise HTTPException(409, str(e))
+            rt.audit.write("task_archived", source="dashboard", task_id=task_id)
+            return {"id": task_id, "state": t.state, "archived_at": t.archived_at}
+
+    @api.post("/tasks/{task_id}/unarchive")
+    def task_unarchive(task_id: str) -> dict[str, Any]:
+        with runtime() as rt:
+            ts = task_store(rt)
+            try:
+                t = ts.unarchive(task_id)
+            except KeyError:
+                raise HTTPException(404, "no such task")
+            rt.audit.write("task_unarchived", source="dashboard", task_id=task_id)
+            return {"id": task_id, "state": t.state, "archived_at": t.archived_at}
 
     # ---- approvals ----
 

@@ -98,6 +98,8 @@ def nightly_review(home: Path, conn: sqlite3.Connection, memory: MemoryStore, no
     lines += [f"- {c.line()}" for c in conflicts[:20]]
     if conflicts:
         lines.append("  Check them with `jarvis memory conflicts`; supersede or archive the outdated one.")
+    truth_line = _truth_check(home, conn)
+    lines.append(f"**Index against files:** {truth_line}")
     lines.append(END)
     section = "\n".join(lines)
 
@@ -117,8 +119,18 @@ def nightly_review(home: Path, conn: sqlite3.Connection, memory: MemoryStore, no
 
     summary = (f"Nightly review saved ({path.name}): {len(tasks)} task(s), {len(runs)} scheduled run(s), "
                f"{len(fires)} trigger action(s), {pending} approval(s) waiting, {len(new_memories)} new memory(ies), "
-               f"{len(conflicts)} possible memory conflict(s).")
+               f"{len(conflicts)} possible memory conflict(s). {truth_line}.")
     return ReviewResult(path, summary, len(conflicts))
+
+
+def _truth_check(home: Path, conn: sqlite3.Connection) -> str:
+    """The nightly index-versus-files cross-check (PLAN.md 27.12): one line, a report, never a repair."""
+    from jarvis.core.rebuild import verify
+
+    try:
+        return verify(home, conn).summary()
+    except Exception as e:  # noqa: BLE001 - the review must still be written
+        return f"truth check failed: {type(e).__name__}: {e}"
 
 
 def _counts(c: Counter) -> str:
