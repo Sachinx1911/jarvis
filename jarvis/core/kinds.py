@@ -8,6 +8,9 @@ does not have all three powers, so a new kind cannot be added without them.
 
 A kind that still lacks something says so in `gaps` with the step that closes it (27.6). The test
 treats a declared gap as known and an undeclared one as a failure: honesty, not perfection.
+
+Known gap outside the registry: chat sessions are not a kind yet and their messages live only in
+SQLite (data/sessions/<id> holds files, not the truth). File truth for sessions: later (27.8 item 10).
 """
 
 from __future__ import annotations
@@ -48,27 +51,31 @@ KINDS: tuple[Kind, ...] = (
           "confidence": "confidence", "privacy": "sensitivity"},
          ("memory_saved", "memory_skipped", "memory_archived"),
          notes="Also supersede (end-by-replacement) and trash/restore (Sachin's explicit, logged act)."),
-    Kind("task", "jarvis.tasks.store:TaskStore", "create", ("get", "list", "update"), "set_state",
-         "table", "workspace",
+    Kind("task", "jarvis.tasks.store:TaskStore", "create", ("get", "list", "update"), "archive",
+         "file", "workspace",
          {"id": "id", "kind": "-", "owner": "workspace", "source": "owner", "when": "created_at",
           "confidence": "-", "privacy": "-"},
-         ("created", "state", "receipt", "task_routed"),
-         gaps=("file truth: tasks live only in SQLite; a task folder with receipt.md exists but is not the truth (27.8 item 10, step 1-2)",
-               "end is set_state(CANCELLED), not archive: step 2 adds archive for finished tasks"),
-         notes="`source` is the owner column: jarvis, an agent name, or a schedule. task_routed is audited by "
-               "cli_tasks/web app (dharma routing, 27.5), not by the store; task events team_problem and "
-               "agent_done(member) come from the adhipati (27.4); a finished task leaves an episode memory (law 3)."),
+         ("created", "state", "receipt", "task_routed", "task_archived", "task_unarchived"),
+         notes="Files: data/tasks/<id>/task.json (truth) and events.jsonl (append-only); the tasks row is the "
+               "index (jarvis rebuild / jarvis verify). archive is for finished tasks only (COMPLETED, FAILED, "
+               "CANCELLED); cancel (set_state) ends a task in flight. `source` is the owner column: jarvis, an "
+               "agent name, or a schedule. task_routed is audited by cli_tasks/web app (dharma routing, 27.5), "
+               "not by the store; task events team_problem and agent_done(member) come from the adhipati (27.4); "
+               "a finished task leaves an episode memory (law 3)."),
     Kind("schedule", "jarvis.proactive.scheduler:ScheduleStore", "add", ("get", "list"), "archive",
-         "table", "workspace",
+         "file", "workspace",
          {"id": "id", "kind": "kind", "owner": "workspace", "source": "source", "when": "created_at",
           "confidence": "-", "privacy": "-"},
-         gaps=("file truth: step 1-2 (27.8 item 10)",),
-         notes="archive/unarchive keep the row; delete_forever removes an archived row only, as Sachin's logged act."),
+         notes="File: data/schedules/<id>.json (truth); the row is the index; runs (sched_runs) are measurements "
+               "and stay in SQLite. archive/unarchive keep the row; delete_forever removes an archived row and "
+               "its file only, as Sachin's logged act."),
     Kind("trigger", "jarvis.proactive.triggers:TriggerStore", "add", ("get", "list"), "archive",
-         "table", "workspace",
+         "file", "workspace",
          {"id": "id", "kind": "source", "owner": "workspace", "source": "created_by", "when": "created_at",
           "confidence": "-", "privacy": "-"},
-         notes="archive/unarchive keep the row and what it has seen; delete_forever is Sachin's logged act."),
+         notes="File: data/triggers/<id>.json (truth); the row is the index; what it has seen and its fires stay "
+               "in SQLite. archive/unarchive keep the row and what it has seen; delete_forever is Sachin's "
+               "logged act."),
     Kind("reminder", "jarvis.proactive.reminders:ReminderStore", "add", ("get", "pending", "upcoming"), "cancel",
          "table", "workspace",
          {"id": "id", "kind": "-", "owner": "workspace", "source": "source", "when": "created_at",

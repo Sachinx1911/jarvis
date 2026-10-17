@@ -18,6 +18,9 @@ Rules:
   anything else is queued in sched_pending_approvals (approve via Telegram /approvals or
   `jarvis schedule approvals`). Email and web events also taint the action's session.
 - Emergency stop: no checks and no actions while it is on.
+- File truth (law 2, jarvis/core/truth.py): a trigger's truth is data/triggers/<id>.json, rewritten
+  on every change to its row; the trig_triggers row is the index `jarvis rebuild` recreates from it.
+  What it has seen (trig_seen) and its fires (trig_fires) are measurements and stay in SQLite.
 """
 
 from __future__ import annotations
@@ -31,6 +34,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from jarvis.control.stop import EmergencyStop, StopSwitch
+from jarvis.core import truth
 from jarvis.core.loop import BudgetExceeded
 from jarvis.proactive.scheduler import (
     PendingApprovals, RunBudget, RunContext, Schedule, unattended_approver,
@@ -93,9 +97,7 @@ CREATE TABLE IF NOT EXISTS trig_fires (
 CREATE INDEX IF NOT EXISTS trig_fires_trigger ON trig_fires(trigger_id);
 """
 
-_COLS = ("id", "name", "source", "condition", "action", "target", "input", "output", "every_s", "cooldown_s",
-         "enabled", "created_by", "description", "created_at", "updated_at", "state", "last_poll_at",
-         "next_poll_at", "last_status", "last_detail", "last_fired_at", "failures", "workspace", "archived_at")
+_COLS = truth.SPECS["triggers"].cols
 
 
 def _iso(dt: datetime) -> str:
@@ -158,8 +160,9 @@ class Trigger:
 
 
 class TriggerStore:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: sqlite3.Connection, home: Path | None = None):
         self.db = conn
+        self.home = home or truth.home_of(conn)   # None (in-memory database): no file truth to write
         self.db.executescript(_SCHEMA)
         have = {r[1] for r in self.db.execute("PRAGMA table_info(trig_triggers)")}
         for column, decl in (("workspace", "TEXT NOT NULL DEFAULT 'personal'"), ("archived_at", "TEXT")):
@@ -175,6 +178,14 @@ class TriggerStore:
         nums = [int(r[0][2:]) for r in self.db.execute("SELECT id FROM trig_triggers") if r[0][2:].isdigit()]
         return f"t-{(max(nums) + 1) if nums else 1:03d}"
 
+    def _sync(self, tid: str) -> None:
+        """Write-through (law 2): the row's truth goes to data/triggers/<id>.json after every change."""
+        if self.home is None:
+            return
+        row = self.db.execute(f"SELECT {', '.join(_COLS)} FROM trig_triggers WHERE id=?", (tid,)).fetchone()
+        if row:
+            truth.write_truth(self.home, "triggers", tid, truth.SPECS["triggers"].record_of_row(dict(zip(_COLS, row))))
+
     def add(self, d: TriggerDraft, now: datetime, created_by: str = "cli", workspace: str = "personal") -> Trigger:
         tid = self._next_id()
         self.db.execute(
@@ -183,6 +194,7 @@ class TriggerStore:
              d.output, int(d.every_s), int(d.cooldown_s), 1, created_by, d.description, _iso(now), _iso(now), "{}",
              None, _iso(now), workspace or "personal"))
         self.db.commit()
+        self._sync(tid)
         return self.get(tid)  # type: ignore[return-value]
 
     def get(self, tid: str) -> Trigger | None:
@@ -205,6 +217,7 @@ class TriggerStore:
         self.db.execute("UPDATE trig_triggers SET enabled=?, updated_at=?, next_poll_at=?, failures=0 WHERE id=?",
                         (int(enabled), _iso(now), _iso(now) if enabled else None, tid))
         self.db.commit()
+        self._sync(tid)
         return self.get(tid)  # type: ignore[return-value]
 
     def archive(self, tid: str, now: datetime) -> bool:
@@ -212,20 +225,27 @@ class TriggerStore:
         cur = self.db.execute("UPDATE trig_triggers SET archived_at=?, enabled=0, next_poll_at=NULL, updated_at=? "
                               "WHERE id=? AND archived_at IS NULL", (_iso(now), _iso(now), tid))
         self.db.commit()
+        if cur.rowcount:
+            self._sync(tid)
         return cur.rowcount == 1
 
     def unarchive(self, tid: str, now: datetime) -> bool:
         cur = self.db.execute("UPDATE trig_triggers SET archived_at=NULL, updated_at=? "
                               "WHERE id=? AND archived_at IS NOT NULL", (_iso(now), tid))
         self.db.commit()
+        if cur.rowcount:
+            self._sync(tid)
         return cur.rowcount == 1
 
     def delete_forever(self, tid: str) -> bool:
-        """Sachin's explicit, logged act only (law 2); an archived trigger only."""
+        """Sachin's explicit, logged act only (law 2); an archived trigger only. The truth file goes
+        with the row: this is the one place a trigger file is removed."""
         cur = self.db.execute("DELETE FROM trig_triggers WHERE id=? AND archived_at IS NOT NULL", (tid,))
         if cur.rowcount:
             self.db.execute("DELETE FROM trig_seen WHERE trigger_id=?", (tid,))
         self.db.commit()
+        if cur.rowcount and self.home is not None:
+            truth.remove_truth(self.home, "triggers", tid)
         return cur.rowcount == 1
 
     def update_poll(self, tid: str, now: datetime, status: str, detail: str, next_at: datetime,
@@ -244,6 +264,7 @@ class TriggerStore:
             vals.append(_iso(now))
         self.db.execute(f"UPDATE trig_triggers SET {', '.join(sets)} WHERE id=?", (*vals, tid))
         self.db.commit()
+        self._sync(tid)
 
     # ---- dedupe ----
 

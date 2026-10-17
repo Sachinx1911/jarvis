@@ -1,8 +1,10 @@
 """Skill, agent and prompt schedules (PLAN.md 10.3).
 
-- Schedules live in SQLite (sched_schedules); every run is recorded in sched_runs, which
-  is the run's receipt. APScheduler only fires the triggers; it keeps nothing of its own,
-  so the database stays the single source of truth across restarts.
+- A schedule's truth is its file data/schedules/<id>.json (law 2, jarvis/core/truth.py); the
+  sched_schedules row is the index, rewritten through to the file on every change and rebuilt
+  from it by `jarvis rebuild`. Every run is recorded in sched_runs, which is the run's receipt
+  (a measurement: SQLite only). APScheduler only fires the triggers; it keeps nothing of its
+  own, so the database stays consistent across restarts.
 - Unattended runs may do T0/T1 only. They get an approver that says no to everything,
   so a T2+ action never runs without Sachin. Each refused action is stored in
   sched_pending_approvals so Telegram can show it later.
@@ -30,6 +32,7 @@ from jarvis.control.approvals import ApprovalRequest, Approver
 from jarvis.control.audit import AuditLog
 from jarvis.proactive.guard import CAPPED, UnattendedGuard, cap_notice, capped_today
 from jarvis.control.stop import EmergencyStop, StopSwitch
+from jarvis.core import truth
 from jarvis.core.loop import BudgetExceeded
 from jarvis.db import notional_usd
 from jarvis.proactive.schedule_parse import KINDS, OUTPUTS, ScheduleDraft, trigger
@@ -93,9 +96,7 @@ CREATE TABLE IF NOT EXISTS sched_pending_approvals (
 );
 """
 
-_COLS = ("id", "name", "kind", "target", "input", "cron", "timezone", "output", "budget", "misfire_grace_s",
-         "enabled", "source", "created_at", "updated_at", "next_run_at", "last_run_at", "last_status",
-         "last_detail", "last_output", "running_since", "workspace", "archived_at")
+_COLS = truth.SPECS["schedules"].cols
 
 
 @dataclass
@@ -143,8 +144,9 @@ def _iso(dt: datetime) -> str:
 
 
 class ScheduleStore:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: sqlite3.Connection, home: Path | None = None):
         self.db = conn
+        self.home = home or truth.home_of(conn)   # None (in-memory database): no file truth to write
         self.db.executescript(_SCHEMA)
         have = {r[1] for r in self.db.execute("PRAGMA table_info(sched_schedules)")}
         for column, decl in (("workspace", "TEXT NOT NULL DEFAULT 'personal'"), ("archived_at", "TEXT")):
@@ -159,6 +161,14 @@ class ScheduleStore:
     def _next_id(self) -> str:
         nums = [int(r[0][2:]) for r in self.db.execute("SELECT id FROM sched_schedules") if r[0][2:].isdigit()]
         return f"s-{(max(nums) + 1) if nums else 1:03d}"
+
+    def _sync(self, sid: str) -> None:
+        """Write-through (law 2): the row's truth goes to data/schedules/<id>.json after every change."""
+        if self.home is None:
+            return
+        row = self.db.execute(f"SELECT {', '.join(_COLS)} FROM sched_schedules WHERE id=?", (sid,)).fetchone()
+        if row:
+            truth.write_truth(self.home, "schedules", sid, truth.SPECS["schedules"].record_of_row(dict(zip(_COLS, row))))
 
     def add(self, draft: ScheduleDraft, now: datetime, misfire_grace_s: int, source: str = "cli") -> Schedule:
         if draft.kind not in KINDS:
@@ -175,6 +185,7 @@ class ScheduleStore:
              json.dumps(draft.budget), int(misfire_grace_s), 1, source, _iso(now), _iso(now),
              _iso(nxt) if nxt else None, getattr(draft, "workspace", "personal") or "personal"))
         self.db.commit()
+        self._sync(sid)
         return self.get(sid)  # type: ignore[return-value]
 
     def get(self, sid: str) -> Schedule | None:
@@ -202,6 +213,7 @@ class ScheduleStore:
         self.db.execute("UPDATE sched_schedules SET enabled=?, next_run_at=?, updated_at=? WHERE id=?",
                         (int(enabled), _iso(nxt) if nxt else None, _iso(now), sid))
         self.db.commit()
+        self._sync(sid)
         return self.get(sid)  # type: ignore[return-value]
 
     def archive(self, sid: str, now: datetime) -> bool:
@@ -209,24 +221,32 @@ class ScheduleStore:
         cur = self.db.execute("UPDATE sched_schedules SET archived_at=?, enabled=0, next_run_at=NULL, updated_at=? "
                               "WHERE id=? AND archived_at IS NULL", (_iso(now), _iso(now), sid))
         self.db.commit()
+        if cur.rowcount:
+            self._sync(sid)
         return cur.rowcount == 1
 
     def unarchive(self, sid: str, now: datetime) -> bool:
         cur = self.db.execute("UPDATE sched_schedules SET archived_at=NULL, updated_at=? "
                               "WHERE id=? AND archived_at IS NOT NULL", (_iso(now), sid))
         self.db.commit()
+        if cur.rowcount:
+            self._sync(sid)
         return cur.rowcount == 1
 
     def delete_forever(self, sid: str) -> bool:
         """Sachin's explicit, logged act only (law 2): callers must have asked him and must audit it.
-        Works on an archived schedule only, so a live one is always archived first."""
+        Works on an archived schedule only, so a live one is always archived first. The truth file
+        goes with the row: this is the one place a schedule file is removed."""
         cur = self.db.execute("DELETE FROM sched_schedules WHERE id=? AND archived_at IS NOT NULL", (sid,))
         self.db.commit()
+        if cur.rowcount and self.home is not None:
+            truth.remove_truth(self.home, "schedules", sid)
         return cur.rowcount == 1
 
     def set_next(self, sid: str, nxt: datetime | None) -> None:
         self.db.execute("UPDATE sched_schedules SET next_run_at=? WHERE id=?", (_iso(nxt) if nxt else None, sid))
         self.db.commit()
+        self._sync(sid)
 
     # ---- overlap lock (works across threads and processes) ----
 
@@ -259,6 +279,7 @@ class ScheduleStore:
             """UPDATE sched_schedules SET last_run_at=?, last_status=?, last_detail=?, last_output=? WHERE id=?""",
             (_iso(now), status, detail[:500], output_path, sid))
         self.db.commit()
+        self._sync(sid)
 
     def record(self, sid: str, trigger_kind: str, status: str, detail: str, now: datetime) -> int:
         """A run that did not start (missed, overlap, stopped)."""

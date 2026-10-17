@@ -19,8 +19,9 @@ PROVIDERS = ["claude_code", "anthropic", "fake"]
 
 
 def register(sub) -> dict[str, Callable]:
-    task = sub.add_parser("task", help="add, run, show, cancel or resume tasks")
-    task.add_argument("action", choices=["add", "run", "show", "cancel", "resume", "repeat", "draft"])
+    task = sub.add_parser("task", help="add, run, show, cancel, archive or resume tasks")
+    task.add_argument("action", choices=["add", "run", "show", "cancel", "resume", "repeat", "draft", "archive",
+                                         "unarchive"])
     task.add_argument("text", nargs="*", help="goal text, or a task id (repeat: <task-id> \"<when>\")")
     task.add_argument("--project")
     task.add_argument("--workspace", help="the office (workspace slug); without it the goal is routed by duties")
@@ -31,6 +32,7 @@ def register(sub) -> dict[str, Callable]:
     task.add_argument("--provider", choices=PROVIDERS, default=None)
     tasks = sub.add_parser("tasks", help="list tasks")
     tasks.add_argument("--all", action="store_true", help="include finished tasks")
+    tasks.add_argument("--archived", action="store_true", help="include archived tasks too")
     rc = sub.add_parser("receipt", help="show a task receipt")
     rc.add_argument("id")
 
@@ -133,9 +135,11 @@ def cmd_task(args: argparse.Namespace, out: TextIO, inp: TextIO, approver_factor
     try:
         ts = task_store(rt)
         if args.command == "tasks":
-            rows = ts.list(include_final=args.all)
+            archived = getattr(args, "archived", False)
+            rows = ts.list(include_final=args.all or archived, include_archived=archived)
             for t in rows:
-                print(f"{t.id}  {t.state:<16} p{t.priority}  {t.title[:50]:<50}  {t.current_step or ''}", file=out)
+                flag = " (archived)" if t.archived_at else ""
+                print(f"{t.id}  {t.state:<16} p{t.priority}  {t.title[:50]:<50}  {t.current_step or ''}{flag}", file=out)
             if not rows:
                 print("No tasks.", file=out)
             return 0
@@ -194,6 +198,15 @@ def cmd_task(args: argparse.Namespace, out: TextIO, inp: TextIO, approver_factor
         elif action == "cancel":
             ts.set_state(task.id, "CANCELLED", "cancelled by user")
             print(f"Cancelled {task.id}.", file=out)
+        elif action == "archive":   # law 2: a finished task is put away, its folder and events kept
+            ts.archive(task.id)
+            rt.audit.write("task_archived", source="cli", task_id=task.id)
+            print(f"Archived {task.id}. It stays in data/tasks/{task.id}; `jarvis task unarchive {task.id}` brings it back.",
+                  file=out)
+        elif action == "unarchive":
+            ts.unarchive(task.id)
+            rt.audit.write("task_unarchived", source="cli", task_id=task.id)
+            print(f"Unarchived {task.id}.", file=out)
         return 0
     except TransitionError as e:
         print(str(e), file=out)
