@@ -22,7 +22,7 @@ import secrets
 import sqlite3
 import time
 import urllib.parse
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -86,6 +86,7 @@ class Grant:
     note: str = ""
     created_by: str = ""
     last_used: float | None = None
+    workspace: str = ""  # the loka it serves; '' = every loka
 
     def status(self, now: float) -> str:
         if self.revoked:
@@ -105,7 +106,8 @@ class Grant:
         return {"id": self.id, "tool": self.tool, "tier": self.tier, "constraints": self.constraints,
                 "created": _iso(self.created), "expires": _iso(self.expires), "max_uses": self.max_uses,
                 "uses": self.uses, "revoked": self.revoked, "note": self.note, "created_by": self.created_by,
-                "last_used": _iso(self.last_used), "status": status, "active": status == "active"}
+                "last_used": _iso(self.last_used), "status": status, "active": status == "active",
+                "workspace": self.workspace}
 
 
 # ---- matching helpers ----
@@ -153,6 +155,11 @@ class GrantStore:
         self.clock = clock
         self.policy = PathPolicy(roots) if roots else None
         conn.executescript(_SCHEMA)
+        # v2 (astra rule b): a grant may belong to one loka; '' = every loka (grants made before lokas).
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(standing_grants)").fetchall()}
+        if "workspace" not in cols:
+            conn.execute("ALTER TABLE standing_grants ADD COLUMN workspace TEXT NOT NULL DEFAULT ''")
+            conn.commit()
 
     # ---- create, list, revoke ----
 
@@ -232,7 +239,9 @@ class GrantStore:
         return out
 
     def create(self, tool: str, tier: str, constraints: dict, days: float, max_uses: int, note: str = "",
-               created_by: str = "cli") -> Grant:
+               created_by: str = "cli", workspace: str = "") -> Grant:
+        """`workspace`: the loka this grant serves ('' = every loka). A fresh grant lifts the
+        tool's "needs regrant" mark (astra rule b) for that loka."""
         if tier not in GRANTABLE_TIERS:
             raise GrantError(f"{tool} is {tier}: standing approvals are only for T1 and T2 tools, "
                              "never for send, pay, delete (T3) or prohibited (T4) actions")
@@ -249,21 +258,38 @@ class GrantStore:
             raise GrantError(f"max uses must be between 1 and {MAX_USES}")
         rules = self._check_rules(constraints)
         now = self.clock()
+        workspace = (workspace or "").strip()
         g = Grant("g-" + secrets.token_hex(4), tool, tier, rules, now, now + days * 86400, max_uses,
-                  note=(note or "")[:200], created_by=created_by)
+                  note=(note or "")[:200], created_by=created_by, workspace=workspace)
         self.conn.execute(
-            """INSERT INTO standing_grants (id, tool, tier, constraints, created, expires, max_uses, note, created_by)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO standing_grants (id, tool, tier, constraints, created, expires, max_uses, note, created_by,
+                                            workspace)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (g.id, g.tool, g.tier, json.dumps(rules, ensure_ascii=False), g.created, g.expires, g.max_uses,
-             g.note, g.created_by))
+             g.note, g.created_by, g.workspace))
         self.conn.commit()
+        from jarvis.control.astra import AstraStore  # no cycle: astra imports nothing from here
+
+        AstraStore(self.conn, clock=self.clock).clear_regrant(tool, workspace)
         return g
 
     @staticmethod
     def _row(r) -> Grant:
-        return Grant(r[0], r[1], r[2], json.loads(r[3]), r[4], r[5], r[6], r[7], bool(r[8]), r[9], r[10], r[11])
+        return Grant(r[0], r[1], r[2], json.loads(r[3]), r[4], r[5], r[6], r[7], bool(r[8]), r[9], r[10], r[11],
+                     r[12] or "")
 
-    _COLS = "id, tool, tier, constraints, created, expires, max_uses, uses, revoked, note, created_by, last_used"
+    _COLS = ("id, tool, tier, constraints, created, expires, max_uses, uses, revoked, note, created_by, last_used, "
+             "workspace")
+
+    def withdraw(self, tool: str, workspace: str = "") -> list[Grant]:
+        """Astra rule (b): revoke every active grant for this tool in this loka (and the loka-less
+        ones, which serve every loka). Returns what was revoked."""
+        gone = [g for g in self.list(active_only=True)
+                if g.tool == tool and (not workspace or g.workspace in ("", workspace))]
+        for g in gone:
+            self.conn.execute("UPDATE standing_grants SET revoked=1 WHERE id=?", (g.id,))
+        self.conn.commit()
+        return [replace(g, revoked=True) for g in gone]
 
     def get(self, grant_id: str) -> Grant | None:
         r = self.conn.execute(f"SELECT {self._COLS} FROM standing_grants WHERE id=?", (grant_id,)).fetchone()
@@ -325,8 +351,11 @@ class GrantStore:
             return text in expected
         return False
 
-    def matches(self, g: Grant, tool: str, tier: str, arguments: dict) -> bool:
+    def matches(self, g: Grant, tool: str, tier: str, arguments: dict, workspace: str = "") -> bool:
+        """A loka-bound grant answers only in its loka; a loka-less one answers everywhere."""
         if g.tool != tool or tier not in GRANTABLE_TIERS or g.status(self.clock()) != "active":
+            return False
+        if g.workspace and g.workspace != (workspace or ""):
             return False
         if not isinstance(arguments, dict):
             return False
@@ -336,11 +365,11 @@ class GrantStore:
                 return False
         return True
 
-    def find(self, tool: str, tier: str, arguments: dict) -> Grant | None:
+    def find(self, tool: str, tier: str, arguments: dict, workspace: str = "") -> Grant | None:
         if tier not in GRANTABLE_TIERS:
             return None
         for g in self.list(active_only=True):
-            if self.matches(g, tool, tier, arguments):
+            if self.matches(g, tool, tier, arguments, workspace):
                 return g
         return None
 
