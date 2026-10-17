@@ -45,6 +45,30 @@ class AgentSpec:
     tools: frozenset[str]
     files_root: str = "workspace"  # "task" = the task folder only
     starts_tainted: bool = False   # its input is derived from untrusted (web) text
+    # Set when the agent is a member of a team file (PLAN.md 27.4, the sabha): the member's name,
+    # its one-line brief (appended to the role prompt) and its worker model profile (config/tasks.yaml).
+    label: str = ""
+    brief: str = ""
+    profile: str = ""
+
+
+def member_spec(base: AgentSpec, member) -> AgentSpec:
+    """A team member as an AgentSpec: the role's spec, narrowed by the member's tool subset (never
+    widened: the intersection with the role's allowlist), with its brief and profile. `member` is a
+    jarvis.workspaces.model.Member (duck-typed to keep this module free of the workspaces package)."""
+    tools = base.tools & frozenset(member.tools) if member.tools else base.tools
+    return replace(base, tools=tools, label=member.name, brief=member.brief or "", profile=member.profile or "")
+
+
+def assert_independent_checker(writer: AgentSpec, checker: AgentSpec) -> None:
+    """Karma-yoga (PLAN.md 27.10): no agent grades its own work. The checker is never the writer (not the
+    same spec, not the same team member) and can write nothing the writer could have written."""
+    if writer is checker or (writer.label and writer.label == checker.label):
+        raise RuntimeError("law: the checker must not be the same agent as the writer")
+    if checker.role != "checker":
+        raise RuntimeError(f"law: the verdict must come from a checker, not a {checker.role}")
+    if checker.tools & SANDBOXED_WRITES:
+        raise RuntimeError("law: the checker may not hold writing tools")
 
 
 RESEARCHER = AgentSpec("researcher", "researcher", "researcher.md",
@@ -113,7 +137,7 @@ class AgentEnv:
 def run_agent(spec: AgentSpec, name: str, order: WorkOrder, env: AgentEnv) -> LoopResult:
     store = Store(env.db_path)
     try:
-        decision = env.decision_for(spec.route)
+        decision = env.decision_for(spec.route, spec.profile) if spec.profile else env.decision_for(spec.route)
         tools_config = dict(env.config.tools)
         if spec.files_root == "task":
             tools_config["files"] = {"allowed": [str(env.task_dir)]}
@@ -134,8 +158,11 @@ def run_agent(spec: AgentSpec, name: str, order: WorkOrder, env: AgentEnv) -> Lo
                          max_steps=env.max_steps, task_id=env.task_id, on_usage=env.on_usage, agent=name)
         loop.workspace = env.workspace
         system = (PROMPTS_DIR / spec.prompt_file).read_text(encoding="utf-8")
+        if spec.brief:
+            system += f"\n\nYour brief (you are {spec.label or spec.role} on this team): {spec.brief}"
         history = [Message.text("user", order.render())]
-        env.audit.write("agent_start", task_id=env.task_id, agent=name, route=spec.route, model=decision.model)
+        env.audit.write("agent_start", task_id=env.task_id, agent=name, route=spec.route, model=decision.model,
+                        **({"member": spec.label} if spec.label else {}))
         result = loop.run(history, system, f"{env.task_id}-{name}-{uuid.uuid4().hex[:4]}")
         env.audit.write("agent_end", task_id=env.task_id, agent=name, steps=result.steps, stop=result.stop_reason)
         return result
