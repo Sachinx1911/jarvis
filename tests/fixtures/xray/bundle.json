@@ -1,0 +1,8 @@
+{
+  "url": "https://demo-site.test/",
+  "bundles": [
+    {"url": "https://demo-site.test/assets/app.js", "bytes": 48210, "bundler": "vite", "modules": 37},
+    {"url": "https://demo-site.test/assets/three.module.js", "bytes": 612400, "bundler": null, "modules": 1}
+  ],
+  "summary": {"totalBytes": 660610, "bundler": "vite", "largest": "three.module.js"}
+}
