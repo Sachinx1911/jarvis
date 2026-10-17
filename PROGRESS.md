@@ -5,17 +5,47 @@ Ending a session: update this file and commit.
 
 ## Current status
 
-- **Design final, building step 0 (2026-10-17, office laptop, Windows):** Sachin took all eleven design
-  decisions of PLAN.md 27.8 as recommended ("sarv final", 2026-10-17 on the Mac), so the design pause is over.
-  Work follows 27.8 item 11: step 0 (lokas and teams as data, the owner tag) → step 1 (adhipati, dharma
-  routing, archive everywhere, kinds registry, receipts into memory, per-loka budgets) → step 2 (Office page,
-  Narada between lokas) → Phase 9 (X-ray). On the branch `feature/workspaces` (pushed; the earlier note that
-  it was not pushed was wrong): step 0 is now complete and tested (workspace/team model, store, session rule,
-  DB migration v4 with the SCHEMA_VERSION bump that was missing, `/workspace` in chat and dashboard chat,
-  `jarvis workspace|team` CLI, `/api/workspaces` routes, kinds registry `jarvis/core/kinds.py`, the laws
-  test `tests/test_laws.py`, unit/CLI/API tests). Known gaps are declared in the kinds registry with the step
-  that closes each (schedule/trigger still hard-delete; trigger/reminder/skill/project have no owner yet;
-  tasks/schedules are table-truth). Next: full suite green on the branch → merge to main → step 1.
+- **Step 1 of the laws built (2026-10-17, office laptop, Windows):** Sachin took all eleven design
+  decisions of PLAN.md 27.8 as recommended ("sarv final", 2026-10-17 on the Mac). Work follows 27.8 item 11:
+  step 0 (lokas and teams as data, the owner tag) → step 1 (this) → step 2 (Office page, Narada between
+  lokas) → Phase 9 (X-ray). Step 0 is merged (`9108130`). Step 1 is merged on `main`, built by the lead and
+  two agents in worktrees:
+  - **Archive everywhere (law 2):** schedules and triggers end by archive; "delete" in CLI, Telegram and
+    the dashboard archives. Only `jarvis schedule|trigger delete --forever` on an archived item, after
+    asking, removes the row (audited `*_delete_forever`, by Sachin). `delete_forever` is the one DELETE a
+    truth table allows (laws test). Dashboard buttons say Archive (rebuild the frontend to see it).
+  - **Owner tag:** `workspace` on triggers and reminders too; grants can be bound to one office
+    (`jarvis approvals grant <tool> --workspace <slug>`).
+  - **Receipts into memory (law 3):** a completed task's summary becomes an episode memory of its own
+    office (`receipt_remembered`).
+  - **Adhipati (27.4):** the planner is the lead of the office's best-matching team (`jarvis/workspaces/
+    routing.pick_team`); members' briefs, tools (never wider than the role) and model profiles apply;
+    receipt shows `Team: research (Acme)`. Karma-yoga: an independent checker, no completion without a
+    `verify` event.
+  - **Dharma routing (27.5):** `/task`, `jarvis task add|run` and `POST /api/tasks` route a goal to an
+    office by its duties/name/projects (both scripts); unsure → asks (CLI/chat numbered prompt, API 409
+    `needs_choice`); `POST /api/workspaces/route`. Audited `task_routed`.
+  - **Shruti (27.10):** `profile/SOUL.md`, `config/**`, `prompts/**`, CLAUDE.md, PLAN.md cannot be read or
+    written by any tool (T4 `t4_attempt`), checked by an AST scan of every write in `jarvis/`.
+  - **Kubera (27.4, 27.6):** per-office daily budgets (`budget:` in workspace.yaml) stop tasks
+    (`loka budget: ...`), schedules and triggers (recorded CAPPED, one notice a day, `loka_capped`);
+    `jarvis workspace show` prints today's spend.
+  - **Fences (27.3):** `tools: allow/deny/always_ask` in workspace.yaml fence chat, tasks and workers
+    (`tool_fenced`; always_ask asks on any tier and blocks standing grants).
+  - **Astra (27.4a):** every tool declares how its act is checked or undone (`samhara`); a T2 with none
+    is T3 (open_url and bill_upi_link are T3 now); one irreversible action in flight at a time
+    (`astra_inflight`, stale 30 min); a failed verify withdraws the tool's standing grants
+    (`grant_withdrawn`, "needs regrant" in `jarvis workspace show`); the Brahmastra takes one target,
+    released once per approval.
+  - Tests: `test_laws.py`, `test_laws_shruti.py`, `test_routing_dharma*.py`, `test_team_lead.py`,
+    `test_loka_budget.py`, `test_fence.py`, `test_astra.py`, `test_loka_wiring.py`. Whole suite:
+    1628 passed, 25 skipped (Windows, 2026-10-17).
+  - Not done in step 1 (declared in `jarvis/core/kinds.py` gaps or here): tasks end by cancel, not archive
+    (step 2); task/schedule file truth (27.8 item 10, step 2); operator/coder member briefs are not applied;
+    trigger fires are not counted in the office's runs; the dashboard task form does not yet show the
+    409 `needs_choice` candidates (step 2, Office page); routing is word overlap only (by design).
+  - Next: step 2 (Office page in the dashboard, Narada between lokas, task archive) → Phase 9 (X-ray) →
+    final Fable testing.
 
 - **Phase:** All phases 0–8 are built and merged into `main` (2026-10-10). 494 offline tests pass. Live checks on Claude (subscription) passed for Phases 0–2; Phase 3 live checks are being rerun after quality fixes (see "Phase 3"). Phases 4–8 are tested offline with fakes; their live checks wait for items in "Waiting for Sachin". Final testing on Claude Fable comes last (Sachin's rule).
 - **How the work was done:** Phase 3 by the lead session; Phases 4, 5, 6, 7, 8 by parallel agents in git worktrees (`.claude/worktrees/`, git-ignored), each owning its own files, then merged and wired in by the lead.
@@ -157,6 +187,7 @@ Parked items. Work that does not depend on them continues.
 - **Marathi voice (2026-10-11):** Sachin dislikes the MMS-TTS voice. Samples made in `data/voice/samples/` (MMS, Microsoft Aarohi/Manohar, SYSPIN female/male, macOS Lekha). He chose the ElevenLabs library voice "Bunty" but does not want the ElevenLabs API; Claude will not copy that voice without the voice artist's permission. Plan: IndicF5 (AI4Bharat, MIT, 1.4 GB, local, copies a voice from a short clip) with Sachin's own voice. Waiting for: (1) OK to install IndicF5's code from GitHub into a separate test venv (the install was blocked pending his OK); (2) accept the terms at huggingface.co/ai4bharat/IndicF5 and run `hf auth login`; (3) his recordings of the given Marathi (and optional Hindi) passage. If the Bunty artist gives written permission and a clean recording, the same engine can use it.
 - **Stage B decisions:** (1) pass thresholds per route; (2) keep a ~7 GB model loaded all the time or load on demand (~5 s); (3) a round 2 for Gemma 4 E4B with a bigger Marathi-heavy extraction/quarantine set after moving the stable prompt part first; (4) keep, delete or try Qwen once on MLX (5.7 GB on disk).
 - **Browser (Phase 8):** `jarvis browser setup` downloads Playwright Chromium (~150–200 MB) per machine; this laptop already has a cached copy.
+- **Dashboard rebuild on this laptop (2026-10-17):** `dashboard/out/` here is the old design and lacks the Archive labels; run `cd dashboard; npm ci; npm run build` (one-time download of node packages) when you are OK with it.
 - **Dashboard (Phase 7):** on this laptop the built frontend is already in `dashboard/out/` (copied from the agent's build). On another machine: `cd dashboard; npm install; npm run build` (one-time download).
 - **Mac checks:** Rishi voice (`say -v '?'`), Whisper speed on the M4, microphone permission, EventKit (`pyobjc-framework-EventKit`, Reminders permission), browser profiles permissions, everything once on the Mac.
 
@@ -220,6 +251,9 @@ On a new machine first: `git clone`, run `scripts/setup.ps1` (Windows) or `scrip
 
 | Date | Decision |
 |---|---|
+| 2026-10-17 | `open_url` and `bill_upi_link` are T3 (were T2): neither has an undo or verify path, so the astra rule (27.4a) treats them as irreversible; they ask every time and take no standing grant |
+| 2026-10-17 | Telegram and the dashboard can only archive a schedule or trigger; `delete --forever` exists in the CLI alone, on an archived item, after a y/N question |
+| 2026-10-17 | A failed verification withdraws the tool's standing grants in that office; grants made before step 1 have no office and are withdrawn everywhere |
 | 2026-10-10 | Voice: faster-whisper for local speech-to-text (no torch; 4x faster than openai-whisper on CPU per its README); System.Speech on Windows, `say` on macOS; edge-tts only as an optional, off-by-default Marathi cloud voice that never gets P2/P3 text |
 | 2026-10-10 | Unattended schedules run agent tasks with no approver: only T0/T1 actions; anything else is refused and shows in the receipt |
 | 2026-10-10 | Telegram `/cloud off` writes an override file that applies to every route; it can only switch cloud off, never loosen `routing.yaml` |
@@ -277,4 +311,5 @@ See "Open decisions" in PLAN.md. Most important:
 | 2026-10-10 | Home MacBook M4 | Sachin updated Claude Code to 2.1.296. Live greeting through the subscription CLI: PASS on the Mac |
 | 2026-10-10 | Home MacBook M4 | Merged `wip/india-features` (wired tools, brief sections, CLI; brief shows bills/wallet as counts unless `india.brief.details`; offline tests now block all non-loopback network). Merged daily cap + runaway guard (`proactive unattended`), nightly review (`review` schedule kind, `memory/episodes/`), memory conflicts (`jarvis memory conflicts`, brief count). 970 passed. Agents running on `wip/verify-repeat`, `feature/backup`, `feature/dashboard-india` (India tab, triggers in dashboard), `feature/small-hooks` (why-panel for CLI/Telegram, sensitive-topic enforcement) |
 | 2026-10-10 | Home MacBook M4 | Pulled office work. `scripts/setup.sh` OK. Offline suite on macOS: 899/902, then 902 passed after fixes: Windows-style paths (`C:/...`, UNC) now refused on Mac/Linux in `PathPolicy` and grant rules (POSIX had treated them as names inside the workspace), shortcut path parsed as a Windows path. `jarvis health`: claude_code OK (Max); Claude Code CLI 2.1.260 too old for `--system-prompt-file` |
+| 2026-10-17 | Office laptop (Windows) | Step 0 merged. Step 1 built: lead (archive everywhere, owner tags, receipts into memory, wiring), agent A (adhipati, dharma routing, shruti, karma-yoga), agent B (Kubera budgets, fences, astra). Merged on `main`. 1628 passed, 25 skipped (Windows, 2026-10-17) |
 | 2026-10-10 | Office laptop (Windows) | Built Phase 3 (tasks, team, receipts, projects, teach-by-demo). Five parallel agents built Phases 4–8; all merged and wired in. 494 offline tests pass. First live laptop compare failed verification; quality fixes made; rerun started |

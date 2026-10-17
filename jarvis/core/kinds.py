@@ -52,10 +52,12 @@ KINDS: tuple[Kind, ...] = (
          "table", "workspace",
          {"id": "id", "kind": "-", "owner": "workspace", "source": "owner", "when": "created_at",
           "confidence": "-", "privacy": "-"},
-         ("created", "state", "receipt"),
+         ("created", "state", "receipt", "task_routed"),
          gaps=("file truth: tasks live only in SQLite; a task folder with receipt.md exists but is not the truth (27.8 item 10, step 1-2)",
-               "end is set_state(CANCELLED), not archive: step 1 adds archive for finished tasks"),
-         notes="`source` is the owner column: jarvis, an agent name, or a schedule."),
+               "end is set_state(CANCELLED), not archive: step 2 adds archive for finished tasks"),
+         notes="`source` is the owner column: jarvis, an agent name, or a schedule. task_routed is audited by "
+               "cli_tasks/web app (dharma routing, 27.5), not by the store; task events team_problem and "
+               "agent_done(member) come from the adhipati (27.4); a finished task leaves an episode memory (law 3)."),
     Kind("schedule", "jarvis.proactive.scheduler:ScheduleStore", "add", ("get", "list"), "archive",
          "table", "workspace",
          {"id": "id", "kind": "kind", "owner": "workspace", "source": "source", "when": "created_at",

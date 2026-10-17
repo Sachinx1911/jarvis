@@ -53,7 +53,7 @@ def _print_results(results: list[tuple[str, str]], out: TextIO) -> None:
         print("Learned: " + ", ".join(f"{a.lower()} {mid}" for a, mid in saved), file=out)
 
 
-def _slash(session: ChatSession, rt: Runtime, text: str, out: TextIO) -> bool:
+def _slash(session: ChatSession, rt: Runtime, text: str, out: TextIO, inp: TextIO | None = None) -> bool:
     """Handle a chat command. Returns False if text is not a command."""
     cmd, _, rest = text.partition(" ")
     rest = rest.strip()
@@ -89,7 +89,7 @@ def _slash(session: ChatSession, rt: Runtime, text: str, out: TextIO) -> bool:
         print(why_text(rt, getattr(session, "last_turn_id", None)), file=out)
         return True
     from jarvis import cli_tasks
-    return cli_tasks.chat_command(session, rt, cmd, rest, out)
+    return cli_tasks.chat_command(session, rt, cmd, rest, out, inp)
 
 
 def why_text(rt: Runtime, turn_id: int | None) -> str:
@@ -160,7 +160,7 @@ def cmd_chat(args: argparse.Namespace, out: TextIO, inp: TextIO) -> int:
                 continue
             if text.lower() in EXIT_WORDS:
                 break
-            if text.startswith("/") and _slash(session, rt, text, out):
+            if text.startswith("/") and _slash(session, rt, text, out, inp):
                 continue
             turn(text)
         try:

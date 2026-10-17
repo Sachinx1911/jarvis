@@ -201,8 +201,11 @@ class TaskRunner:
             raise KeyError(task_id)
         budget = Budget.from_config(self.config.tasks.get("budget"), task.budget)
         used = self.tasks.usage(task_id)
+        from jarvis.control.loka_budget import LokaMeter
+
+        self._loka_meter = LokaMeter(self.store.conn, task.workspace, self._workspace_budget(task.workspace))
         self.tracker = BudgetTracker(budget, used["calls"], used["input_tokens"] + used["output_tokens"],
-                                     used["notional_usd"])
+                                     used["notional_usd"], extra=self._loka_meter.charge)
         self.stop = StopSwitch(self.home / "data")
         self.task_dir = self.tasks.folder(task_id)
         if task.state == "CANCELLED":
@@ -233,6 +236,10 @@ class TaskRunner:
             self.progress("Cancelled.")
         except BudgetExceeded as e:
             self._fail(task_id, f"budget: {e}")
+            if str(e).startswith("loka budget:"):   # Kubera: tell Sachin once a day per office
+                from jarvis.control.loka_budget import notify_capped
+
+                notify_capped(self.store.conn, task.workspace, str(e), None, audit=self.audit)
         except EmergencyStop as e:
             self._pause(task_id, str(e))
         except ProviderError as e:
@@ -347,6 +354,20 @@ class TaskRunner:
                         workspace=task.workspace if task else "personal",
                         share_personal=self._share_personal(task.workspace) if task else True)
 
+    def _workspace_budget(self, workspace: str):
+        """The office's budget: (none when the workspace file is missing or broken: no office cap)."""
+        try:
+            return self._workspace_store().get(workspace).budget
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _fenced(self, registry: ToolRegistry, workspace: str) -> ToolRegistry:
+        """The office's tool fence on a registry (27.3): deny/allow/always-ask from workspace.yaml."""
+        from jarvis.control.fence import fence_for
+
+        registry.set_fence(fence_for(self.home, workspace), workspace)
+        return registry
+
     def _share_personal(self, workspace: str) -> bool:
         """Whether this office may see personal memories (its workspace.yaml says; personal: yes)."""
         from jarvis.workspaces.store import WorkspaceStore
@@ -447,7 +468,9 @@ class TaskRunner:
         filename = plan["deliverable"]["filename"]
         if "report" not in cp:
             self._step(task_id, "Jarvis working")
-            registry = ToolRegistry(self.store, self.audit, ApprovalGate(self.store, self.audit, self._approver(task_id)))
+            registry = self._fenced(
+                ToolRegistry(self.store, self.audit, ApprovalGate(self.store, self.audit, self._approver(task_id))),
+                task.workspace)
             build_registry(registry, ToolDeps(
                 home=self.home, store=self.store, audit=self.audit, memory=MemoryStore(self.home, self.store),
                 skills=SkillLibrary(self.home / "skills"), session_id=lambda: task_id, max_privacy="P1",

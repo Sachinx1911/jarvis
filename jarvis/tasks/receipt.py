@@ -59,6 +59,8 @@ def build_receipt(runner: "TaskRunner", task_id: str, summary: str | None = None
     if plan:
         team = f"{len(plan.get('research', []))} researchers, writer, checker" if plan.get("use_team") else "Jarvis alone"
         lines.append(f"Plan: {team}")
+        if plan.get("team_label"):
+            lines.append(f"Team: {plan['team_label']}")   # the office's team that ran it (adhipati, 27.4)
 
     lines += ["", "What was done:"]
     per_agent: dict[str, Counter] = {}

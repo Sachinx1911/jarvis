@@ -142,6 +142,8 @@ def run_agent(spec: AgentSpec, name: str, order: WorkOrder, env: AgentEnv) -> Lo
         if spec.files_root == "task":
             tools_config["files"] = {"allowed": [str(env.task_dir)]}
         registry = ToolRegistry(store, env.audit)  # no approver: workers never ask the user
+        from jarvis.control.fence import fence_for
+        registry.set_fence(fence_for(env.home, env.workspace), env.workspace)   # the office's fence (27.3)
         build_registry(registry, ToolDeps(
             home=env.home, store=store, audit=env.audit, memory=MemoryStore(env.home, store), skills=None,
             session_id=lambda: name, max_privacy="P1", tools_config=tools_config,
