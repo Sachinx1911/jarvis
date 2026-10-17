@@ -123,6 +123,8 @@ class ApprovalGate:
         self._grants: GrantStore | None = None
         self._session_grants: list[SessionGrant] = []
         self._last_t1: tuple[Path, str | None] | None = None  # folder of the last approved new-file write
+        self.workspace: str = ""          # the loka asking; a loka-bound grant answers only there
+        self.last_approval_id: int | None = None  # row of the last recorded decision (astra: released once)
 
     @property
     def roots(self) -> list[Path] | None:
@@ -219,7 +221,7 @@ class ApprovalGate:
 
     def _use_standing(self, tool: str, tier: str, arguments: dict, task_id: str | None) -> str | None:
         try:
-            grant = self.grants.find(tool, tier, arguments)
+            grant = self.grants.find(tool, tier, arguments, self.workspace)
             if grant is None or not self.grants.consume(grant, task_id, arguments):
                 return None
         except Exception as e:  # a broken grant table must never approve anything
@@ -261,7 +263,8 @@ class ApprovalGate:
 
     def _record(self, task_id: str | None, tool: str, arguments: dict, decision: str) -> None:
         action = json.dumps({"tool": tool, "arguments": arguments}, ensure_ascii=False)
-        self.store.conn.execute("INSERT INTO approvals (task_id, action, decision) VALUES (?, ?, ?)",
-                                (task_id, action, decision))
+        cur = self.store.conn.execute("INSERT INTO approvals (task_id, action, decision) VALUES (?, ?, ?)",
+                                      (task_id, action, decision))
         self.store.conn.commit()
+        self.last_approval_id = cur.lastrowid
         self.audit.write("approval", tool=tool, decision=decision)

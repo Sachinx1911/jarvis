@@ -1,8 +1,11 @@
 """Typed tool registry: one registry for every provider; specs use the portable schema subset.
 
-Order for every call: known and enabled tool -> argument schema -> path pre-check (secret
-locations are T4) -> egress check (tainted sessions) -> risk-tier gate and approval -> run ->
-taint -> file provenance -> verify -> log. The risk tier never goes to a model.
+Order for every call: known and enabled tool -> workspace fence (jarvis/control/fence.py) ->
+argument schema -> path pre-check (secret locations are T4) -> egress check (tainted sessions)
+-> Brahmastra single target -> risk-tier gate and approval (always_ask forces it) -> one T3 in
+flight, approval consumed once (jarvis/control/astra.py) -> run -> taint -> file provenance ->
+verify (a failed T2/T3 verify withdraws the tool's grants) -> release -> log. The risk tier
+never goes to a model.
 
 Taint (prompt-injection defense): reading untrusted outside content taints the session; once
 tainted, T1 tools ask too, and links the user did not give need approval. Taint is fail-closed:
@@ -15,13 +18,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
 from jarvis.control.approvals import ApprovalGate, risk_notes
+from jarvis.control.astra import DEFAULT_STALE_MINUTES, AstraStore, is_irreversible, single_target
 from jarvis.control.audit import AuditLog
 from jarvis.control.egress import EgressPolicy, Verdict
+from jarvis.control.fence import Fence
 from jarvis.control.provenance import Provenance
 from jarvis.db import Store
 from jarvis.providers.base import ToolCall, ToolResult, ToolSpec
@@ -85,6 +91,10 @@ class Tool:
     writes: Callable[[dict], list[Path]] | None = None       # files written (provenance records)
     url_args: tuple[str, ...] = ()   # arguments holding a URL that leaves the machine (egress)
     text_args: tuple[str, ...] = ()  # free text that leaves the machine (e.g. a search query)
+    # Astra rule (c), PLAN.md 27.4a: how a T2/T3 action is withdrawn. "verify" (needs `verify`),
+    # "undo:<tool>" naming the inverse tool, or "none". "" = undeclared: "verify" when a verifier
+    # exists, else "none". A T2/T3 tool with none is the Brahmastra: T3 irreversible.
+    samhara: str = ""
 
 
 def output_taints(tool: Tool) -> bool:
@@ -107,6 +117,12 @@ class ToolRegistry:
     sandboxed: frozenset[str] = frozenset()
     provenance: Provenance | None = None
     _untrusted: list[str] = field(default_factory=list)
+    # The loka this registry acts for (PLAN.md 27): its fence narrows the tools (never widens),
+    # its name goes on astra rows and loka-bound grants.
+    fence: Fence | None = None
+    workspace: str = ""
+    astra: AstraStore | None = None   # astra rules a and b; made on first use from the store
+    astra_stale_minutes: float = DEFAULT_STALE_MINUTES
 
     def __post_init__(self):
         if self.gate is None:
@@ -125,7 +141,22 @@ class ToolRegistry:
         return list(self._tools.values())
 
     def specs(self) -> list[ToolSpec]:
-        return [t.spec for t in self._tools.values() if t.enabled and t.tier != "T4"]
+        return [t.spec for t in self._tools.values()
+                if t.enabled and t.tier != "T4" and (self.fence is None or self.fence.refusal(t.spec.name) is None)]
+
+    def set_fence(self, fence: Fence | None, workspace: str | None = None) -> None:
+        """Apply a workspace's fence (a second fence only narrows the first)."""
+        self.fence = fence if self.fence is None or fence is None else self.fence.narrowed_by(fence)
+        if workspace is not None:
+            self.workspace = workspace
+        if self.gate is not None:
+            self.gate.workspace = self.workspace
+
+    def _astra(self) -> AstraStore:
+        if self.astra is None:
+            self.astra = AstraStore(self.store.conn, self.audit, self.gate.clock if self.gate else time.time,
+                                    self.astra_stale_minutes)
+        return self.astra
 
     def restrict(self, names: set[str]) -> None:
         """Keep only these tools (agent allowlists)."""
@@ -154,6 +185,10 @@ class ToolRegistry:
         tool = self._tools.get(call.name)
         if tool is None or not tool.enabled:
             return self._finish(call, tool, task_id, f"unknown or disabled tool: {call.name}", "refused", False)
+        fenced = self.fence.refusal(call.name) if self.fence is not None else None
+        if fenced:
+            self.audit.write("tool_fenced", tool=call.name, agent=agent, workspace=self.workspace, reason=fenced)
+            return self._finish(call, tool, task_id, f"Not run: {fenced}.", "refused_fence", False)
         if not validate(call.arguments, tool.spec.parameters):
             return self._finish(call, tool, task_id, f"invalid arguments for {call.name}", "refused", False)
         try:
@@ -171,23 +206,48 @@ class ToolRegistry:
             return self._finish(call, tool, task_id, f"Not run: {egress.reason}.", "refused_egress", False)
 
         assert self.gate is not None
+        # Brahmastra (T3 with no withdrawal): one exact target, named before anyone is asked.
+        brahmastra = is_irreversible(tool)
+        if brahmastra:
+            bulk = single_target(call.arguments)
+            if bulk:
+                self.audit.write("astra_refused_target", tool=call.name, agent=agent, reason=bulk)
+                return self._finish(call, tool, task_id, f"Not run: {bulk}.", "refused_target", False)
         sandboxed = tool.tier == "T1" and call.name in self.sandboxed
         gate_tainted = self.tainted and not sandboxed
         notes = risk_notes(call.arguments, self.trusted_text(), self._untrusted)
+        force = egress.reason if egress.action == "ask" else None
+        ask = self.fence.ask_reason(call.name) if self.fence is not None else None
+        if ask:  # the workspace asks whatever the tier (T0 included); never a standing grant
+            force = f"{force}; {ask}" if force else ask
+        self.gate.workspace = self.workspace
         allowed, decision = self.gate.check(call.name, tool.tier, call.arguments, gate_tainted, task_id,
-                                            force_reason=egress.reason if egress.action == "ask" else None,
-                                            notes=notes, hostile=self.hostile)
+                                            force_reason=force, notes=notes, hostile=self.hostile)
         if not allowed:
             return self._finish(call, tool, task_id, f"Not run: {decision}.", decision, False)
         if sandboxed and self.tainted and decision == "auto":
             decision = "auto_sandboxed"
             self.audit.write("sandboxed_write", tool=call.name, agent=agent, arguments=call.arguments)
 
+        slot: int | None = None
+        if tool.tier == "T3":
+            # Rule (a): one irreversible action in flight at a time, across every loka.
+            slot, busy = self._astra().acquire(call.name, self.workspace, task_id)
+            if slot is None:
+                return self._finish(call, tool, task_id, f"Not run: {busy}; try again later.", "refused_inflight", False)
+            if brahmastra and not self._astra().release_once(self.gate.last_approval_id, call.name):
+                # Released once per approval: this approval was already spent (or none was recorded).
+                self._astra().release(slot)
+                return self._finish(call, tool, task_id, "Not run: this approval was already used once; ask again.",
+                                    "refused_reused_approval", False)
+
         try:
             result = tool.handler(call.arguments)
         except (PathBlocked, PathDenied) as e:
+            self._release(slot, None)
             return self._finish(call, tool, task_id, f"Not allowed: {e}.", "refused", False)
         except Exception as e:  # a failing tool must not crash the loop
+            self._release(slot, False)
             return self._finish(call, tool, task_id, f"tool error: {e}", decision, False)
 
         why = None
@@ -216,10 +276,30 @@ class ToolRegistry:
             verified = bool(ok)
             how = " ".join(str(how).split())[:MAX_VERIFY_NOTE_CHARS]
             tag = f"\n[verified: {how}]" if ok else f"\n[NOT verified: {how}]"
+            if not ok and tool.tier in ("T2", "T3"):
+                self._withdraw(tool, task_id, how)
+        self._release(slot, verified)
         # The post-check tag stays the last line, however long the output: verify-after-act
         # (jarvis/tasks/verify.py) reads it from tool_runs as evidence.
         return self._finish(call, tool, task_id, result[:MAX_RESULT_CHARS - len(tag)] + tag, decision, True,
                             verified, tag)
+
+    def _release(self, slot: int | None, ok: bool | None) -> None:
+        if slot is not None:
+            self._astra().release(slot, ok)
+
+    def _withdraw(self, tool: Tool, task_id: str | None, how: str) -> None:
+        """Astra rule (b): a deed that cannot be verified withdraws the grant for that tool in
+        this loka until Sachin regrants it."""
+        name = tool.spec.name
+        try:
+            gone = self.gate.grants.withdraw(name, self.workspace) if self.gate else []
+        except Exception as e:  # a broken grant table must not hide the failed verification
+            self.audit.write("grant_error", tool=name, error=f"{type(e).__name__}: {e}")
+            gone = []
+        self._astra().mark_needs_regrant(name, self.workspace, task_id, how)
+        self.audit.write("grant_withdrawn", tool=name, workspace=self.workspace, task_id=task_id,
+                         grants=[g.id for g in gone], reason=f"verification failed: {how}")
 
     def _record_writes(self, tool: Tool, call: ToolCall, agent: str | None) -> None:
         if tool.writes is None or self.provenance is None:
