@@ -1705,3 +1705,49 @@ blockquote.evidence {
 .vs-text { display: flex; flex-direction: column; gap: 2px; }
 .vs-text strong { font-size: var(--fs-sm); }
 @container content (max-width: 720px) { .vs-modes { grid-template-columns: 1fr; } }
+
+/* Office */
+.office { display: flex; flex-direction: column; gap: var(--s-5); }
+.office-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); flex-wrap: wrap; }
+.office-count { display: flex; align-items: center; gap: var(--s-3); font-size: var(--fs-md); }
+.office-count strong { font-size: var(--fs-xl); font-weight: 750; font-variant-numeric: tabular-nums; }
+.office-count .office-warn { color: var(--warn-fg); }
+.office-ask { margin-bottom: 0; }
+.office-ask select { max-width: 220px; }
+.office-choices { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-3); }
+.office-grid { align-items: start; }
+.office-card { padding-top: 0; overflow: hidden; }
+.office-card.archived { opacity: 0.6; }
+/* a slanted roof gives the office card a subtle isometric feel, CSS only */
+.office-roof { margin: 0 calc(-1 * var(--s-5)) var(--s-3); padding: var(--s-4) var(--s-5) var(--s-3);
+  background: linear-gradient(135deg, var(--accent-soft), transparent 70%), var(--surface-2);
+  border-bottom: 1px solid var(--border); clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), 0 100%); }
+.office-roof h2 { margin: 0; }
+.office-today, .office-meta { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; margin-bottom: var(--s-2); }
+.office-rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--s-3); margin-top: var(--s-3); }
+.office-room { display: flex; flex-direction: column; align-items: stretch; gap: 6px; text-align: left; height: auto; min-height: 0;
+  padding: var(--s-3); border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--border);
+  box-shadow: inset 0 -6px 0 var(--surface-3), var(--shadow-sm); border-left: 4px solid var(--border-strong); }
+.office-room:hover:not(:disabled) { border-color: var(--accent); background: var(--surface-2); }
+.office-room.busy { box-shadow: inset 0 -6px 0 var(--surface-3), 0 0 0 1px var(--accent-soft), var(--shadow); }
+.office-room.tone-blue { border-left-color: var(--accent); }
+.office-room.tone-teal { border-left-color: var(--teal); }
+.office-room.tone-violet { border-left-color: var(--violet); }
+.office-room.tone-green { border-left-color: var(--ok); }
+.office-room.tone-amber { border-left-color: var(--warn); }
+.office-room.tone-red { border-left-color: var(--danger); }
+.office-room.tone-gray { border-left-color: var(--text-3); }
+.office-room-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); flex-wrap: wrap; }
+.office-room-counts { font-variant-numeric: tabular-nums; }
+.office-dots { display: flex; gap: 6px; flex-wrap: wrap; }
+.office-dots .dot { width: 10px; height: 10px; background: var(--text-3); }
+.office-dots .dot.pulse { background: var(--accent); color: var(--accent); }
+.office-brain { background: linear-gradient(180deg, var(--violet-soft), transparent 60%), var(--surface); border-color: var(--border-strong); }
+.office-brain-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-3); }
+.office-brain-stats > div { display: flex; flex-direction: column; gap: 2px; padding: var(--s-3); border-radius: var(--r-md); background: var(--surface-2); }
+.office-brain-stats strong { font-size: var(--fs-xl); font-weight: 750; font-variant-numeric: tabular-nums; }
+.office-brain-stats span { font-size: var(--fs-xs); color: var(--text-2); }
+.office-drawer { position: fixed; top: var(--topbar-h); right: 0; bottom: 0; width: min(440px, 100vw); overflow-y: auto; z-index: 30;
+  padding: var(--s-5); background: var(--surface); border-left: 1px solid var(--border); box-shadow: var(--shadow-lg); }
+.office-drawer h3 { margin: var(--s-4) 0 var(--s-2); }
+@container content (max-width: 900px) { .office-card, .office-brain { grid-column: span 12; } .office-ask select { max-width: none; } }
