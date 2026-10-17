@@ -5,6 +5,30 @@ Ending a session: update this file and commit.
 
 ## Current status
 
+- **Phase 9 X-ray, offline part built (2026-10-17, office laptop, Windows):** on `main`, with fakes only
+  (no REA, node package or Chrome run in tests):
+  - `jarvis/xray/`: `kit.py` (find node/Chrome, REA pinned 6.5.0 installed only after a y/N and a repository
+    check, `diag`, REA CLI runner that reads `--help` for flag names), `browser.py` (fresh Chrome profile per
+    job, loopback debugging port, hand-written read-only CDP client, cleanup even on error), `capture.py`
+    (REA inspect/bundle/screenshot + Jarvis asset log and fingerprints; `digest()` where every line says
+    REA or Jarvis), `fingerprints.py`, `teardown.py` (one structured model call on the new `teardown` route,
+    note to `workspace/teardowns/<host>-<date>.md`, copied into the document library project `teardowns`,
+    a memory, a task with receipt, one job at a time), `spoken.py` (spoken addresses and teardown intents in
+    English and Marathi), `front_tab.py` (macOS only), `tools.py` (`teardown` tool, T1, refuses until the kit
+    is ready), `drill.py` + `drill_spoken.py`.
+  - Voice routes checked before the brain (`jarvis/voice/routes.py`): stop/थांब, "remember that…"/"लक्षात
+    ठेव…", teardown sentences, "show me the last teardown".
+  - CLI: `jarvis xray diag|setup|run|last|drill [--live]`, `jarvis preflight [--offline]` (providers, stop,
+    database, truth check, memory, daemon, xray).
+  - Smoke on this laptop: `xray diag` finds Chrome and node 26.3 and says REA is not installed; `xray run`
+    refuses with that reason; `xray drill` offline PASS; `preflight --offline` OK.
+  - Tests: `test_xray_kit/browser/capture/teardown/spoken.py`, `test_voice_routes.py`, `test_cli_xray.py`.
+    Whole suite: 1813 passed, 25 skipped (Windows, 2026-10-17).
+  - Live parts wait for Sachin (see "Waiting for Sachin"): REA's real flag names are unverified until
+    install (`capture.py` keeps candidate lists and reads `--help`); no live teardown has run yet; the
+    Teardown card in the UI waits for the design.
+  - Next: Sachin's design → the whole frontend; then live Phase 9 checks and final Fable testing.
+
 - **Step 2 built, UI on hold (2026-10-17, office laptop, Windows):** on `main`, after step 1:
   - **Narada between lokas (27.5 item 6):** `jarvis/workspaces/narada.py` — `jarvis workspace ask <from> <to>
     "<goal>"`, `/ask <slug> <goal>` in chat, `POST /api/workspaces/{slug}/requests`; personal may ask any
@@ -337,6 +361,7 @@ See "Open decisions" in PLAN.md. Most important:
 | 2026-10-10 | Home MacBook M4 | Sachin updated Claude Code to 2.1.296. Live greeting through the subscription CLI: PASS on the Mac |
 | 2026-10-10 | Home MacBook M4 | Merged `wip/india-features` (wired tools, brief sections, CLI; brief shows bills/wallet as counts unless `india.brief.details`; offline tests now block all non-loopback network). Merged daily cap + runaway guard (`proactive unattended`), nightly review (`review` schedule kind, `memory/episodes/`), memory conflicts (`jarvis memory conflicts`, brief count). 970 passed. Agents running on `wip/verify-repeat`, `feature/backup`, `feature/dashboard-india` (India tab, triggers in dashboard), `feature/small-hooks` (why-panel for CLI/Telegram, sensitive-topic enforcement) |
 | 2026-10-10 | Home MacBook M4 | Pulled office work. `scripts/setup.sh` OK. Offline suite on macOS: 899/902, then 902 passed after fixes: Windows-style paths (`C:/...`, UNC) now refused on Mac/Linux in `PathPolicy` and grant rules (POSIX had treated them as names inside the workspace), shortcut path parsed as a Windows path. `jarvis health`: claude_code OK (Max); Claude Code CLI 2.1.260 too old for `--system-prompt-file` |
+| 2026-10-17 | Office laptop (Windows) | Phase 9 offline part built by two agents (kit/browser/capture; teardown/voice routes/CLI/preflight), merged and wired (catalog tool, live deps). Two more design prompt sets written for Sachin. 1813 passed, 25 skipped (Windows, 2026-10-17) |
 | 2026-10-17 | Office laptop (Windows) | Step 2 backend built by three agents (Narada requests, file truth + pralaya + task archive, Office page API) and merged; Narada wired into the orchestrator. Sachin rejected the dashboard look: design prompts written (`reports/Dashboard design prompts.md`), UI on hold until he picks one. 1664 passed, 25 skipped (Windows, 2026-10-17) |
 | 2026-10-17 | Office laptop (Windows) | Step 0 merged. Step 1 built: lead (archive everywhere, owner tags, receipts into memory, wiring), agent A (adhipati, dharma routing, shruti, karma-yoga), agent B (Kubera budgets, fences, astra). Merged on `main`. 1628 passed, 25 skipped (Windows, 2026-10-17) |
 | 2026-10-10 | Office laptop (Windows) | Built Phase 3 (tasks, team, receipts, projects, teach-by-demo). Five parallel agents built Phases 4–8; all merged and wired in. 494 offline tests pass. First live laptop compare failed verification; quality fixes made; rerun started |
