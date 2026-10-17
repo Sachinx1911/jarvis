@@ -6,6 +6,12 @@ so a crashed task resumes from its last finished stage.
 Team flow: planner -> up to 3 researchers in parallel -> writer -> deterministic checks +
 independent checker -> (one revision) -> receipt. Solo flow: Jarvis alone with its tools,
 then the same verification. No task is COMPLETED without passing verification.
+
+The court (PLAN.md 27.4): when the task's workspace has a team, that team's lead plans (its
+lead brief and members are in the planner prompt) and its members run the roles, each with its
+brief, tool subset and worker profile. Several teams: the best match by purpose and briefs
+(jarvis/workspaces/routing.pick_team). No team: the generic roles. Karma-yoga (27.10): the
+checker is never the writer, and nothing completes without the verifier.
 """
 
 from __future__ import annotations
@@ -15,12 +21,13 @@ import os
 import re
 import shutil
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable
 
 from jarvis.agents.sources import PRICE_RULES, check_price_rows, evidence_from_runs, is_price_task, today
-from jarvis.agents.team import CHECKER, RESEARCHER, WRITER, AgentEnv, WorkOrder, run_agent
+from jarvis.agents.team import (CHECKER, RESEARCHER, WRITER, AgentEnv, AgentSpec, WorkOrder, assert_independent_checker,
+                                member_spec, run_agent)
 from jarvis.config import Config
 from jarvis.control.approvals import ApprovalGate, Approver
 from jarvis.control.audit import AuditLog
@@ -44,6 +51,7 @@ from jarvis.tools.quarantine import Quarantine
 from jarvis.tools.registry import ToolRegistry
 from jarvis.tools.system import SystemTools
 from jarvis.tools.web import WebClient
+from jarvis.workspaces.routing import pick_team
 
 URL_RE = re.compile(r"https?://[^\s)\]>\"'|]+")
 
@@ -100,6 +108,43 @@ def parse_verdict(text: str) -> dict[str, Any] | None:
     return data if validate(data, VERDICT_SCHEMA) else None
 
 
+def role_tools() -> dict[str, frozenset[str]]:
+    """Each role's tool allowlist, so a team file can narrow a role but never widen it (27.6 item 8)."""
+    from jarvis.agents.extra import CODER, OPERATOR
+
+    return {s.role: s.tools for s in (RESEARCHER, WRITER, CHECKER, CODER, OPERATOR)}
+
+
+def team_block(team, workspace) -> str:
+    """What the planner (the adhipati, PLAN.md 27.4) is told about its team: the lead's brief and the
+    members it can send. Empty when the workspace has no team: the generic roles are planned for."""
+    if team is None or workspace is None:
+        return ""
+    lines = [f"\n\nYOUR TEAM: {team.name} of the {workspace.name} office. You are its lead."]
+    if workspace.brief:
+        lines.append(f"Office brief: {workspace.brief}")
+    if team.purpose:
+        lines.append(f"Team purpose: {team.purpose}")
+    if team.lead_brief:
+        lines.append(f"Lead brief: {team.lead_brief}")
+    lines.append("Members (name, role, brief):")
+    lines += [f"- {m.name} ({m.role}): {m.brief or 'no brief'}" for m in team.members]
+    researchers = sum(1 for m in team.members if m.role == "researcher")
+    lines.append(f"Plan research orders for the {researchers} researcher member(s) above; when the team has none, "
+                 "the generic researcher role runs them. The writer and checker roles are filled by the members "
+                 "above when the team has them.")
+    return "\n".join(lines)
+
+
+@dataclass
+class TeamSpecs:
+    """The agents a team run uses: the team's members as AgentSpecs, or the generic roles."""
+    slug: str = ""
+    researchers: list[AgentSpec] = field(default_factory=list)
+    writer: AgentSpec = WRITER
+    checker: AgentSpec = CHECKER
+
+
 @dataclass
 class TaskRunner:
     config: Config
@@ -119,22 +164,27 @@ class TaskRunner:
 
     # ---- routing ----
 
-    def decision_for(self, route: str) -> RouteDecision:
+    def decision_for(self, route: str, profile: str | None = None) -> RouteDecision:
+        """`profile` is a team member's own worker profile (config/tasks.yaml); it wins over --workers.
+        Checkers never take a profile: the checker is never weaker than the routing policy says."""
         d = decide(self.config, route, self.provider_override)
         if route in ("researcher", "writer") and self.provider_override is None and not os.environ.get("JARVIS_TEST_MODEL"):
-            prof = self._worker_profile()
+            prof = self._worker_profile(profile)
             if prof:
                 d = RouteDecision(route, d.provider, prof["model"], prof.get("effort", d.effort),
-                                  f"worker profile {self.workers or 'default'}")
+                                  f"worker profile {profile or self.workers or 'default'}")
         return d
 
-    def _worker_profile(self) -> dict | None:
+    def _worker_profile(self, name: str | None = None) -> dict | None:
         cfg = self.config.tasks.get("workers") or {}
-        name = self.workers or cfg.get("default")
-        prof = (cfg.get("profiles") or {}).get(name or "")
-        if self.workers and not prof:
-            raise ValueError(f"unknown worker profile: {self.workers}")
+        chosen = name or self.workers or cfg.get("default")
+        prof = (cfg.get("profiles") or {}).get(chosen or "")
+        if (name or self.workers) and not prof:
+            raise ValueError(f"unknown worker profile: {chosen}")
         return prof
+
+    def known_profile(self, name: str) -> bool:
+        return not name or name in ((self.config.tasks.get("workers") or {}).get("profiles") or {})
 
     def _quarantine(self) -> Quarantine | None:
         try:
@@ -198,7 +248,9 @@ class TaskRunner:
     def _plan(self, task: Task) -> dict[str, Any]:
         d = self.decision_for("planner")
         context = self._project_context(task)
-        req = LLMRequest(route="planner", model=d.model, system=(PROMPTS_DIR / "planner.md").read_text(encoding="utf-8"),
+        team, workspace = self._team_for(task)
+        system = (PROMPTS_DIR / "planner.md").read_text(encoding="utf-8") + team_block(team, workspace)
+        req = LLMRequest(route="planner", model=d.model, system=system,
                          messages=[Message.text("user", f"Task: {task.goal}{context}")],
                          reasoning=d.effort, response_schema=PLAN_SCHEMA, task_id=task.id)  # type: ignore[arg-type]
         res = self.provider_for(d).structured(req, PLAN_SCHEMA)
@@ -213,9 +265,69 @@ class TaskRunner:
             plan = dict(res.data or {})
             plan["research"] = plan["research"][: int((self.config.tasks.get("team") or {}).get("max_parallel_researchers", 3))]
         plan["deliverable"]["filename"] = _safe_filename(plan["deliverable"]["filename"])
+        if team is not None and workspace is not None:
+            # The adhipati (PLAN.md 27.4): the team whose lead planned this; the run and the receipt use it.
+            plan["team"] = team.slug
+            plan["team_label"] = f"{team.slug} ({workspace.name})"
         self.tasks.event(task.id, "plan", plan)
-        self.progress(f"Plan: {'team of ' + str(len(plan['research'])) + ' researchers + writer + checker' if plan['use_team'] else 'Jarvis alone'}")
+        who = f"team {plan['team_label']}: " if plan.get("team_label") else ""
+        self.progress(f"Plan: {who}{'team of ' + str(len(plan['research'])) + ' researchers + writer + checker' if plan['use_team'] else 'Jarvis alone'}")
         return plan
+
+    # ---- the court: the task's team (PLAN.md 27.4) ----
+
+    def _workspace_store(self):
+        from jarvis.workspaces.store import WorkspaceStore
+
+        return WorkspaceStore(self.home, role_tools=role_tools())
+
+    def _team_for(self, task: Task):
+        """The team of the task's workspace that best matches the goal (jarvis/workspaces/routing.pick_team),
+        with the workspace; (None, None) when the workspace has no usable team: the generic roles run."""
+        from jarvis.workspaces.model import WorkspaceError
+
+        ws = self._workspace_store()
+        try:
+            workspace = ws.get(task.workspace)
+            teams = ws.teams(task.workspace)
+        except WorkspaceError as e:
+            self.tasks.event(task.id, "team_problem", {"error": str(e)})
+            return None, None
+        for p in ws.problems:  # a bad team file is reported, never half-loaded (law 2)
+            self.tasks.event(task.id, "team_problem", {"path": p.path, "error": p.error})
+        team = pick_team(task.goal, teams)
+        return team, (workspace if team is not None else None)
+
+    def _team_specs(self, task: Task) -> "TeamSpecs":
+        """The agents of the team the plan named, or the generic roles. A member's brief, tool subset and
+        profile narrow the role; an unknown profile is reported and ignored."""
+        from jarvis.workspaces.model import WorkspaceError
+
+        specs = TeamSpecs()
+        slug = (task.plan or {}).get("team")
+        if slug:
+            try:
+                team = self._workspace_store().team(task.workspace, slug)
+            except WorkspaceError as e:
+                self.tasks.event(task.id, "team_problem", {"team": slug, "error": str(e)})
+                team = None
+            if team is not None and not team.archived:
+                specs.slug = team.slug
+                for m in team.members:
+                    if not self.known_profile(m.profile):
+                        self.tasks.event(task.id, "team_problem", {"team": slug, "member": m.name,
+                                                                   "error": f"unknown worker profile {m.profile!r}; using the default"})
+                        m = replace(m, profile="")
+                    if m.role == "researcher":
+                        specs.researchers.append(member_spec(RESEARCHER, m))
+                    elif m.role == "writer" and specs.writer is WRITER:
+                        specs.writer = member_spec(WRITER, m)
+                    elif m.role == "checker" and specs.checker is CHECKER:
+                        specs.checker = member_spec(CHECKER, m)
+        if not specs.researchers:
+            specs.researchers.append(RESEARCHER)
+        assert_independent_checker(specs.writer, specs.checker)  # karma-yoga, checked on every run
+        return specs
 
     def _project_context(self, task: Task) -> str:
         if not task.project:
@@ -259,6 +371,7 @@ class TaskRunner:
         env = self._env()
         project = self._project_context(task)
         rules = f"\n\n{PRICE_RULES}" if is_price_task(task.goal, plan) else ""
+        specs = self._team_specs(task)  # the team's members, or the generic roles
 
         if "research" not in cp:
             self._step(task_id, f"{len(plan['research'])} researchers working")
@@ -266,13 +379,16 @@ class TaskRunner:
                 objective=r["objective"], context=f"Overall task: {task.goal}\nYour focus: {r['focus']}{project}{rules}",
                 output_format="FINDINGS, SOURCES (title - URL), GAPS", stop_condition="you have the facts, or after about 4 searches",
             ) for r in plan["research"]]
+            # Orders go to the team's researcher members in turn (one member may take several).
+            who = [specs.researchers[i % len(specs.researchers)] for i in range(len(orders))]
             with ThreadPoolExecutor(max_workers=max(1, len(orders))) as pool:
-                futures = [pool.submit(run_agent, RESEARCHER, f"researcher-{i + 1}", o, env) for i, o in enumerate(orders)]
+                futures = [pool.submit(run_agent, who[i], f"researcher-{i + 1}", o, env) for i, o in enumerate(orders)]
                 results = [f.result() for f in futures]
             cp["research"] = [r.text for r in results]
             for i, text in enumerate(cp["research"], 1):
                 (self.task_dir / f"research-{i}.md").write_text(text, encoding="utf-8")
-                self.tasks.event(task_id, "agent_done", {"agent": f"researcher-{i}", "chars": len(text)})
+                self.tasks.event(task_id, "agent_done", {"agent": f"researcher-{i}", "chars": len(text),
+                                                         **({"member": who[i - 1].label} if who[i - 1].label else {})})
             self.tasks.update(task_id, checkpoint=cp)
 
         revisions = int((self.config.tasks.get("team") or {}).get("max_revisions", 1))
@@ -292,12 +408,13 @@ class TaskRunner:
                             + "\n- ".join(plan["acceptance_criteria"]) + f"\n\nFindings:\n{findings}{project}{rules}",
                     output_format=f"Create the file {filename} with write_file.",
                     stop_condition="the file is created", extra=extra)
-                run_agent(WRITER, "writer", order, env)
+                run_agent(specs.writer, "writer", order, env)
                 cp.update(report=filename, version=version, needs_revision=False)
                 self.tasks.update(task_id, checkpoint=cp)
-                self.tasks.event(task_id, "agent_done", {"agent": "writer", "file": filename})
+                self.tasks.event(task_id, "agent_done", {"agent": "writer", "file": filename,
+                                                         **({"member": specs.writer.label} if specs.writer.label else {})})
 
-            passed, problems = self._verify(task_id, cp["report"], plan, cp["research"])
+            passed, problems = self._verify(task_id, cp["report"], plan, cp["research"], checker=specs.checker)
             cp["problems"] = problems
             if passed:
                 self._complete(task_id, cp["report"])
@@ -316,7 +433,7 @@ class TaskRunner:
                 output_format="FINDINGS, SOURCES (title - URL), GAPS",
                 stop_condition="every listed problem has an answer with a source, or no source exists")
             # Its input (the checker's findings) came from web text: start it tainted.
-            follow = run_agent(RESEARCHER, f"researcher-fix-{cp['version']}", order, replace(env, tainted_input=True))
+            follow = run_agent(specs.researchers[0], f"researcher-fix-{cp['version']}", order, replace(env, tainted_input=True))
             cp["research"] = cp["research"] + [follow.text]
             (self.task_dir / f"research-fix-{cp['version']}.md").write_text(follow.text, encoding="utf-8")
             self.tasks.update(task_id, checkpoint=cp)
@@ -441,7 +558,10 @@ class TaskRunner:
 
     def _verify(self, task_id: str, filename: str, plan: dict, research: list[str],
                 use_checker: bool = True,
-                pre_checks: list[tuple[dict, list[str]]] | None = None) -> tuple[bool, list[str]]:
+                pre_checks: list[tuple[dict, list[str]]] | None = None,
+                checker: AgentSpec | None = None) -> tuple[bool, list[str]]:
+        """Yama's judgement: deterministic checks always, the checker agent when asked. `checker` is the
+        team's checker member (never the writer: assert_independent_checker ran before the writer wrote)."""
         self.tasks.set_state(task_id, "VERIFYING")
         self._step(task_id, "checking the work")
         path = self.task_dir / filename
@@ -489,7 +609,7 @@ class TaskRunner:
                 objective=f"Verify the report file {filename} for this task: {goal}",
                 context="Acceptance criteria:\n- " + "\n- ".join(plan["acceptance_criteria"]) + tier_note,
                 output_format="JSON only: {\"passed\": ..., \"checks\": [...], \"problems\": [...]}")
-            result = run_agent(CHECKER, "checker", order, self._env())
+            result = run_agent(checker or CHECKER, "checker", order, self._env())
             verdict = parse_verdict(result.text)
             if verdict is None:
                 problems.append("the checker gave no valid verdict")
@@ -529,6 +649,10 @@ class TaskRunner:
     def _complete(self, task_id: str, filename: str) -> None:
         task = self.tasks.get(task_id)
         assert task
+        # Karma-yoga (PLAN.md 27.10): nothing completes on its own word. The deterministic verifier
+        # (_verify) must have judged this task, on the team path, the solo path and the extra agents alike.
+        if not any(e["kind"] == "verify" for e in self.tasks.events(task_id)):
+            raise RuntimeError("law: a task cannot complete without the verifier's judgement")
         if task.project:
             out = ProjectStore(self.home).outputs(task.project)
             shutil.copy2(self.task_dir / filename, out / filename)

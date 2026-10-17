@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from typing import Callable, TextIO
 
 from jarvis.core.runtime import Runtime, make_chat, make_task_runner, open_runtime, task_store
@@ -10,6 +11,7 @@ from jarvis.projects import ProjectStore
 from jarvis.providers import make_provider
 from jarvis.tasks.store import PRIORITIES, TransitionError
 from jarvis.workspaces.model import PERSONAL, WorkspaceError
+from jarvis.workspaces.routing import Routing, route
 from jarvis.workspaces.session import enter_workspace
 from jarvis.workspaces.store import WorkspaceStore
 
@@ -21,6 +23,7 @@ def register(sub) -> dict[str, Callable]:
     task.add_argument("action", choices=["add", "run", "show", "cancel", "resume", "repeat", "draft"])
     task.add_argument("text", nargs="*", help="goal text, or a task id (repeat: <task-id> \"<when>\")")
     task.add_argument("--project")
+    task.add_argument("--workspace", help="the office (workspace slug); without it the goal is routed by duties")
     task.add_argument("--priority", choices=["high", "normal", "low"], default="normal")
     task.add_argument("--deadline")
     task.add_argument("--workers", help="worker model profile (config/tasks.yaml), e.g. opus or sonnet")
@@ -62,6 +65,57 @@ def create_task(rt: Runtime, goal: str, project: str | None = None, priority: in
                                  workspace=workspace).id
 
 
+def route_goal(rt: Runtime, goal: str) -> Routing:
+    """Dharma routing (PLAN.md 27.5 step 2): the office a goal belongs to, by the workspaces' duties."""
+    return route(goal, WorkspaceStore(rt.paths.home).list())
+
+
+def record_routing(rt: Runtime, goal: str, slug: str, routing: Routing, source: str, channel: str,
+                   task_id: str | None = None) -> None:
+    """Chitragupta (law 3): every routing decision, automatic or Sachin's own choice, is in the audit log."""
+    rt.audit.write("task_routed", task_id=task_id, workspace=slug, source=source, channel=channel,
+                   confidence=routing.confidence, reasons=routing.reasons, goal=goal[:200])
+
+
+def choose_workspace(rt: Runtime, goal: str, out: TextIO, inp: TextIO | None, channel: str = "chat") -> str | None:
+    """Route a goal that has no office yet. Sure: say so in one line and use it. Unsure: ask with the
+    candidates as a numbered prompt (an empty or unknown answer starts nothing). Returns the slug or None."""
+    routing = route_goal(rt, goal)
+    if routing.sure:
+        if len(routing.candidates) > 1:  # silent when personal is the only office
+            print(routing.line(), file=out)
+        record_routing(rt, goal, routing.slug or PERSONAL, routing, "auto", channel)
+        return routing.slug
+    print(routing.line(), file=out)
+    out.write("Office number (or Enter to cancel): ")
+    out.flush()
+    answer = ((inp or sys.stdin).readline() or "").strip()
+    pick = None
+    if answer.isdigit() and 1 <= int(answer) <= len(routing.candidates):
+        pick = routing.candidates[int(answer) - 1]
+    else:
+        pick = next((c for c in routing.candidates if answer and answer.lower() in (c.slug, c.name.lower())), None)
+    if pick is None:
+        print("Not started. Say /workspace <slug> first, or /task again with a clearer goal.", file=out)
+        record_routing(rt, goal, "", routing, "cancelled", channel)
+        return None
+    record_routing(rt, goal, pick.slug, routing, "user", channel)
+    return pick.slug
+
+
+_CANCELLED = object()
+
+
+def _cli_workspace(rt: Runtime, args: argparse.Namespace, goal: str, out: TextIO, inp: TextIO | None):
+    """`jarvis task add|run`: --workspace or --project decide; otherwise route by duties and ask when unsure."""
+    if getattr(args, "workspace", None):
+        return args.workspace
+    if args.project:
+        return None  # create_task takes the project's owner (law 4)
+    chosen = choose_workspace(rt, goal, out, inp, channel="cli")
+    return _CANCELLED if chosen is None else chosen
+
+
 def run_task(rt: Runtime, task_id: str, out: TextIO, approver, workers: str | None = None,
              provider: str | None = None) -> int:
     runner = make_task_runner(rt, provider, approver, workers, progress=lambda m: print(f"  ... {m}", file=out))
@@ -91,14 +145,24 @@ def cmd_task(args: argparse.Namespace, out: TextIO, inp: TextIO, approver_factor
             return 0
         action = args.action
         if action == "add":
-            tid = create_task(rt, " ".join(args.text), args.project, PRIORITIES[args.priority], args.deadline,
-                              args.budget_usd)
+            goal = " ".join(args.text)
+            workspace = _cli_workspace(rt, args, goal, out, inp)
+            if workspace is _CANCELLED:
+                return 1
+            tid = create_task(rt, goal, args.project, PRIORITIES[args.priority], args.deadline, args.budget_usd,
+                              workspace=workspace)
             print(f"Added {tid} to the backlog.", file=out)
             return 0
         if action == "run":
             text = " ".join(args.text)
-            tid = text if ts.get(text) else create_task(rt, text, args.project, PRIORITIES[args.priority],
-                                                        args.deadline, args.budget_usd)
+            if ts.get(text):
+                tid = text
+            else:
+                workspace = _cli_workspace(rt, args, text, out, inp)
+                if workspace is _CANCELLED:
+                    return 1
+                tid = create_task(rt, text, args.project, PRIORITIES[args.priority], args.deadline, args.budget_usd,
+                                  workspace=workspace)
             return run_task(rt, tid, out, approver_factory(), args.workers, args.provider)
         if action == "resume":
             pending = ts.resumable()
@@ -291,8 +355,9 @@ def _recent_task(session, rt: Runtime) -> str | None:
     return task.id if not row or not row[0] or task.updated_at >= row[0] else None
 
 
-def chat_command(session, rt: Runtime, cmd: str, rest: str, out: TextIO) -> bool:
-    """Chat commands: /task, /repeat, /record, /note, /project, /workspace. Returns False if not one of them."""
+def chat_command(session, rt: Runtime, cmd: str, rest: str, out: TextIO, inp: TextIO | None = None) -> bool:
+    """Chat commands: /task, /repeat, /record, /note, /project, /workspace. Returns False if not one of them.
+    `inp` answers the routing question of /task (stdin when the caller gives none)."""
     if cmd == "/project":
         if not rest:
             print(f"Active project: {session.context.project or 'none'}. Projects: {', '.join(ProjectStore(rt.paths.home).list()) or 'none'}", file=out)
@@ -323,16 +388,25 @@ def chat_command(session, rt: Runtime, cmd: str, rest: str, out: TextIO) -> bool
             except WorkspaceError as e:
                 print(str(e), file=out)
                 return True
+            session.workspace_pinned = rest != "off"  # Sachin chose: /task never re-routes (27.5)
             shared = "" if w.personal else (" Personal memories are in view too." if w.share_personal else " Personal memories stay out of view.")
             print(f"Workspace: {w.name} ({w.slug}).{shared}", file=out)
         return True
     if cmd == "/task":
         if not rest:
             print("Usage: /task <goal>", file=out)
+            return True
+        # Dharma routing (PLAN.md 27.5): an office Sachin set (/workspace) or a project's owner is never
+        # re-routed; otherwise the goal's words decide, and Jarvis asks when unsure.
+        if session.context.project or getattr(session, "workspace_pinned", False):
+            workspace: str | None = session.context.workspace
         else:
-            tid = create_task(rt, rest, session.context.project, workspace=session.context.workspace)
-            session.last_task_id = tid  # /repeat after /task automates the task
-            run_task(rt, tid, out, session.approver_for_tasks)
+            workspace = choose_workspace(rt, rest, out, inp, channel="chat")
+            if workspace is None:
+                return True
+        tid = create_task(rt, rest, session.context.project, workspace=workspace)
+        session.last_task_id = tid  # /repeat after /task automates the task
+        run_task(rt, tid, out, session.approver_for_tasks)
         return True
     if cmd == "/repeat":
         chat_repeat(session, rt, rest, out)

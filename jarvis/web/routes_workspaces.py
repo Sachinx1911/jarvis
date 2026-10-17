@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from jarvis.web.context import WebContext
 from jarvis.workspaces.model import PERSONAL, Team, Workspace, WorkspaceError, slugify
+from jarvis.workspaces.routing import Routing, route
 from jarvis.workspaces.store import WorkspaceStore
 
 
@@ -35,6 +36,17 @@ class WorkspaceEdit(BaseModel):
 
 class TeamAdd(BaseModel):
     template: str = Field(min_length=2, max_length=32)
+
+
+class RouteQuery(BaseModel):
+    goal: str = Field(min_length=1, max_length=4000)
+
+
+def routing_json(r: Routing) -> dict[str, Any]:
+    """The routing of a goal, as the dashboard shows it (and as the 409 of POST /api/tasks returns it)."""
+    return {"slug": r.slug, "sure": r.sure, "confidence": r.confidence, "reasons": list(r.reasons), "line": r.line(),
+            "candidates": [{"slug": c.slug, "name": c.name, "score": c.score, "matched": list(c.matched)}
+                           for c in r.candidates]}
 
 
 def workspace_json(w: Workspace) -> dict[str, Any]:
@@ -80,6 +92,13 @@ def build_router(ctx: WebContext) -> APIRouter:
                 raise bad(e)
             rt.audit.write("workspace_created", source="dashboard", workspace=w.slug)
             return workspace_json(w)
+
+    @r.post("/workspaces/route")
+    def workspace_route(body: RouteQuery) -> dict[str, Any]:
+        """Dharma routing (PLAN.md 27.5): where a goal belongs, by the offices' duties. Read-only, no model;
+        the dashboard shows the line or asks with the candidates before creating the task."""
+        with ctx.runtime() as rt:
+            return routing_json(route(body.goal, store(rt).list()))
 
     @r.get("/workspaces/{slug}")
     def workspace_show(slug: str) -> dict[str, Any]:
@@ -201,4 +220,4 @@ def build_router(ctx: WebContext) -> APIRouter:
     return r
 
 
-__all__ = ["build_router", "workspace_json", "team_json", "PERSONAL"]
+__all__ = ["build_router", "workspace_json", "team_json", "routing_json", "PERSONAL"]
