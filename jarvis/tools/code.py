@@ -31,9 +31,10 @@ from typing import Protocol
 
 import yaml
 
+from jarvis.core.shruti import ShrutiError, assert_not_shruti
 from jarvis.paths import CONFIG_DIR, local_config_path
 from jarvis.providers.base import ToolSpec
-from jarvis.tools.files import PathDenied, PathPolicy
+from jarvis.tools.files import PathBlocked, PathDenied, PathPolicy
 from jarvis.tools.registry import Tool
 
 PROJECT_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,49}$")
@@ -216,6 +217,10 @@ class CodeTools:
 
     def code_write(self, args: dict) -> str:
         path = self.resolve(args["path"])
+        try:  # shruti (PLAN.md 27.10): the Coder never writes identity, law or prompts, even in the Jarvis repo
+            assert_not_shruti(path)
+        except ShrutiError as e:
+            raise PathBlocked(str(e)) from e
         if path == self.root or path.is_dir():
             return f"{args['path']} is a folder."
         content = args["content"][:MAX_WRITE_CHARS]

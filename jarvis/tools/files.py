@@ -13,6 +13,8 @@ import shutil
 from datetime import datetime
 from pathlib import Path, PureWindowsPath
 
+from jarvis.core.shruti import shruti_reason
+
 MAX_READ_CHARS = 20000
 MAX_WRITE_CHARS = 200_000
 
@@ -59,6 +61,11 @@ class PathPolicy:
         path = candidate.resolve()
         if is_secret_path(path) or is_secret_path(candidate):
             raise PathBlocked(f"{raw} is a protected secret location")
+        # Shruti (PLAN.md 27.10): identity and law are never touched through a model's file tools.
+        # Blocked like a secret location (T4): the attempt is audited and refused, read or write.
+        why = shruti_reason(path) or shruti_reason(candidate)
+        if why:
+            raise PathBlocked(f"{raw} is {why}")
         if not any(path == r or path.is_relative_to(r) for r in self.roots):
             raise PathDenied(f"{raw} is outside the allowed folders")
         return path
