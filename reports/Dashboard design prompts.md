@@ -1,69 +1,86 @@
-# Dashboard design prompts (2026-10-17)
+# Dashboard design prompts (2026-10-17, v2: no dashboard at all)
 
-Sachin rejected the current dashboard look (both the old tab bar and the sidebar redesign). Rule from him:
-no new UI is built until he has generated images from these prompts, picked one, and said "final".
-Until then the backend keeps moving; frontend work (including the Office tab written in step 2) is on hold
-and will be redone to match the chosen design. Prompts are in English for image tools.
+Sachin rejected the current dashboard look and also the first prompt set (same sidebar + cards format as
+every other dashboard). Rule from him: no new UI is built until he has generated images from these prompts,
+picked a direction, and said "final". Frontend work (including the Office tab from step 2) is on hold and
+will be redone to the chosen design. Backend APIs keep moving.
 
-## Style anchors (use with every prompt)
+These five are deliberately NOT dashboards: no sidebar, no tabs, no card grid, no tables. Each is one
+world where the live data of Jarvis (offices, teams, tasks, memories, approvals, audit log) has a physical
+place. The prompts are in English for image tools; the names follow PLAN.md 27 (lokas, Trimurti, Kubera,
+Narada, Chitragupta).
 
-"Jarvis" personal AI command center; the Hindu cosmos as the design language (PLAN.md 27): lokas =
-offices as realms, the Trimurti kernel at the centre, Chitragupta's register as the audit log. Dark
-background like deep night sky (near-black indigo), accents of saffron/gold and a cool teal for "live"
-states, thin golden lines, mandala-like geometry used sparingly, Devanagari and English together.
-Calm, premium, not gamified; no cartoon characters; no neon clutter. Desktop 16:9, 1920x1080, UI mockup,
-Figma-quality, flat with soft depth, readable at a glance.
+## Common rule for every prompt
 
-## Prompt 1: Command Center (home)
+"Concept art of a software interface, 16:9, 1920x1080, Figma-quality mockup, real UI text, not a game
+screenshot. Dark night indigo background, saffron and antique gold accents, a cool teal for anything alive
+right now, thin golden lines, Devanagari and English together (the greeting 'नमस्कार, सचिन'). Calm,
+premium, no cartoon characters, no 3D-game look, no neon clutter."
 
-"UI mockup of a personal AI assistant command center called Jarvis. Dark indigo night-sky background with
-faint golden mandala lines. Centre: a glowing circular 'core' showing the assistant's state (listening /
-thinking / idle) with a short Marathi greeting in Devanagari ('नमस्कार, सचिन') and the time. Around it in
-a ring: today's brief (weather, 3 calendar items, 2 reminders), a task board strip (planned / running /
-done), and a 'waiting for you' badge with 2 approvals. Left: a slim vertical navigation with icons and
-labels: Office, Chat, Tasks, Schedules, Memory, Teach, India, Setup. Top-right: a status pill 'Claude ·
-local off' and an emergency stop button in deep red. Typography: a clean humanist sans for English and a
-matching Devanagari face. Accents saffron and gold, live states teal. Flat UI with soft shadows, no 3D."
+## 1. Yantra: the whole screen is one living yantra
 
-## Prompt 2: Office page (lokas and teams)
+"The entire screen is a single living yantra (sacred geometric diagram) drawn in thin gold on night indigo;
+there is no menu, no sidebar, no tabs. The bindu at the centre is Jarvis: a soft breathing point of light
+whose rhythm shows its state (idle slow, listening fast, thinking a ripple). Around it, concentric rings
+are time: the inner ring is now, the next ring is today, the outer ring is this week; schedules and
+reminders sit on the rings as small gold marks at their hour. The eight petals of the yantra are the
+offices (lokas): 'Personal', 'Acme Ltd', 'Digital Marketing'... each petal glows according to its activity
+and shows its name in Devanagari and English; a rotating petal brought to the top opens like a lotus to
+reveal its teams and running agents as beads on threads. Approvals waiting for the user are knots on the
+threads near the centre, lit saffron. The conversation with Jarvis flows as a thin river of text through
+the centre, newest at the bindu. Memories are faint stars behind the geometry, brighter when used today."
 
-"UI mockup of an 'Office' page in a dark AI dashboard. The page shows several offices (called lokas) as
-elegant rooms on a subtle isometric grid drawn in thin golden lines: 'Personal', 'Acme Ltd', 'Digital
-Marketing'. Each room contains small team cards (Research, Writing, Dev, Admin) with member dots that glow
-teal when working; a count 'done / running / waiting' per team; a budget bar labelled 'Kubera' at the
-room's base. In the centre of the page a luminous 'Brain' sphere with counts: memories, documents, skills.
-Top line: '12 agents · 3 running · 2 waiting for you'. A side panel on the right is open for one team,
-showing the lead (Adhipati), members (Gana) with their status, tools, skills and recent tasks. Dark indigo
-background, saffron and gold accents, calm, premium, readable."
+## 2. Nakshatra: the sky at night
 
-## Prompt 3: Chat
+"A software interface that is a night sky seen from a rooftop, no menu, no panels. Every memory Jarvis
+holds is a star; stars form constellations (nakshatras) that are the offices and topics: 'Personal',
+'Acme Ltd', 'Health', 'Money', each outlined in thin gold with its name in Devanagari. Running tasks are
+planets moving slowly along orbits with a short label ('researcher-2: searching'). The day's schedule is
+the ecliptic: a gold arc across the sky with marks for each hour's work. The audit log is the Milky Way: a
+faint band of tiny glyphs that can be read when zoomed. Approvals waiting for the user are comets with a
+saffron tail, hanging still until touched. The horizon at the bottom holds a single line: the user's words
+to Jarvis and Jarvis's reply, with a microphone glyph. One constellation is zoomed in, showing the stars as
+readable memory lines with confidence shown as brightness."
 
-"UI mockup of a chat screen with a personal AI assistant named Jarvis, dark indigo theme with gold
-accents. Messages in English and Marathi (Devanagari) in rounded bubbles; the assistant's bubbles carry a
-thin gold edge. Above the input: a small approval card 'Jarvis wants to send an email to Rahul – Allow /
-Deny' with a tier badge 'T3'. Right rail: 'Why this answer' panel listing the memories and documents used,
-each with a confidence mark. Bottom: a wide input with a microphone button (voice), a 'Project: none'
-selector and an 'Office: Personal' selector. Clean, calm, premium."
+## 3. Pothi: the manuscript Chitragupta writes
 
-## Prompt 4: Tasks and receipts
+"A software interface that is a single continuous palm-leaf manuscript (pothi) unrolling vertically, as if
+written live by Chitragupta, the keeper of deeds. No menu, no cards. The scroll is the day: earlier
+entries above in a warm aged-paper tone, 'now' in the middle with ink still wet (teal shimmer), and what
+is to come below as faint pencil. Each entry is one deed in English or Marathi: 'acme / research team
+finished: Laptop compare (3 model calls)', 'Reminder at 18:00: call the bank'. Where Jarvis needs the
+user's word, the scroll shows a wax seal waiting: pressing the seal approves, tearing the corner denies.
+The margins hold small notes: the office (loka) the line belongs to, the budget spent (Kubera), who saw
+the evidence. At the very top, a small brass lamp shows whether Jarvis is listening. The user's own
+sentence is written in a different hand at the bottom edge."
 
-"UI mockup of a task board for an AI assistant, dark indigo and gold. Columns: Backlog, Planned, Running,
-Verifying, Done. Cards show title, office tag, team tag, budget used as a thin bar, and a step line like
-'researcher-2: searching'. One card is expanded into a receipt panel: a timeline of events, 'claims vs
-evidence' checklist with ticks, model calls and cost, and a 'Team: research (Acme)' line. Running cards
-pulse softly in teal. Premium, readable, no clutter."
+## 4. Mandir: the temple plan
 
-## Prompt 5: Memory
+"A software interface that is a top-down architectural plan of a temple complex drawn in thin gold lines
+on night indigo, like a vastu mandala. No menu. The garbhagriha at the centre is the core of Jarvis: its
+memory and soul, shown as a soft light. Around it the mandapas are the offices (lokas): 'Personal', 'Acme
+Ltd', 'Digital Marketing', each a hall with its teams as rooms; in every room a small oil lamp (diya) per
+agent, lit teal while that agent works, dim when idle, with the agent's name beside it. The pradakshina
+path around the complex is today's schedule: the user's day walks the path clockwise, with hour marks and
+the current time as a walking light. The gate (dvara) at the bottom holds the approvals: guardians stand
+by each request that waits for the user. The treasury room shows the daily budget as grain in a vessel.
+Narada's messages between halls are shown as tiny birds on the paths. The user's conversation with Jarvis
+is spoken into the centre and appears as light text over the garbhagriha."
 
-"UI mockup of a memory page for a personal AI assistant, dark indigo and gold. Left: core memory as two
-scrolls 'USER' and 'MEMORY' with Devanagari headings. Centre: a searchable list of memories with type
-chips (fact, preference, procedure, constraint, episode), confidence dots, office tag and 'last used'. A
-toggle 'show archived'. Right: a timeline of where each memory came from (chat, receipt, interview).
-Calm, premium, readable."
+## 5. Pran: one line of breath
 
-## What happens next
+"An extremely minimal software interface: a near-black indigo screen with a single luminous horizontal
+line across the middle, Jarvis's breath. The line is flat when idle, ripples gently when listening, and
+pulses in teal while thinking. Everything else appears only when needed and dissolves afterwards: a
+spoken question becomes a few words above the line; the reply forms below it in Devanagari or English;
+when a task runs, a small bead travels along the line with its step; when something waits for the user, a
+saffron knot forms on the line; offices are shown as faint gold tick marks along the line, and touching one
+briefly opens its teams as a constellation above. A thin arc at the top edge is the day's schedule. No
+menus, no panels, no cards: the line is the whole interface."
 
-1. Sachin generates images from the prompts (any tool), changes the prompts as he likes.
-2. He picks one direction and says "final"; the chosen images go into `reports/design/` (private is fine).
-3. Then the frontend is rebuilt to that design: nav, Command Center, Office, Chat, Tasks, Memory, the
-   rest; the backend APIs do not change for this.
+## How to use
+
+1. Generate each with any image tool (keep the common rule line in every prompt). Change what you like.
+2. Pick one direction (or mix) and say "final"; put the chosen images in `reports/design/`.
+3. Then the frontend is rebuilt as that world: the live data behind it (offices, teams, tasks, memories,
+   approvals, audit, schedules) already exists as APIs; no backend change needed.
