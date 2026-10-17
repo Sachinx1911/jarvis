@@ -404,18 +404,34 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
         return {"items": items, "running": sorted(running)}
 
     @api.post("/tasks")
-    def task_create(body: TaskCreate) -> dict[str, Any]:
-        from jarvis.cli_tasks import create_task
+    def task_create(body: TaskCreate):
+        from jarvis.cli_tasks import create_task, record_routing, route_goal
+        from jarvis.web.routes_workspaces import routing_json
 
         with runtime() as rt:
+            workspace, routed = body.workspace or None, None
+            if not workspace and not body.project:
+                # Dharma routing (PLAN.md 27.5): the dashboard gave no office, so the goal's words decide.
+                # Unsure: 409 with the candidates, the UI asks and posts again with `workspace` set.
+                routed = route_goal(rt, body.goal)
+                if not routed.sure:
+                    record_routing(rt, body.goal, "", routed, "asked", "dashboard")
+                    return JSONResponse({"needs_choice": routing_json(routed)["candidates"], "reasons": routed.reasons,
+                                         "line": routed.line()}, status_code=409)
+                workspace = routed.slug
             try:
                 tid = create_task(rt, body.goal, body.project or None, PRIORITIES[body.priority], body.deadline or None,
-                                  workspace=body.workspace or None)
+                                  workspace=workspace)
             except ValueError as e:  # an archived or unknown workspace
                 raise HTTPException(400, str(e))
+            created = task_store(rt).get(tid)
+            workspace = created.workspace if created else workspace
+            if routed is not None:
+                record_routing(rt, body.goal, workspace or "personal", routed, "auto", "dashboard", task_id=tid)
             rt.audit.write("task_created", source="dashboard", task_id=tid)
         started = _start(tid) if body.run else False
-        return {"id": tid, "started": started}
+        return {"id": tid, "started": started, "workspace": workspace,
+                **({"routed": routed.line()} if routed is not None else {})}
 
     @api.get("/tasks/{task_id}")
     def task_show(task_id: str) -> dict[str, Any]:
