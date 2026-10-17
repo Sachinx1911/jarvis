@@ -356,7 +356,8 @@ def _recent_task(session, rt: Runtime) -> str | None:
 
 
 def chat_command(session, rt: Runtime, cmd: str, rest: str, out: TextIO, inp: TextIO | None = None) -> bool:
-    """Chat commands: /task, /repeat, /record, /note, /project, /workspace. Returns False if not one of them.
+    """Chat commands: /task, /repeat, /record, /note, /project, /workspace, /ask, /requests. Returns False if
+    not one of them.
     `inp` answers the routing question of /task (stdin when the caller gives none)."""
     if cmd == "/project":
         if not rest:
@@ -410,6 +411,30 @@ def chat_command(session, rt: Runtime, cmd: str, rest: str, out: TextIO, inp: Te
         return True
     if cmd == "/repeat":
         chat_repeat(session, rt, rest, out)
+        return True
+    if cmd in ("/ask", "/requests"):
+        # Narada (PLAN.md 27.5 item 6): this chat's office asks another for work; only the result comes back.
+        from jarvis.cli_workspaces import ask_line
+        from jarvis.workspaces.narada import RequestStore
+
+        requests = RequestStore(rt.store.conn, rt.paths.home, rt.audit)
+        if cmd == "/requests":
+            items = requests.list(session.workspace, include_archived=rest == "all")
+            for r in items:
+                print(r.line(), file=out)
+            if not items:
+                print(f"No requests for {session.workspace}. Ask another office: /ask <workspace> <goal>", file=out)
+            return True
+        to, _, goal = rest.partition(" ")
+        if not to or not goal.strip():
+            print("Usage: /ask <workspace> <goal>", file=out)
+            return True
+        try:
+            r = requests.ask(session.workspace, to, goal.strip(), task_store(rt), source="chat")
+        except WorkspaceError as e:
+            print(str(e), file=out)
+            return True
+        print(ask_line(r), file=out)
         return True
     if cmd in ("/record", "/note"):
         rec = recorder(rt)

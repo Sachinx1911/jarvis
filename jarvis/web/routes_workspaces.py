@@ -11,8 +11,10 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from jarvis.core.runtime import task_store
 from jarvis.web.context import WebContext
 from jarvis.workspaces.model import PERSONAL, Team, Workspace, WorkspaceError, slugify
+from jarvis.workspaces.narada import RequestStore, request_json
 from jarvis.workspaces.routing import Routing, route
 from jarvis.workspaces.store import WorkspaceStore
 
@@ -39,6 +41,11 @@ class TeamAdd(BaseModel):
 
 
 class RouteQuery(BaseModel):
+    goal: str = Field(min_length=1, max_length=4000)
+
+
+class RequestAsk(BaseModel):
+    to: str = Field(min_length=2, max_length=32)
     goal: str = Field(min_length=1, max_length=4000)
 
 
@@ -199,6 +206,51 @@ def build_router(ctx: WebContext) -> APIRouter:
                 raise bad(e)
             rt.audit.write("team_unarchived", source="dashboard", workspace=slug, team=team)
             return team_json(t)
+
+    # ---- Narada: requests between offices (PLAN.md 27.5 item 6) ----
+
+    def bad_request_id(e: WorkspaceError) -> HTTPException:
+        return HTTPException(404 if str(e).startswith("no request") else 400, str(e))
+
+    @r.post("/workspaces/{slug}/requests")
+    def request_ask(slug: str, body: RequestAsk) -> dict[str, Any]:
+        """`slug` asks `body.to` for work. The task is created in the asked office; the store audits
+        loka_request_made with source dashboard. 400 when the asker may not ask (allies), 404 unknown office."""
+        with ctx.runtime() as rt:
+            try:
+                req = RequestStore(rt.store.conn, rt.paths.home, rt.audit).ask(
+                    slug, body.to, body.goal.strip(), task_store(rt), source="dashboard")
+            except WorkspaceError as e:
+                raise bad(e)
+            return request_json(req)
+
+    @r.get("/workspaces/{slug}/requests")
+    def requests_list(slug: str, archived: bool = False) -> dict[str, Any]:
+        with ctx.runtime() as rt:
+            try:
+                store(rt).get(slug)
+            except WorkspaceError as e:
+                raise bad(e)
+            items = RequestStore(rt.store.conn, rt.paths.home, rt.audit).list(slug, include_archived=archived)
+            return {"items": [request_json(x) for x in items]}
+
+    @r.post("/workspaces/requests/{rid}/archive")
+    def request_archive(rid: str) -> dict[str, Any]:
+        with ctx.runtime() as rt:
+            try:
+                req = RequestStore(rt.store.conn, rt.paths.home, rt.audit).archive(rid, source="dashboard")
+            except WorkspaceError as e:
+                raise bad_request_id(e)
+            return request_json(req)
+
+    @r.post("/workspaces/requests/{rid}/unarchive")
+    def request_unarchive(rid: str) -> dict[str, Any]:
+        with ctx.runtime() as rt:
+            try:
+                req = RequestStore(rt.store.conn, rt.paths.home, rt.audit).unarchive(rid, source="dashboard")
+            except WorkspaceError as e:
+                raise bad_request_id(e)
+            return request_json(req)
 
     @r.get("/workspaces/{slug}/stats")
     def workspace_stats(slug: str) -> dict[str, Any]:
