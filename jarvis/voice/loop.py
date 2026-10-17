@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -23,13 +24,14 @@ from jarvis.paths import PROMPTS_DIR
 from jarvis.providers.base import ProviderError
 from jarvis.voice.approval import normalize
 from jarvis.voice.base import Audio, Transcript, VoiceUnavailable
+from jarvis.voice.routes import STOP_SPEAKING, match_voice_route  # noqa: F401 (STOP_SPEAKING re-exported)
 from jarvis.voice.tts import SpeechOutput
 from jarvis.voice.vad import EnergyVAD, PlaybackGuard
 
 EXIT_WORDS = {"/exit", "/quit", "exit", "quit"}
-STOP_SPEAKING = {"stop", "jarvis stop", "stop jarvis", "be quiet", "thamb", "थांब", "थांबा"}
 EMERGENCY = {"emergency stop", "jarvis emergency stop"}
 REPEAT = "Sorry, I did not catch that. Please say it again."
+_DEVANAGARI = re.compile(r"[ऀ-ॿ]")
 
 
 def voice_style() -> str:
@@ -56,7 +58,7 @@ class VoiceStyleContext:
 
 @dataclass
 class TurnResult:
-    status: str  # replied | unclear | stopped_speaking | emergency_stop | error | no_audio
+    status: str  # replied | routed | unclear | stopped_speaking | emergency_stop | error | no_audio
     heard: str = ""
     reply: str = ""
     tts_engine: str = ""
@@ -66,8 +68,10 @@ class TurnResult:
 class VoiceLoop:
     def __init__(self, session: Any, stt: Any, speech: SpeechOutput, recorder: Any, audit: AuditLog,
                  stop: StopSwitch, cfg: dict[str, Any], out: TextIO, inp: TextIO, home: Path,
-                 wakeword: Any = None, mic_vad: EnergyVAD | None = None, language_hint: str | None = None):
+                 wakeword: Any = None, mic_vad: EnergyVAD | None = None, language_hint: str | None = None,
+                 xray: Any = None):
         self.session = session
+        self._xray = xray   # start(url, question) -> str, last() -> str; built lazily (jarvis.voice.xray_bridge)
         self.stt = stt
         self.speech = speech
         self.recorder = recorder
@@ -154,11 +158,9 @@ class VoiceLoop:
             result = TurnResult("emergency_stop", text)
             self._audit(result, transcript, t0, audio_seconds, stt_ms=stt_ms)
             return result
-        if said in STOP_SPEAKING:
-            self.silence()
-            result = TurnResult("stopped_speaking", text)
-            self._audit(result, transcript, t0, audio_seconds, stt_ms=stt_ms)
-            return result
+        routed = self._route(text, transcript, t0, audio_seconds, stt_ms)
+        if routed is not None:
+            return routed
         try:
             reply = self.session.send(text)
         except EmergencyStop as e:
@@ -179,6 +181,58 @@ class VoiceLoop:
         result = TurnResult("replied", text, reply, engine, cloud)
         self._audit(result, transcript, t0, audio_seconds, stt_ms=stt_ms)
         return result
+
+    # ---- voice routes (PLAN.md 18.1 row 02/05): handled before the brain ----
+
+    def _route(self, text: str, transcript: Transcript | None, t0: float, audio_seconds: float,
+               stt_ms: int) -> TurnResult | None:
+        hit = match_voice_route(text)
+        if hit is None:
+            return None
+        route, args = hit
+        if route.name == "stop":
+            self.silence()
+            result = TurnResult("stopped_speaking", text)
+            self._audit(result, transcript, t0, audio_seconds, stt_ms=stt_ms)
+            return result
+        if route.name == "remember":
+            reply = self._remember(args["text"])
+        elif route.name == "show_last_teardown":
+            reply = self.xray.last()
+        else:  # teardown
+            reply = self.xray.start(args["url"], args["question"])
+        print(f"Jarvis: {reply}", file=self.out)
+        engine, cloud = ("", False)
+        if not self.stop.engaged():
+            engine, cloud = self.say(reply)
+        result = TurnResult("routed", text, reply, engine, cloud)
+        self._audit(result, transcript, t0, audio_seconds, stt_ms=stt_ms, detail=f"route:{route.name}")
+        return result
+
+    def _remember(self, text: str) -> str:
+        """The /remember path (jarvis.cli._slash): the session's extractor saves it, enriched when allowed."""
+        from jarvis.memory.store import MemoryRejected
+
+        marathi = bool(_DEVANAGARI.search(text))
+        extractor = getattr(self.session, "extractor", None)
+        if extractor is None:
+            return "Memory is not available." if not marathi else "Memory उपलब्ध नाही."
+        context = getattr(self.session, "context", None)
+        try:
+            mem = extractor.remember(text, workspace=getattr(self.session, "workspace", "personal"),
+                                     share_personal=getattr(context, "share_personal", True))
+        except (MemoryRejected, ValueError) as e:
+            return f"Not saved: {e}"
+        what = mem.summary_en or mem.name
+        return f"लक्षात ठेवलं: {what}" if marathi else f"Remembered: {what}"
+
+    @property
+    def xray(self) -> Any:
+        if self._xray is None:
+            from jarvis.voice.xray_bridge import VoiceXray
+
+            self._xray = VoiceXray(self.session, self.home, self.audit, self.out, self.inp)
+        return self._xray
 
     def _audit(self, r: TurnResult, t: Transcript | None, t0: float, audio_seconds: float,
                stt_ms: int = 0, detail: str = "") -> None:

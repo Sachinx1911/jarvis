@@ -299,6 +299,12 @@ def build_registry(reg: ToolRegistry, d: ToolDeps) -> ToolRegistry:
 
     add(make_web_extract_tool(d))
 
+    # ---- Phase 9: x-ray teardown of a public site (T1 observation; refuses until the kit is installed) ----
+    from jarvis.xray.tools import xray_tools
+
+    for tool in xray_tools(d.home, d.store, d.audit, memory=d.memory):
+        add(tool)
+
     # ---- astra discipline (PLAN.md 27.4a): each tool says how its act is checked or undone ----
     from jarvis.control.astra import declare_samhara, enforce_samhara
 
