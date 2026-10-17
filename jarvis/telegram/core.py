@@ -206,10 +206,11 @@ class BotCore:
             store = ScheduleStore(rt.store.conn)
             if not store.get(sid):
                 return f"No schedule {sid}."
-            if action == "delete":
-                store.delete(sid)
-            else:
-                store.set_enabled(sid, action == "resume", self.p.now())
+            if action == "delete":  # law 2: the phone archives; deleting for ever is a terminal act
+                store.archive(sid, self.p.now())
+                rt.audit.write("schedule_archive", schedule_id=sid, source="telegram")
+                return f"{sid}: archived (nothing deleted; `jarvis schedule unarchive {sid}` reopens it)."
+            store.set_enabled(sid, action == "resume", self.p.now())
             rt.audit.write("schedule_" + action, schedule_id=sid, source="telegram")
             return f"{sid}: {action}d." if action != "pause" else f"{sid}: paused."
         if action == "run":
@@ -276,12 +277,13 @@ class BotCore:
             store = TriggerStore(rt.store.conn)
             if not tid or not store.get(tid):
                 return f"No trigger {tid or '(give an id, see /triggers)'}."
-            if action == "delete":
-                store.delete(tid)
-            else:
-                store.set_enabled(tid, action == "resume", self.p.now())
+            if action == "delete":  # law 2: archive
+                store.archive(tid, self.p.now())
+                rt.audit.write("trigger_archive", trigger_id=tid, source="telegram")
+                return f"{tid}: archived (nothing deleted; `jarvis trigger unarchive {tid}` reopens it)."
+            store.set_enabled(tid, action == "resume", self.p.now())
             rt.audit.write("trigger_" + action, trigger_id=tid, source="telegram")
-            return {"pause": f"{tid}: paused.", "resume": f"{tid}: resumed.", "delete": f"{tid}: deleted."}[action]
+            return {"pause": f"{tid}: paused.", "resume": f"{tid}: resumed."}[action]
         return self._with_rt(go)
 
     def cmd_approvals(self) -> str:

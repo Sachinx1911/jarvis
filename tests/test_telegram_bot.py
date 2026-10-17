@@ -240,7 +240,7 @@ def test_schedule_pause_resume_delete_commands():
     assert "paused" in _cmd(bot, "/schedule_pause s-001")[0][0]
     assert "[PAUSED]" in _cmd(bot, "/schedules")[0][0]
     assert "resumed" in _cmd(bot, "/schedule_resume s-001")[0][0]
-    assert "deleted" in _cmd(bot, "/schedule_delete s-001")[0][0]
+    assert "archived" in _cmd(bot, "/schedule_delete s-001")[0][0]   # law 2: the phone archives
     assert "No schedules" in _cmd(bot, "/schedules")[0][0]
 
 

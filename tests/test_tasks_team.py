@@ -137,6 +137,12 @@ def test_team_task_completes_with_receipt_and_project_output(env):
     assert "round 1: PASS" in receipt and "subscription, not billed per call" in receipt
     states = [e["detail"]["to"] for e in ts.events(t.id) if e["kind"] == "state"]
     assert states == ["PLANNED", "RUNNING", "VERIFYING", "COMPLETED"]
+    # law 3: the finished task left an episode in its office's memory
+    from jarvis.memory.store import MemoryStore
+    episodes = [m for m in MemoryStore(home, runner.store).list(type="episode")]
+    assert len(episodes) == 1 and episodes[0].workspace == "personal" and episodes[0].source == "observed"
+    assert "Compared laptops." in episodes[0].body and t.id in episodes[0].name
+    assert "receipt_remembered" in (home / "data" / "audit.jsonl").read_text(encoding="utf-8")
 
 
 def test_ungrounded_link_triggers_one_revision(env):

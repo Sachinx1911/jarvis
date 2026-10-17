@@ -317,9 +317,11 @@ def test_default_schedules_created_once_and_deletion_is_respected():
     assert kinds["heartbeat"].misfire_grace_s == 300
     assert kinds["memory_extract"].cron == "*/10 * * * *" and kinds["memory_extract"].output == "file"
     assert kinds["memory_cleanup"].cron == "0 21 * * sun"
-    store.delete(kinds["heartbeat"].id)
+    assert store.archive(kinds["heartbeat"].id, p.now())
+    assert store.get(kinds["heartbeat"].id).archived and "heartbeat" not in {s.kind for s in store.list()}
+    assert store.list(include_archived=True)[0] and store.delete_forever(kinds["brief"].id) is False  # live: no
     rt.close()
-    assert p.ensure_default_schedules() == []          # Sachin deleted it: stays deleted
+    assert p.ensure_default_schedules() == []          # Sachin archived it: stays archived
 
 
 def test_run_receipt_has_usage():

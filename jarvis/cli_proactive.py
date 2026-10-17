@@ -31,7 +31,7 @@ COMMANDS = ("schedule", "trigger", "heartbeat", "brief", "remind", "telegram", "
 
 def register(sub: argparse._SubParsersAction) -> None:
     sch = sub.add_parser("schedule", help="skill, agent and prompt schedules")
-    sch.add_argument("action", choices=["add", "list", "pause", "resume", "run-now", "delete", "runs", "approvals"])
+    sch.add_argument("action", choices=["add", "list", "pause", "resume", "run-now", "delete", "archive", "unarchive", "runs", "approvals"])
     sch.add_argument("text", nargs="*", help="add: what and when, e.g. 'every Monday at 9 project summary'; "
                                              "approvals: 'approve <id>' or 'deny <id>'; others: schedule id")
     sch.add_argument("--kind", choices=KINDS, default="prompt")
@@ -40,12 +40,14 @@ def register(sub: argparse._SubParsersAction) -> None:
     sch.add_argument("--cron", default=None, help="exact 5-field cron instead of reading the time from the text")
     sch.add_argument("--max-calls", type=int, default=None, help="budget: model calls per run")
     sch.add_argument("--yes", action="store_true", help="save without asking (scripts)")
+    sch.add_argument("--forever", action="store_true",
+                     help="delete: remove an archived schedule for good (asks; logged as your act)")
     sch.add_argument("--no-model", action="store_true", help="read the time with the rules only")
     sch.add_argument("--dismiss", type=int, default=None, help="approvals: dismiss this pending item")
     sch.add_argument("--provider", choices=PROVIDERS, default=None)
 
     tr = sub.add_parser("trigger", help="event triggers: do something when something happens")
-    tr.add_argument("action", choices=["add", "list", "pause", "resume", "delete", "test", "runs"])
+    tr.add_argument("action", choices=["add", "list", "pause", "resume", "delete", "archive", "unarchive", "test", "runs"])
     tr.add_argument("text", nargs="*", help="add: what to watch and what to do, e.g. 'when a new file arrives in "
                                             "workspace/inbox summarize it'; others: trigger id")
     tr.add_argument("--kind", choices=["notify", "prompt", "skill", "agent"], default=None,
@@ -57,6 +59,8 @@ def register(sub: argparse._SubParsersAction) -> None:
     tr.add_argument("--cooldown", type=float, default=None, help="minutes between two runs")
     tr.add_argument("--product", default="", help="web_price: the exact product name on the store page")
     tr.add_argument("--yes", action="store_true", help="save without asking (scripts)")
+    tr.add_argument("--forever", action="store_true",
+                    help="delete: remove an archived trigger for good (asks; logged as your act)"),
     tr.add_argument("--fire", action="store_true", help="test: check now for real (new items fire)")
     tr.add_argument("--provider", choices=PROVIDERS, default=None)
 
@@ -139,7 +143,7 @@ def cmd_schedule(args: argparse.Namespace, out: TextIO, inp: TextIO) -> int:
                 print(f"#{a['id']} {a['created_at'][:16]} {a['schedule_id']} {a['tool']} [{a['tier']}] "
                       f"{a['arguments']} ({a['reason']})", file=out)
             return 0
-        if args.action in ("pause", "resume", "delete", "runs", "run-now"):
+        if args.action in ("pause", "resume", "delete", "archive", "unarchive", "runs", "run-now"):
             if not text or not store.get(text):
                 print(f"No schedule {text or '(give an id, see: jarvis schedule list)'}.", file=out)
                 return 1
@@ -148,11 +152,32 @@ def cmd_schedule(args: argparse.Namespace, out: TextIO, inp: TextIO) -> int:
                     print(f"{r['started_at'][:16]} {r['trigger']:<8} {r['status']:<15} calls={r['model_calls']} "
                           f"{(r['detail'] or '')[:80]}", file=out)
                 return 0
-            if args.action == "delete":
-                if not args.yes and not _ask(out, inp, f"Delete {text}?"):
+            if args.action in ("delete", "archive"):
+                # Law 2: "delete" archives. Only `delete --forever` on an archived schedule removes the row,
+                # and only after Sachin says yes here; both are audited.
+                if args.action == "delete" and args.forever:
+                    if not store.get(text).archived:
+                        print(f"{text} is still live; archive it first (jarvis schedule archive {text}).", file=out)
+                        return 1
+                    if not _ask(out, inp, f"Delete {text} for ever? Its runs stay in the log, the schedule itself is gone."):
+                        print("Kept.", file=out)
+                        return 0
+                    store.delete_forever(text)
+                    rt.audit.write("schedule_delete_forever", schedule_id=text, source="cli", by="sachin")
+                    print(f"{text}: deleted for ever.", file=out)
+                    return 0
+                if not args.yes and not _ask(out, inp, f"Archive {text}? (it stops and leaves the list; nothing is deleted)"):
                     print("Kept.", file=out)
                     return 0
-                store.delete(text)
+                store.archive(text, p.now())
+                rt.audit.write("schedule_archive", schedule_id=text, source="cli")
+                print(f"{text}: archived. Reopen with: jarvis schedule unarchive {text}", file=out)
+                return 0
+            elif args.action == "unarchive":
+                store.unarchive(text, p.now())
+                rt.audit.write("schedule_unarchive", schedule_id=text, source="cli")
+                print(f"{text}: reopened (paused; resume it when ready).", file=out)
+                return 0
             elif args.action == "run-now":
                 rt.close()
                 rt = None
@@ -271,11 +296,27 @@ def cmd_trigger(args: argparse.Namespace, out: TextIO, inp: TextIO) -> int:
             if not args.fire:
                 print("(dry run: nothing was marked or run; add --fire to check for real)", file=out)
             return 0 if r.status not in ("error", "unknown") else 1
-        if args.action == "delete":
-            if not args.yes and not _ask(out, inp, f"Delete {text}?"):
+        if args.action in ("delete", "archive"):
+            if args.action == "delete" and args.forever:
+                if not store.get(text).archived:
+                    print(f"{text} is still live; archive it first (jarvis trigger archive {text}).", file=out)
+                    return 1
+                if not _ask(out, inp, f"Delete {text} for ever?"):
+                    print("Kept.", file=out)
+                    return 0
+                store.delete_forever(text)
+                rt.audit.write("trigger_delete_forever", trigger_id=text, source="cli", by="sachin")
+                print(f"{text}: deleted for ever.", file=out)
+                return 0
+            if not args.yes and not _ask(out, inp, f"Archive {text}? (it stops and leaves the list; nothing is deleted)"):
                 print("Kept.", file=out)
                 return 0
-            store.delete(text)
+            store.archive(text, p.now())
+            rt.audit.write("trigger_archive", trigger_id=text, source="cli")
+            print(f"{text}: archived. Reopen with: jarvis trigger unarchive {text}", file=out)
+            return 0
+        elif args.action == "unarchive":
+            store.unarchive(text, p.now())
         else:
             store.set_enabled(text, args.action == "resume", p.now())
         rt.audit.write(f"trigger_{args.action}", trigger_id=text, source="cli")

@@ -87,14 +87,16 @@ def test_memory_search_applies_the_rule_of_sight_everywhere_it_is_called():
 
 
 def test_no_kind_is_hard_deleted_outside_a_declared_gap():
-    """Law 2 (Mahesh): the only deletion is Sachin's explicit, logged act. Stores whose end is still
-    a delete must say so in the registry."""
+    """Law 2 (Mahesh): the only deletion is Sachin's explicit, logged act, which lives in a method
+    named delete_forever. Stores whose end is still a delete must say so in the registry."""
     allowed = {k.store.partition(":")[0].removeprefix("jarvis.").replace(".", "/") + ".py" for k in KINDS
                if any("delete" in g for g in k.gaps)}
     offenders = []
     for path in PACKAGE.rglob("*.py"):
         rel = path.relative_to(PACKAGE).as_posix()
         text = path.read_text(encoding="utf-8")
+        # the body of delete_forever is the one place a truth row may go (archived rows only)
+        text = re.sub(r"\n    def delete_forever\b.*?(?=\n    def |\nclass |\Z)", "", text, flags=re.S)
         for m in re.finditer(r"DELETE FROM (\w+)", text):
             table = m.group(1)
             # index and cache tables may be rebuilt; truth tables may not be deleted from

@@ -178,16 +178,19 @@ def build_router(ctx: WebContext) -> APIRouter:
         return {"saved": _schedule_json(s)}
 
     @r.post("/schedules/{sid}/{action}")
-    def schedule_action(sid: str, action: Literal["pause", "resume", "delete", "run-now"]) -> dict[str, Any]:
+    def schedule_action(sid: str, action: Literal["pause", "resume", "delete", "archive", "run-now"]) -> dict[str, Any]:
         p = ctx.proactive()
         with ctx.runtime() as rt:
             need(rt, sid)
             store = schedule_store(rt)
-            if action == "delete":
-                store.delete(sid)
+            if action in ("delete", "archive"):  # law 2: the dashboard archives; nothing is deleted
+                store.archive(sid, p.now())
+                rt.audit.write("schedule_archive", schedule_id=sid, source="dashboard")
             elif action in ("pause", "resume"):
                 store.set_enabled(sid, action == "resume", p.now())
-            rt.audit.write(f"schedule_{action.replace('-', '_')}", schedule_id=sid, source="dashboard")
+                rt.audit.write(f"schedule_{action}", schedule_id=sid, source="dashboard")
+            else:
+                rt.audit.write(f"schedule_{action.replace('-', '_')}", schedule_id=sid, source="dashboard")
         if action == "run-now":
             if ctx.stop.engaged():
                 raise HTTPException(409, "emergency stop is on")
@@ -283,14 +286,16 @@ def build_router(ctx: WebContext) -> APIRouter:
 
     @r.post("/triggers/{tid}/delete")
     def trigger_delete(tid: str, body: TriggerDeleteBody) -> dict[str, Any]:
-        """Same as `jarvis trigger delete`. The confirm step sends the trigger id back."""
+        """Same as `jarvis trigger delete`: archives (law 2). The confirm step sends the trigger id back."""
         with ctx.runtime() as rt:
-            need_trigger(rt, tid)
+            t = need_trigger(rt, tid)
             if body.confirm != tid:
-                raise HTTPException(409, f"to delete {tid}, confirm with its id")
-            trigger_store(rt).delete(tid)
-            rt.audit.write("trigger_delete", trigger_id=tid, source="dashboard")
-        return {"id": tid, "deleted": True}
+                raise HTTPException(409, f"to archive {tid}, confirm with its id")
+            if t.archived:
+                raise HTTPException(409, f"{tid} is already archived")
+            trigger_store(rt).archive(tid, ctx.proactive().now())
+            rt.audit.write("trigger_archive", trigger_id=tid, source="dashboard")
+        return {"id": tid, "deleted": False, "archived": True}
 
     @r.post("/triggers/{tid}/{action}")
     def trigger_action(tid: str, action: Literal["pause", "resume"]) -> dict[str, Any]:

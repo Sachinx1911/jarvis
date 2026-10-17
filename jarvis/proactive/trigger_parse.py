@@ -67,6 +67,7 @@ class TriggerDraft:
     cooldown_s: int = 600
     description: str = ""
     read_by: str = "rules"          # rules | explicit
+    workspace: str = "personal"     # the office this trigger works for (law 4)
 
     def show(self) -> str:
         what = {"notify": "send you a message (no AI model)",

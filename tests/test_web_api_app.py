@@ -286,9 +286,10 @@ def test_schedule_pause_resume_runs_delete(client, isolated):
     assert client.get(f"/api/schedules/{sid}/runs", headers=H).json()["enabled"] is True
     assert client.post(f"/api/schedules/{sid}/explode", headers=H).status_code == 422
     assert client.post("/api/schedules/s-999/pause", headers=H).status_code == 404
-    client.post(f"/api/schedules/{sid}/delete", headers=H)
+    client.post(f"/api/schedules/{sid}/delete", headers=H)        # law 2: archives, nothing deleted
     assert client.get("/api/schedules/all", headers=H).json()["items"] == []
-    assert "schedule_pause" in audit_text(isolated) and "schedule_delete" in audit_text(isolated)
+    assert "schedule_pause" in audit_text(isolated) and "schedule_archive" in audit_text(isolated)
+    assert "schedule_delete" not in audit_text(isolated)
 
 
 def test_schedule_run_now_is_a_background_job(isolated, cfgdir):

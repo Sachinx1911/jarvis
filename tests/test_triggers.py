@@ -509,7 +509,11 @@ def test_pause_resume_delete(isolated):
     rt = open_runtime()
     store = TriggerStore(rt.store.conn)
     store.set_enabled(t.id, True, p.now())
-    assert store.delete(t.id) and store.get(t.id) is None
+    assert store.delete_forever(t.id) is False and store.get(t.id)      # live: only archive ends it
+    assert store.archive(t.id, p.now()) and store.get(t.id).archived and not store.get(t.id).enabled
+    assert store.list() == [] and [x.id for x in store.list(include_archived=True)] == [t.id]
+    assert store.unarchive(t.id, p.now()) and not store.get(t.id).archived
+    assert store.archive(t.id, p.now()) and store.delete_forever(t.id) and store.get(t.id) is None
     rt.close()
 
 

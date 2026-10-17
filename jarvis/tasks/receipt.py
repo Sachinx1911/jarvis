@@ -168,4 +168,32 @@ def write_receipt(runner: "TaskRunner", task_id: str) -> Path:
     path = runner.tasks.folder(task_id) / "receipt.md"
     path.write_text(build_receipt(runner, task_id, summary), encoding="utf-8")
     runner.tasks.event(task_id, "receipt", str(path))
+    remember_receipt(runner, task_id, summary, path)
     return path
+
+
+def remember_receipt(runner: "TaskRunner", task_id: str, summary: str | None, path: Path) -> str | None:
+    """Law 3 (karma): a finished task leaves an episode in the memory of its own office, so the next
+    task can find it ("what did we do about the laptop?"). Observed, not inferred: the receipt is
+    measured truth. Only completed tasks with a summary; a failure is in the audit log already.
+    Never raises: the receipt must not fail because the memory did."""
+    task = runner.tasks.get(task_id)
+    if not task or task.state != "COMPLETED" or not summary:
+        return None
+    try:
+        from jarvis.memory.model import Memory
+        from jarvis.memory.store import MemoryStore, MemoryRejected
+
+        mem = Memory(name=f"Task {task.id}: {task.title[:70]}", type="episode",
+                     body=f"{summary}\n\nTask {task.id} ({task.title}), receipt: {path}",
+                     subject="task", summary_en=summary[:200], keywords=task.title,
+                     evidence=str(path), source="observed", confidence="high",
+                     workspace=task.workspace or "personal")
+        saved = MemoryStore(runner.home, runner.store).save(mem)
+        runner.audit.write("receipt_remembered", task_id=task.id, memory_id=saved.id, workspace=mem.workspace)
+        return saved.id
+    except MemoryRejected as e:   # a secret in the summary: the receipt stays, the memory does not
+        runner.audit.write("receipt_not_remembered", task_id=task.id, reason=str(e)[:200])
+    except Exception as e:  # noqa: BLE001
+        runner.audit.write("receipt_not_remembered", task_id=task.id, reason=f"{type(e).__name__}: {e}"[:200])
+    return None

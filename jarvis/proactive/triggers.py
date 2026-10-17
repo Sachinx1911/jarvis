@@ -67,7 +67,9 @@ CREATE TABLE IF NOT EXISTS trig_triggers (
     last_status TEXT,
     last_detail TEXT,
     last_fired_at TEXT,
-    failures INTEGER NOT NULL DEFAULT 0
+    failures INTEGER NOT NULL DEFAULT 0,
+    workspace TEXT NOT NULL DEFAULT 'personal',
+    archived_at TEXT
 );
 CREATE TABLE IF NOT EXISTS trig_seen (
     trigger_id TEXT NOT NULL,
@@ -93,7 +95,7 @@ CREATE INDEX IF NOT EXISTS trig_fires_trigger ON trig_fires(trigger_id);
 
 _COLS = ("id", "name", "source", "condition", "action", "target", "input", "output", "every_s", "cooldown_s",
          "enabled", "created_by", "description", "created_at", "updated_at", "state", "last_poll_at",
-         "next_poll_at", "last_status", "last_detail", "last_fired_at", "failures")
+         "next_poll_at", "last_status", "last_detail", "last_fired_at", "failures", "workspace", "archived_at")
 
 
 def _iso(dt: datetime) -> str:
@@ -133,6 +135,12 @@ class Trigger:
     last_detail: str | None = None
     last_fired_at: str | None = None
     failures: int = 0
+    workspace: str = "personal"      # the office this trigger works for (law 4)
+    archived_at: str | None = None   # law 2: ended, never deleted
+
+    @property
+    def archived(self) -> bool:
+        return bool(self.archived_at)
 
     @property
     def safe_name(self) -> str:
@@ -153,18 +161,27 @@ class TriggerStore:
     def __init__(self, conn: sqlite3.Connection):
         self.db = conn
         self.db.executescript(_SCHEMA)
+        have = {r[1] for r in self.db.execute("PRAGMA table_info(trig_triggers)")}
+        for column, decl in (("workspace", "TEXT NOT NULL DEFAULT 'personal'"), ("archived_at", "TEXT")):
+            if column not in have:  # databases from before workspaces / archive existed
+                try:
+                    self.db.execute(f"ALTER TABLE trig_triggers ADD COLUMN {column} {decl}")
+                except sqlite3.OperationalError as e:  # another connection added it in between
+                    if "duplicate column" not in str(e).lower():
+                        raise
+        self.db.commit()
 
     def _next_id(self) -> str:
         nums = [int(r[0][2:]) for r in self.db.execute("SELECT id FROM trig_triggers") if r[0][2:].isdigit()]
         return f"t-{(max(nums) + 1) if nums else 1:03d}"
 
-    def add(self, d: TriggerDraft, now: datetime, created_by: str = "cli") -> Trigger:
+    def add(self, d: TriggerDraft, now: datetime, created_by: str = "cli", workspace: str = "personal") -> Trigger:
         tid = self._next_id()
         self.db.execute(
-            f"INSERT INTO trig_triggers ({', '.join(_COLS[:18])}) VALUES ({', '.join('?' * 18)})",
+            f"INSERT INTO trig_triggers ({', '.join(_COLS[:18])}, workspace) VALUES ({', '.join('?' * 19)})",
             (tid, d.name, d.source, json.dumps(d.condition, ensure_ascii=False), d.action, d.target, d.input,
              d.output, int(d.every_s), int(d.cooldown_s), 1, created_by, d.description, _iso(now), _iso(now), "{}",
-             None, _iso(now)))
+             None, _iso(now), workspace or "personal"))
         self.db.commit()
         return self.get(tid)  # type: ignore[return-value]
 
@@ -178,8 +195,9 @@ class TriggerStore:
         data["enabled"] = bool(data["enabled"])
         return Trigger(**data)
 
-    def list(self) -> list[Trigger]:
-        return [self.get(r[0]) for r in self.db.execute("SELECT id FROM trig_triggers ORDER BY id")]  # type: ignore[misc]
+    def list(self, include_archived: bool = False) -> list[Trigger]:
+        where = "" if include_archived else " WHERE archived_at IS NULL"
+        return [self.get(r[0]) for r in self.db.execute(f"SELECT id FROM trig_triggers{where} ORDER BY id")]  # type: ignore[misc]
 
     def set_enabled(self, tid: str, enabled: bool, now: datetime) -> Trigger:
         if not self.get(tid):
@@ -189,9 +207,24 @@ class TriggerStore:
         self.db.commit()
         return self.get(tid)  # type: ignore[return-value]
 
-    def delete(self, tid: str) -> bool:
-        cur = self.db.execute("DELETE FROM trig_triggers WHERE id=?", (tid,))
-        self.db.execute("DELETE FROM trig_seen WHERE trigger_id=?", (tid,))
+    def archive(self, tid: str, now: datetime) -> bool:
+        """End (law 2): stops polling, leaves every list, keeps the id, the history and what it has seen."""
+        cur = self.db.execute("UPDATE trig_triggers SET archived_at=?, enabled=0, next_poll_at=NULL, updated_at=? "
+                              "WHERE id=? AND archived_at IS NULL", (_iso(now), _iso(now), tid))
+        self.db.commit()
+        return cur.rowcount == 1
+
+    def unarchive(self, tid: str, now: datetime) -> bool:
+        cur = self.db.execute("UPDATE trig_triggers SET archived_at=NULL, updated_at=? "
+                              "WHERE id=? AND archived_at IS NOT NULL", (_iso(now), tid))
+        self.db.commit()
+        return cur.rowcount == 1
+
+    def delete_forever(self, tid: str) -> bool:
+        """Sachin's explicit, logged act only (law 2); an archived trigger only."""
+        cur = self.db.execute("DELETE FROM trig_triggers WHERE id=? AND archived_at IS NOT NULL", (tid,))
+        if cur.rowcount:
+            self.db.execute("DELETE FROM trig_seen WHERE trigger_id=?", (tid,))
         self.db.commit()
         return cur.rowcount == 1
 

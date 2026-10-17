@@ -331,7 +331,8 @@ class Proactive:
         self.trigger_engine().validate(draft)   # again: the folder or the store list may have changed
         rt = self.open_rt()
         try:
-            t = TriggerStore(rt.store.conn).add(draft, self.now(), source)
+            t = TriggerStore(rt.store.conn).add(draft, self.now(), source,
+                                                workspace=getattr(draft, "workspace", "personal") or "personal")
             rt.audit.write("trigger_added", trigger_id=t.id, source_kind=t.source, action=t.action, created_by=source)
             return t
         finally:

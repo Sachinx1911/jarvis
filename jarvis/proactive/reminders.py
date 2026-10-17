@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS reminder_items (
     created_at TEXT NOT NULL,
     sent_at TEXT,
     channel TEXT,
-    source TEXT
+    source TEXT,
+    workspace TEXT NOT NULL DEFAULT 'personal'
 );
 CREATE INDEX IF NOT EXISTS reminder_due ON reminder_items(status, due_at);
 """
@@ -58,14 +59,22 @@ class ReminderStore:
         self.db = conn
         self.audit = audit
         self.db.executescript(_SCHEMA)
+        if "workspace" not in {r[1] for r in self.db.execute("PRAGMA table_info(reminder_items)")}:
+            try:
+                self.db.execute("ALTER TABLE reminder_items ADD COLUMN workspace TEXT NOT NULL DEFAULT 'personal'")
+            except sqlite3.OperationalError as e:
+                if "duplicate column" not in str(e).lower():
+                    raise
+            self.db.commit()
 
-    def add(self, text: str, due: datetime, source: str = "cli", now: datetime | None = None) -> Reminder:
+    def add(self, text: str, due: datetime, source: str = "cli", now: datetime | None = None,
+            workspace: str = "personal") -> Reminder:
         if due.tzinfo is None:
             raise ValueError("due time needs a timezone")
         created = (now or datetime.now(due.tzinfo)).isoformat(timespec="seconds")
         cur = self.db.execute(
-            "INSERT INTO reminder_items (text, due_at, created_at, source) VALUES (?, ?, ?, ?)",
-            (text, due.isoformat(timespec="seconds"), created, source))
+            "INSERT INTO reminder_items (text, due_at, created_at, source, workspace) VALUES (?, ?, ?, ?, ?)",
+            (text, due.isoformat(timespec="seconds"), created, source, workspace or "personal"))
         self.db.commit()
         if self.audit:
             self.audit.write("reminder_added", reminder_id=cur.lastrowid, due_at=due.isoformat(), source=source)

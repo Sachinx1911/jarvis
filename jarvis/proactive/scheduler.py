@@ -60,7 +60,8 @@ CREATE TABLE IF NOT EXISTS sched_schedules (
     last_detail TEXT,
     last_output TEXT,
     running_since TEXT,
-    workspace TEXT NOT NULL DEFAULT 'personal'
+    workspace TEXT NOT NULL DEFAULT 'personal',
+    archived_at TEXT
 );
 CREATE TABLE IF NOT EXISTS sched_runs (
     id INTEGER PRIMARY KEY,
@@ -94,7 +95,7 @@ CREATE TABLE IF NOT EXISTS sched_pending_approvals (
 
 _COLS = ("id", "name", "kind", "target", "input", "cron", "timezone", "output", "budget", "misfire_grace_s",
          "enabled", "source", "created_at", "updated_at", "next_run_at", "last_run_at", "last_status",
-         "last_detail", "last_output", "running_since", "workspace")
+         "last_detail", "last_output", "running_since", "workspace", "archived_at")
 
 
 @dataclass
@@ -120,6 +121,11 @@ class Schedule:
     last_output: str | None = None
     workspace: str = "personal"
     running_since: str | None = None
+    archived_at: str | None = None   # law 2: ended, never deleted; hidden from lists, cannot run
+
+    @property
+    def archived(self) -> bool:
+        return bool(self.archived_at)
 
     def next_after(self, now: datetime) -> datetime | None:
         return trigger(self.cron, self.timezone).get_next_fire_time(None, now)
@@ -141,12 +147,13 @@ class ScheduleStore:
         self.db = conn
         self.db.executescript(_SCHEMA)
         have = {r[1] for r in self.db.execute("PRAGMA table_info(sched_schedules)")}
-        if "workspace" not in have:  # databases made before workspaces existed
-            try:
-                self.db.execute("ALTER TABLE sched_schedules ADD COLUMN workspace TEXT NOT NULL DEFAULT 'personal'")
-            except sqlite3.OperationalError as e:  # another connection added it in between
-                if "duplicate column" not in str(e).lower():
-                    raise
+        for column, decl in (("workspace", "TEXT NOT NULL DEFAULT 'personal'"), ("archived_at", "TEXT")):
+            if column not in have:  # databases from before workspaces / archive existed
+                try:
+                    self.db.execute(f"ALTER TABLE sched_schedules ADD COLUMN {column} {decl}")
+                except sqlite3.OperationalError as e:  # another connection added it in between
+                    if "duplicate column" not in str(e).lower():
+                        raise
         self.db.commit()
 
     def _next_id(self) -> str:
@@ -183,8 +190,9 @@ class ScheduleStore:
         row = self.db.execute("SELECT id FROM sched_schedules WHERE name=? ORDER BY id LIMIT 1", (name,)).fetchone()
         return self.get(row[0]) if row else None
 
-    def list(self) -> list[Schedule]:
-        return [self.get(r[0]) for r in self.db.execute("SELECT id FROM sched_schedules ORDER BY id")]  # type: ignore[misc]
+    def list(self, include_archived: bool = False) -> list[Schedule]:
+        where = "" if include_archived else " WHERE archived_at IS NULL"
+        return [self.get(r[0]) for r in self.db.execute(f"SELECT id FROM sched_schedules{where} ORDER BY id")]  # type: ignore[misc]
 
     def set_enabled(self, sid: str, enabled: bool, now: datetime) -> Schedule:
         s = self.get(sid)
@@ -196,8 +204,23 @@ class ScheduleStore:
         self.db.commit()
         return self.get(sid)  # type: ignore[return-value]
 
-    def delete(self, sid: str) -> bool:
-        cur = self.db.execute("DELETE FROM sched_schedules WHERE id=?", (sid,))
+    def archive(self, sid: str, now: datetime) -> bool:
+        """End (law 2, Mahesh): the schedule stops, leaves every list, keeps its id and history."""
+        cur = self.db.execute("UPDATE sched_schedules SET archived_at=?, enabled=0, next_run_at=NULL, updated_at=? "
+                              "WHERE id=? AND archived_at IS NULL", (_iso(now), _iso(now), sid))
+        self.db.commit()
+        return cur.rowcount == 1
+
+    def unarchive(self, sid: str, now: datetime) -> bool:
+        cur = self.db.execute("UPDATE sched_schedules SET archived_at=NULL, updated_at=? "
+                              "WHERE id=? AND archived_at IS NOT NULL", (_iso(now), sid))
+        self.db.commit()
+        return cur.rowcount == 1
+
+    def delete_forever(self, sid: str) -> bool:
+        """Sachin's explicit, logged act only (law 2): callers must have asked him and must audit it.
+        Works on an archived schedule only, so a live one is always archived first."""
+        cur = self.db.execute("DELETE FROM sched_schedules WHERE id=? AND archived_at IS NOT NULL", (sid,))
         self.db.commit()
         return cur.rowcount == 1
 

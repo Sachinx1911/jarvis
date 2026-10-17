@@ -196,10 +196,11 @@ def test_delete_needs_the_confirm_step(client, isolated):
     r = client.post(f"/api/triggers/{tid}/delete", headers=H, json={"confirm": "t-002"})      # another id
     assert r.status_code == 409 and len(_triggers()) == 1
     r = client.post(f"/api/triggers/{tid}/delete", headers=H, json={"confirm": tid})
-    assert r.status_code == 200 and r.json() == {"id": tid, "deleted": True} and _triggers() == []
-    assert client.post(f"/api/triggers/{tid}/delete", headers=H, json={"confirm": tid}).status_code == 404
+    # law 2: the dashboard archives; the row stays, hidden from the list
+    assert r.status_code == 200 and r.json() == {"id": tid, "deleted": False, "archived": True} and _triggers() == []
+    assert client.post(f"/api/triggers/{tid}/delete", headers=H, json={"confirm": tid}).status_code == 409
     assert client.post("/api/triggers/bad;id/delete", headers=H, json={"confirm": "bad;id"}).status_code == 400
-    [e] = [e for e in _events(isolated) if e["event"] == "trigger_delete"]
+    [e] = [e for e in _events(isolated) if e["event"] == "trigger_archive"]
     assert set(e) == {"ts", "event", "trigger_id", "source"} and e["source"] == "dashboard"
 
 

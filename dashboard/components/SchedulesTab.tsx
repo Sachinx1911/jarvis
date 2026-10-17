@@ -263,7 +263,7 @@ function ScheduleList({ data, error, reload }: { data: SchedData | null; error: 
 
   async function act(sc: Schedule, action: string) {
     const questions: Record<string, string> = {
-      delete: `Delete schedule ${sc.id} (${sc.name})?`,
+      delete: `Archive schedule ${sc.id} (${sc.name})? It stops and leaves the list; nothing is deleted (jarvis schedule unarchive reopens it).`,
       "run-now": `Run ${sc.id} (${sc.name}) now? It may call the model and send the result to ${sc.output}.`,
     };
     if (questions[action] && !confirm(questions[action])) return;
@@ -348,7 +348,7 @@ function ScheduleList({ data, error, reload }: { data: SchedData | null; error: 
                   <button onClick={() => act(sc, "run-now")}>Run now</button>
                   <button onClick={() => showRuns(sc.id)}>Runs</button>
                   <button className="danger" onClick={() => act(sc, "delete")}>
-                    Delete
+                    Archive
                   </button>
                 </div>
               </td>
@@ -584,7 +584,7 @@ function Triggers() {
       await post(`/api/triggers/${encodeURIComponent(tr.id)}/delete`, { confirm: tr.id });
       setDeleting(null);
       if (runs?.id === tr.id) setRuns(null);
-      setMsg(`Deleted ${tr.id}.`);
+      setMsg(`Archived ${tr.id}.`);
       t.reload();
     } catch (e) {
       setErr(errText(e));
@@ -635,9 +635,9 @@ function Triggers() {
       )}
       {msg && <div className="okbox small">{msg}</div>}
       {deleting && (
-        <div className="notice" role="alertdialog" aria-label={`Delete ${deleting.id}`}>
+        <div className="notice" role="alertdialog" aria-label={`Archive ${deleting.id}`}>
           <div>
-            Delete trigger <strong>{deleting.id}</strong> ({deleting.what})? It stops for good; pausing keeps it instead.
+            Archive trigger <strong>{deleting.id}</strong> ({deleting.what})? It stops and leaves the list; nothing is deleted (jarvis trigger unarchive reopens it).
           </div>
           <div className="row">
             <button className="danger" onClick={() => remove(deleting)}>
@@ -711,7 +711,7 @@ function Triggers() {
                         setMsg("");
                       }}
                     >
-                      Delete
+                      Archive
                     </button>
                   </div>
                 </td>
