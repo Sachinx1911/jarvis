@@ -182,12 +182,8 @@ def test_preflight_summary_line():
         "preflight: NOT OK - 2 of 2 checks failed: a, b"
 
 
-def test_cli_xray_offline_checks_merge_the_fingerprint_drill_when_present(monkeypatch):
-    import sys
-    import types
-
-    fake = types.ModuleType("jarvis.xray.drill")
-    fake.offline_checks = lambda: [("fingerprint: three.js r165", True, "")]
-    monkeypatch.setitem(sys.modules, "jarvis.xray.drill", fake)
+def test_cli_xray_offline_checks_merge_both_drills():
+    """The fingerprint drill (jarvis/xray/drill.py) and the spoken drill run together."""
     names = [getattr(c, "name", None) or c[0] for c in cli_xray.all_offline_checks()]
-    assert "fingerprint: three.js r165" in names and any(n.startswith("spoken address") for n in names)
+    assert any("fingerprint" in n.lower() for n in names) and any(n.startswith("spoken address") for n in names)
+    assert all((getattr(c, "ok", None) if hasattr(c, "ok") else c[1]) for c in cli_xray.all_offline_checks())

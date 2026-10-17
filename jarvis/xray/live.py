@@ -15,6 +15,7 @@ from jarvis.control.audit import AuditLog
 from jarvis.db import Store
 from jarvis.providers import make_provider
 from jarvis.tasks.store import TaskStore
+from jarvis.xray import XrayError
 from jarvis.xray.teardown import TeardownDeps
 
 
@@ -28,6 +29,8 @@ def kit_diag() -> dict[str, Any]:
         diag = Kit().diag()
     except Exception as e:  # noqa: BLE001 (diag must never raise into voice or chat)
         return {"ready": False, "problems": [f"kit diag failed: {type(e).__name__}: {e}"]}
+    if hasattr(diag, "to_dict"):          # kit.Diag dataclass
+        diag = diag.to_dict()
     if not isinstance(diag, dict):
         return {"ready": False, "problems": ["kit diag returned no report"]}
     diag.setdefault("ready", False)
