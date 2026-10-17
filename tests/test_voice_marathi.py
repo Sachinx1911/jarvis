@@ -1,3 +1,4 @@
+import importlib.util
 """Marathi voice: IndicConformer speech-to-text, language routing, the offline MMS voice, model
 downloads and the wake-word model folder. Offline: fakes only, nothing is downloaded.
 
@@ -23,6 +24,9 @@ from jarvis.voice import models as models_mod
 from jarvis.voice import stt as stt_mod
 from jarvis.voice.base import Audio, Transcript, VoiceUnavailable
 from jarvis.voice.config import load_voice_config
+needs_numpy = pytest.mark.skipif(importlib.util.find_spec("numpy") is None,
+                                 reason="numpy comes with the optional [voice] extra")
+
 from jarvis.voice.mms_tts import MmsTTS, VitsTokenizer, marathi_number, prepare_text
 from jarvis.voice.models import HEY_JARVIS, INDICCONFORMER_MR, MMS_TTS_MAR, ChecksumError, ModelFile, VoiceModel
 from jarvis.voice.setup import plan, run_setup
@@ -266,6 +270,7 @@ class Recorded:
                                kill=lambda: None)
 
 
+@needs_numpy
 def test_mms_says_how_to_set_up(tmp_path):
     with pytest.raises(VoiceUnavailable, match=r"jarvis voice setup.*mms-tts-mar, 115 MB"):
         MmsTTS(tmp_path, tmp_path / "tmp", Recorded()).speak(MARATHI)
@@ -332,6 +337,7 @@ def test_offline_voice_error_is_audited_and_does_not_silence(tmp_path):
     assert "voice_tts_error" in (tmp_path / "audit.jsonl").read_text(encoding="utf-8")
 
 
+@needs_numpy
 def test_default_speech_has_the_offline_voice_but_works_without_it(tmp_path):
     speech = make_speech(load_voice_config(), tmp_path, platform="win32", popen=Recorded())
     assert isinstance(speech.local_marathi, MmsTTS) and speech.cloud_marathi is None

@@ -123,7 +123,8 @@ def test_create_archives_personal_data_with_a_manifest(home, cfg, dest, audit):
     assert result.path.name == "jarvis-backup-20261010-093000.tar.gz"
     data, order = _members(result.path)
     for rel, text in INCLUDED.items():
-        assert data[rel] == text.encode("utf-8"), rel
+        # Windows writes \r\n in text mode, so compare with line endings normalised.
+        assert data[rel].replace(b"\r\n", b"\n") == text.encode("utf-8"), rel
     assert data["config/local.yaml"].startswith(b"proactive_file:")
     assert MAIN_DB in data
     assert order[-1] == MANIFEST_NAME
