@@ -11,6 +11,10 @@ treats a declared gap as known and an undeclared one as a failure: honesty, not 
 
 Known gap outside the registry: chat sessions are not a kind yet and their messages live only in
 SQLite (data/sessions/<id> holds files, not the truth). File truth for sessions: later (27.8 item 10).
+
+Teardown notes (Phase 9, jarvis/xray/teardown.py) have no store and no kind: the note file under
+workspace/teardowns/ is the truth, the document index (project `teardowns`) and a memory point at
+it, and `archive_teardown` ends one by moving it to workspace/teardowns/archive/ (never delete).
 """
 
 from __future__ import annotations
