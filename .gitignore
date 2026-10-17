@@ -42,3 +42,6 @@ dist/
 
 # Mac app build output (scripts/build_mac_app.sh)
 /mac/build/
+
+# Claude desktop app launch config (per machine)
+.claude/launch.json
