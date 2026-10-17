@@ -132,13 +132,15 @@ class Extractor:
 
     # ---- explicit "remember this" ----
 
-    def remember(self, text: str, private: bool = False) -> Memory:
+    def remember(self, text: str, private: bool = False, workspace: str = "personal",
+                 share_personal: bool = True) -> Memory:
         text = text.strip()
         if not text:
             raise MemoryRejected("nothing to remember")
         if find_p3(text):
             raise MemoryRejected("looks like a password, key, OTP or ID number; never stored")
-        mem = Memory(name=text[:48], body=text, evidence=text, source="user-said", confidence="high")
+        mem = Memory(name=text[:48], body=text, evidence=text, source="user-said", confidence="high",
+                     workspace=workspace or "personal")
         auto = sensitive_categories(text)
         if private or auto:
             # Stays local: not sent for enrichment (the memory_extractor route allows P1 only).
@@ -151,6 +153,10 @@ class Extractor:
         # Both scripts in the keywords, whatever the model wrote (Devanagari <-> romanized).
         mem.keywords = add_script_forms(f"{mem.keywords} {_marathi_words(text)}".strip(), mem.summary_en)
         auto = auto or raise_sensitivity(mem)  # the model's summary and keywords are checked too
+        twin = self._same_in_view(mem, share_personal)
+        if twin is not None:  # the same note already in view here: keep one copy, not one per office
+            self.audit.write("memory_skipped", action="NOOP", target=twin.id, reason="already remembered", how="remember")
+            return twin
         saved = self.store.save(mem)
         self.audit.write("memory_saved", id=saved.id, type=saved.type, how="remember", enriched=bool(saved.summary_en),
                          auto_sensitive=auto)
@@ -158,8 +164,10 @@ class Extractor:
 
     # ---- extraction from a conversation ----
 
-    def extract_session(self, user_messages: list[str]) -> list[tuple[str, str]]:
-        """Returns (action, memory id or reason) for each candidate."""
+    def extract_session(self, user_messages: list[str], workspace: str = "personal",
+                        share_personal: bool = True) -> list[tuple[str, str]]:
+        """Returns (action, memory id or reason) for each candidate. New memories belong to `workspace`
+        and are compared only with memories that workspace can see (law 4)."""
         msgs = [m for m in user_messages if m.strip() and not m.strip().startswith("/")]
         if not msgs:
             return []
@@ -182,12 +190,21 @@ class Extractor:
                 keywords=add_script_forms(cand["keywords"], cand["summary_en"]), when_to_use=cand["when_to_use"], sensitivity=cand["sensitivity"],
                 evidence=cand["evidence"], source=cand["source"], body=cand["body"],
                 confidence="high" if cand["source"] == "user-said" else "medium",
+                workspace=workspace or "personal",
             )
-            results.append(self._decide_and_apply(mem, raise_sensitivity(mem)))
+            results.append(self._decide_and_apply(mem, raise_sensitivity(mem), share_personal))
         return results
 
-    def _decide_and_apply(self, mem: Memory, auto: list[str] | None = None) -> tuple[str, str]:
-        found = self.store.search(f"{mem.name} {mem.summary_en} {mem.keywords}", k=MAX_SIMILAR, time_range=None)
+    def _same_in_view(self, mem: Memory, share_personal: bool) -> Memory | None:
+        """An existing memory with the same text that this memory's workspace can see."""
+        for h in self.store.search(mem.body, k=3, time_range=None, workspace=mem.workspace, share_personal=share_personal):
+            if _norm(h.memory.body) == _norm(mem.body):
+                return h.memory
+        return None
+
+    def _decide_and_apply(self, mem: Memory, auto: list[str] | None = None, share_personal: bool = True) -> tuple[str, str]:
+        found = self.store.search(f"{mem.name} {mem.summary_en} {mem.keywords}", k=MAX_SIMILAR, time_range=None,
+                                  workspace=mem.workspace or "personal", share_personal=share_personal)
         # Sensitive neighbours stay on this computer: a duplicate of one is caught here without a model,
         # and only P0/P1 neighbours are listed for the model to decide against.
         from jarvis.memory.maintenance import similarity

@@ -18,7 +18,7 @@ TYPE_DIRS = {
     "episode": "episodes",
 }
 STATUSES = ("active", "superseded", "archived")
-SOURCES = ("user-said", "inferred", "imported")
+SOURCES = ("user-said", "observed", "inferred", "imported")  # PLAN.md 27.10 pramanas: shabda, pratyaksha, anumana, imported word
 SENSITIVITIES = ("public", "normal", "sensitive", "secret")
 
 
@@ -39,6 +39,7 @@ class Memory:
     confidence: str = "high"
     sensitivity: str = "normal"
     scope: str = ""
+    workspace: str = "personal"  # the office this memory belongs to ("shared" = every office)
     valid_from: str = field(default_factory=lambda: date.today().isoformat())
     valid_until: str = ""
     superseded_by: str = ""

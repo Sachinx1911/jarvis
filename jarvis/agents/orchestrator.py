@@ -202,7 +202,7 @@ class TaskRunner:
                          messages=[Message.text("user", f"Task: {task.goal}{context}")],
                          reasoning=d.effort, response_schema=PLAN_SCHEMA, task_id=task.id)  # type: ignore[arg-type]
         res = self.provider_for(d).structured(req, PLAN_SCHEMA)
-        self.store.record_usage(None, "planner", res.response, task_id=task.id)
+        self.store.record_usage(None, "planner", res.response, task_id=task.id, workspace=task.workspace)
         self.tracker.charge(res.response)
         if not res.valid or not validate(res.data, PLAN_SCHEMA):
             plan = {"title": task.title, "use_team": False, "research": [],
@@ -231,7 +231,18 @@ class TaskRunner:
         task = self.tasks.get(task_id)
         return AgentEnv(self.config, self.home, self.db_path, self.audit, self.stop, task_id, self.task_dir,
                         self.provider_for, self.decision_for, self._quarantine, self._charge, self.web, steps,
-                        goal=task.goal if task else "")  # the user's own words: trusted links for egress
+                        goal=task.goal if task else "",  # the user's own words: trusted links for egress
+                        workspace=task.workspace if task else "personal",
+                        share_personal=self._share_personal(task.workspace) if task else True)
+
+    def _share_personal(self, workspace: str) -> bool:
+        """Whether this office may see personal memories (its workspace.yaml says; personal: yes)."""
+        from jarvis.workspaces.store import WorkspaceStore
+
+        try:
+            return WorkspaceStore(self.home).get(workspace).share_personal
+        except Exception:  # a missing or broken workspace file must not stop the task; be strict
+            return workspace == "personal"
 
     def _charge(self, resp) -> None:
         self.tracker.charge(resp)
@@ -324,13 +335,15 @@ class TaskRunner:
                 home=self.home, store=self.store, audit=self.audit, memory=MemoryStore(self.home, self.store),
                 skills=SkillLibrary(self.home / "skills"), session_id=lambda: task_id, max_privacy="P1",
                 tools_config=self.config.tools, web=self.web or WebClient(), quarantine=self._quarantine(),
-                tavily_key=lambda: get_secret("tavily_api_key"), system=SystemTools()))
+                tavily_key=lambda: get_secret("tavily_api_key"), system=SystemTools(),
+                workspace=task.workspace, share_personal=self._share_personal(task.workspace)))
             apply_registry(registry, registry_path(self.home), self.audit)
             registry.trusted_text = lambda: [task.goal]  # links in the goal are the user's own
             d = self.decision_for("main_chat")
             loop = AgentLoop(self.provider_for(d), d, registry, self.store, self.audit, self.stop,
                              max_steps=Budget.from_config(self.config.tasks.get("budget")).max_steps_per_agent,
                              task_id=task_id, on_usage=self._charge, agent="jarvis")
+            loop.workspace = task.workspace
             system = ("You are Jarvis doing a task for the user. Use your tools. Finish with the complete answer "
                       "the user needs, in plain words.\n\nAcceptance criteria:\n- " + "\n- ".join(plan["acceptance_criteria"]))
             result = loop.run([Message.text("user", plan.get("solo_instructions") or task.goal)], system, task_id)

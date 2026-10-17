@@ -5,17 +5,17 @@ Ending a session: update this file and commit.
 
 ## Current status
 
-- **Design pause (2026-10-17, home MacBook, Sachin's rule):** no more code until the design is final.
-  Sachin asked for a fresh design on the laws-of-creation principle: a few fundamental laws, and the three
-  powers (create, preserve, end) on every kind. Written in PLAN.md section 27 ("The laws of Jarvis") on the
-  branch `feature/workspaces` (worktree `.claude/worktrees/ws`, WIP commit, NOT merged, NOT tested, NOT
-  pushed). That branch also holds the half-built Phase 10 step 0 (workspaces): model/store with archive,
-  workspace tag on memories/tasks/schedules/messages/usage (DB migration v4), `/workspace` in chat and API.
-  Still missing there: `jarvis/workspaces/session.py` (imported by cli_tasks and workers, so the branch does
-  not run yet), `cli_workspaces.py`, `web/routes_workspaces.py`, `core/kinds.py`, tests.
-  **Next step:** Sachin finalises the design (the seven laws, archive-instead-of-delete, personal memories
-  visible in companies by default or not, companies list, roles as code or data). Then merge PLAN.md
-  section 27 to main, finish step 0 under the laws, run the suite, merge.
+- **Design final, building step 0 (2026-10-17, office laptop, Windows):** Sachin took all eleven design
+  decisions of PLAN.md 27.8 as recommended ("sarv final", 2026-10-17 on the Mac), so the design pause is over.
+  Work follows 27.8 item 11: step 0 (lokas and teams as data, the owner tag) → step 1 (adhipati, dharma
+  routing, archive everywhere, kinds registry, receipts into memory, per-loka budgets) → step 2 (Office page,
+  Narada between lokas) → Phase 9 (X-ray). On the branch `feature/workspaces` (pushed; the earlier note that
+  it was not pushed was wrong): step 0 is now complete and tested (workspace/team model, store, session rule,
+  DB migration v4 with the SCHEMA_VERSION bump that was missing, `/workspace` in chat and dashboard chat,
+  `jarvis workspace|team` CLI, `/api/workspaces` routes, kinds registry `jarvis/core/kinds.py`, the laws
+  test `tests/test_laws.py`, unit/CLI/API tests). Known gaps are declared in the kinds registry with the step
+  that closes each (schedule/trigger still hard-delete; trigger/reminder/skill/project have no owner yet;
+  tasks/schedules are table-truth). Next: full suite green on the branch → merge to main → step 1.
 
 - **Phase:** All phases 0–8 are built and merged into `main` (2026-10-10). 494 offline tests pass. Live checks on Claude (subscription) passed for Phases 0–2; Phase 3 live checks are being rerun after quality fixes (see "Phase 3"). Phases 4–8 are tested offline with fakes; their live checks wait for items in "Waiting for Sachin". Final testing on Claude Fable comes last (Sachin's rule).
 - **How the work was done:** Phase 3 by the lead session; Phases 4, 5, 6, 7, 8 by parallel agents in git worktrees (`.claude/worktrees/`, git-ignored), each owning its own files, then merged and wired in by the lead.

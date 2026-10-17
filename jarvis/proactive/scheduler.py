@@ -59,7 +59,8 @@ CREATE TABLE IF NOT EXISTS sched_schedules (
     last_status TEXT,
     last_detail TEXT,
     last_output TEXT,
-    running_since TEXT
+    running_since TEXT,
+    workspace TEXT NOT NULL DEFAULT 'personal'
 );
 CREATE TABLE IF NOT EXISTS sched_runs (
     id INTEGER PRIMARY KEY,
@@ -93,7 +94,7 @@ CREATE TABLE IF NOT EXISTS sched_pending_approvals (
 
 _COLS = ("id", "name", "kind", "target", "input", "cron", "timezone", "output", "budget", "misfire_grace_s",
          "enabled", "source", "created_at", "updated_at", "next_run_at", "last_run_at", "last_status",
-         "last_detail", "last_output", "running_since")
+         "last_detail", "last_output", "running_since", "workspace")
 
 
 @dataclass
@@ -117,6 +118,7 @@ class Schedule:
     last_status: str | None = None
     last_detail: str | None = None
     last_output: str | None = None
+    workspace: str = "personal"
     running_since: str | None = None
 
     def next_after(self, now: datetime) -> datetime | None:
@@ -138,6 +140,14 @@ class ScheduleStore:
     def __init__(self, conn: sqlite3.Connection):
         self.db = conn
         self.db.executescript(_SCHEMA)
+        have = {r[1] for r in self.db.execute("PRAGMA table_info(sched_schedules)")}
+        if "workspace" not in have:  # databases made before workspaces existed
+            try:
+                self.db.execute("ALTER TABLE sched_schedules ADD COLUMN workspace TEXT NOT NULL DEFAULT 'personal'")
+            except sqlite3.OperationalError as e:  # another connection added it in between
+                if "duplicate column" not in str(e).lower():
+                    raise
+        self.db.commit()
 
     def _next_id(self) -> str:
         nums = [int(r[0][2:]) for r in self.db.execute("SELECT id FROM sched_schedules") if r[0][2:].isdigit()]
@@ -153,10 +163,10 @@ class ScheduleStore:
         nxt = trigger(draft.cron, draft.timezone).get_next_fire_time(None, now)  # validates cron + tz
         sid = self._next_id()
         self.db.execute(
-            f"INSERT INTO sched_schedules ({', '.join(_COLS[:15])}) VALUES ({', '.join('?' * 15)})",
+            f"INSERT INTO sched_schedules ({', '.join(_COLS[:15])}, workspace) VALUES ({', '.join('?' * 16)})",
             (sid, draft.name, draft.kind, draft.target, draft.input, draft.cron, draft.timezone, draft.output,
              json.dumps(draft.budget), int(misfire_grace_s), 1, source, _iso(now), _iso(now),
-             _iso(nxt) if nxt else None))
+             _iso(nxt) if nxt else None, getattr(draft, "workspace", "personal") or "personal"))
         self.db.commit()
         return self.get(sid)  # type: ignore[return-value]
 
@@ -403,7 +413,8 @@ def queue_agent_task(ctx: RunContext) -> str:
 
     s = ctx.schedule
     tasks = TaskStore(ctx.rt.store, ctx.rt.paths.data / "tasks")
-    task = tasks.create(goal=s.input or s.name, title=s.name, budget=s.budget or None)
+    task = tasks.create(goal=s.input or s.name, title=s.name, budget=s.budget or None,
+                        workspace=getattr(s, "workspace", "personal") or "personal")
     tasks.update(task.id, owner=s.target)
     tasks.event(task.id, "scheduled", {"schedule_id": s.id, "run_id": ctx.run_id})
     return f"Queued task {task.id} for agent {s.target}: {task.title}"

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from jarvis.providers.base import LLMResponse, Message, TextPart, ToolCall, ToolResult
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS tasks (
@@ -116,7 +116,18 @@ CREATE INDEX IF NOT EXISTS model_usage_task ON model_usage(task_id);
 CREATE INDEX IF NOT EXISTS tool_runs_task ON tool_runs(task_id);
 """
 
-_MIGRATIONS = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3}
+# v4: workspaces (offices). Every memory, task, schedule and model call belongs to one workspace;
+# old rows become 'personal' (PLAN.md 18.2 step 0).
+_SCHEMA_V4 = """
+ALTER TABLE tasks ADD COLUMN workspace TEXT NOT NULL DEFAULT 'personal';
+ALTER TABLE memory_index ADD COLUMN workspace TEXT NOT NULL DEFAULT 'personal';
+ALTER TABLE model_usage ADD COLUMN workspace TEXT;
+ALTER TABLE messages ADD COLUMN workspace TEXT;
+CREATE INDEX IF NOT EXISTS tasks_workspace ON tasks(workspace);
+CREATE INDEX IF NOT EXISTS memory_index_workspace ON memory_index(workspace);
+"""
+
+_MIGRATIONS = {1: _SCHEMA_V1, 2: _SCHEMA_V2, 3: _SCHEMA_V3, 4: _SCHEMA_V4}
 
 
 def notional_usd(resp: LLMResponse) -> float | None:
@@ -174,10 +185,10 @@ class Store:
         rows = self.conn.execute("SELECT name FROM sqlite_master WHERE type IN ('table', 'view')")
         return {r[0] for r in rows}
 
-    def add_message(self, session_id: str, msg: Message) -> int:
+    def add_message(self, session_id: str, msg: Message, workspace: str | None = None) -> int:
         cur = self.conn.execute(
-            "INSERT INTO messages (session_id, role, parts) VALUES (?, ?, ?)",
-            (session_id, msg.role, json.dumps([_part_to_json(p) for p in msg.parts], ensure_ascii=False)),
+            "INSERT INTO messages (session_id, role, parts, workspace) VALUES (?, ?, ?, ?)",
+            (session_id, msg.role, json.dumps([_part_to_json(p) for p in msg.parts], ensure_ascii=False), workspace),
         )
         message_id = cur.lastrowid
         text = msg.text_content()
@@ -195,15 +206,16 @@ class Store:
         self.conn.commit()
         return message_id
 
-    def record_usage(self, session_id: str | None, route: str, resp: LLMResponse, task_id: str | None = None) -> None:
+    def record_usage(self, session_id: str | None, route: str, resp: LLMResponse, task_id: str | None = None,
+                     workspace: str | None = None) -> None:
         self.conn.execute(
             """INSERT INTO model_usage (session_id, task_id, route, provider, model, input_tokens,
-               output_tokens, cached_tokens, cost_usd, latency_ms, stop_reason, notional_usd)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               output_tokens, cached_tokens, cost_usd, latency_ms, stop_reason, notional_usd, workspace)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 session_id, task_id, route, resp.provider, resp.model,
                 resp.usage.input_tokens, resp.usage.output_tokens, resp.usage.cached_tokens,
-                resp.cost_usd, resp.latency_ms, resp.stop_reason, notional_usd(resp),
+                resp.cost_usd, resp.latency_ms, resp.stop_reason, notional_usd(resp), workspace,
             ),
         )
         self.conn.commit()

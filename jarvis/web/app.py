@@ -37,7 +37,7 @@ from jarvis.routing.policy import RoutingError
 from jarvis.secrets import get_secret
 from jarvis.tasks.store import FINAL, PRIORITIES, TransitionError
 from jarvis.web import (adapters, data, routes_india, routes_projects, routes_proactive, routes_repeat, routes_setup,
-                        routes_teach, routes_trust, routes_voice)
+                        routes_teach, routes_trust, routes_voice, routes_workspaces)
 from jarvis.web.approvals import ApprovalBroker, ApprovalError
 from jarvis.web.context import WebContext
 from jarvis.web.jobs import Jobs
@@ -72,10 +72,15 @@ class ChatSend(BaseModel):
 
 class ChatCreate(BaseModel):
     project: str | None = Field(default=None, max_length=40)
+    workspace: str | None = Field(default=None, max_length=32)
 
 
 class ChatProject(BaseModel):
     project: str | None = Field(default=None, max_length=40)
+
+
+class ChatWorkspace(BaseModel):
+    workspace: str | None = Field(default=None, max_length=32)
 
 
 class MemoryEdit(BaseModel):
@@ -98,6 +103,7 @@ class TaskCreate(BaseModel):
     priority: Literal["high", "normal", "low"] = "normal"
     deadline: str | None = Field(default=None, max_length=40)
     run: bool = False
+    workspace: str | None = Field(default=None, max_length=32)  # default: the project's owner, else personal
 
 
 class ApprovalAnswer(BaseModel):
@@ -236,9 +242,17 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
         except RoutingError as e:
             raise HTTPException(400, f"routing error: {e}")
         info["project"] = None
+        info["workspace"] = "personal"
+        if body and body.workspace:
+            try:
+                info["workspace"] = chats.set_workspace(info["id"], body.workspace)
+            except ValueError as e:
+                chats.end(info["id"])
+                raise HTTPException(400, str(e))
         if body and body.project:
             try:
                 info["project"] = chats.set_project(info["id"], body.project)
+                info["workspace"] = chats.workspace(info["id"])
             except ValueError:
                 info["project"] = None
         return info
@@ -256,7 +270,18 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
         except ValueError as e:
             raise HTTPException(400, str(e))
         audit.write("chat_project_set", source="dashboard", chat=cid, project=project)
-        return {"id": cid, "project": project}
+        return {"id": cid, "project": project, "workspace": chats.workspace(cid)}
+
+    @api.post("/chat/sessions/{cid}/workspace")
+    def chat_workspace(cid: str, body: ChatWorkspace) -> dict[str, Any]:
+        try:
+            workspace = chats.set_workspace(cid, body.workspace or None)
+        except KeyError:
+            raise HTTPException(404, "chat session not found (it may have expired); start a new one")
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        audit.write("chat_workspace_set", source="dashboard", chat=cid, workspace=workspace)
+        return {"id": cid, "workspace": workspace, "project": chats.project(cid)}
 
     @api.post("/chat/sessions/{cid}/messages")
     def chat_send(cid: str, body: ChatSend) -> dict[str, Any]:
@@ -383,7 +408,11 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
         from jarvis.cli_tasks import create_task
 
         with runtime() as rt:
-            tid = create_task(rt, body.goal, body.project or None, PRIORITIES[body.priority], body.deadline or None)
+            try:
+                tid = create_task(rt, body.goal, body.project or None, PRIORITIES[body.priority], body.deadline or None,
+                                  workspace=body.workspace or None)
+            except ValueError as e:  # an archived or unknown workspace
+                raise HTTPException(400, str(e))
             rt.audit.write("task_created", source="dashboard", task_id=tid)
         started = _start(tid) if body.run else False
         return {"id": tid, "started": started}
@@ -559,7 +588,7 @@ def create_app(settings: WebSettings | None = None, token: str | None = None, *,
 
     # ---- everything else the terminal can do (projects, teach, schedules, repeat-this, setup, voice, India) ----
     for module in (routes_projects, routes_teach, routes_proactive, routes_repeat, routes_setup, routes_voice,
-                   routes_trust, routes_india):
+                   routes_trust, routes_india, routes_workspaces):
         api.include_router(module.build_router(ctx))
 
     app.include_router(api)

@@ -50,6 +50,8 @@ class ToolDeps:
     quarantine: Quarantine | None
     tavily_key: Callable[[], str | None]
     system: SystemTools
+    workspace: str = "personal"      # the office this session works in (PLAN.md 18.2 step 0)
+    share_personal: bool = True
 
 
 def file_roots(home: Path, tools_config: dict) -> list[Path]:
@@ -90,7 +92,7 @@ def build_registry(reg: ToolRegistry, d: ToolDeps) -> ToolRegistry:
 
         def memory_search(args: dict) -> str:
             lines = []
-            for hit in mem.search(args["query"], k=5):
+            for hit in mem.search(args["query"], k=5, workspace=d.workspace, share_personal=d.share_personal):
                 m = hit.memory
                 if not allowed(SENSITIVITY_TO_CLASS.get(m.sensitivity, "P2"), d.max_privacy):
                     lines.append(f"- [{m.id}] (sensitive memory withheld)")

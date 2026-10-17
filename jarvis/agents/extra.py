@@ -90,6 +90,7 @@ def run_extra_agent(spec: AgentSpec, name: str, order: WorkOrder, env: AgentEnv,
             session_id=lambda: name, max_privacy="P1", tools_config=tools_config,
             web=env.web or WebClient(), quarantine=env.quarantine_for(),
             tavily_key=lambda: get_secret("tavily_api_key"), system=SystemTools(),
+            workspace=env.workspace, share_personal=env.share_personal,
         )
         build_registry(registry, deps)
         for tool in extra_tools(deps, browser, coder_project, process_runner, coder_config):
@@ -103,6 +104,7 @@ def run_extra_agent(spec: AgentSpec, name: str, order: WorkOrder, env: AgentEnv,
                     registry.register(replace(tool, enabled=False))
         loop = AgentLoop(env.provider_for(decision), decision, registry, store, env.audit, env.stop,
                          max_steps=env.max_steps, task_id=env.task_id, on_usage=env.on_usage, agent=name)
+        loop.workspace = env.workspace
         system = (PROMPTS_DIR / spec.prompt_file).read_text(encoding="utf-8")
         env.audit.write("agent_start", task_id=env.task_id, agent=name, route=spec.route, model=decision.model)
         result = loop.run([Message.text("user", order.render())], system, f"{env.task_id}-{name}-{uuid.uuid4().hex[:4]}")

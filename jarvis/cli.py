@@ -35,6 +35,7 @@ CHAT_HELP = """Commands:
   /repeat [<task id>] <when> turn the last action (or a task) into a skill + schedule; /repeat yes|no
   /record start <name>      record a demonstration (/record stop, /note <why>)
   /project <name>|off       set the active project (its memories and documents come first)
+  /workspace <slug>|off     work in an office (company); its memories are in view, others' are not
   /exit                     end the chat (Jarvis then saves what it learned)"""
 
 
@@ -61,7 +62,8 @@ def _slash(session: ChatSession, rt: Runtime, text: str, out: TextIO) -> bool:
             print("Memory is not available.", file=out)
             return True
         try:
-            mem = session.extractor.remember(rest, private=cmd == "/remember-private")
+            mem = session.extractor.remember(rest, private=cmd == "/remember-private", workspace=session.workspace,
+                                             share_personal=session.context.share_personal)
             print(f"Remembered as {mem.id}: {mem.summary_en or mem.name}", file=out)
         except (MemoryRejected, ValueError) as e:
             print(f"Not saved: {e}", file=out)
@@ -405,12 +407,13 @@ def build_parser() -> argparse.ArgumentParser:
 def build_parser_with_extensions():
     """Core commands plus the command groups from other modules (each has register())."""
     from jarvis import cli_app, cli_browser, cli_connectors, cli_memory, cli_proactive, cli_tasks, cli_voice, cli_web
-    from jarvis import cli_approvals, cli_backup, cli_india
+    from jarvis import cli_approvals, cli_backup, cli_india, cli_workspaces
 
     parser = build_parser()
     sub = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
     extra: dict = {}
-    for module in (cli_tasks, cli_browser, cli_web, cli_memory, cli_app, cli_approvals, cli_india, cli_backup):
+    for module in (cli_tasks, cli_browser, cli_web, cli_memory, cli_app, cli_approvals, cli_india, cli_backup,
+                   cli_workspaces):
         extra.update(module.register(sub))
     cli_voice.register(sub)
     cli_connectors.register(sub)

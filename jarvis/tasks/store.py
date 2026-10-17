@@ -49,10 +49,11 @@ class Task:
     current_step: str | None = None
     created_at: str = ""
     updated_at: str = ""
+    workspace: str = "personal"  # the office the task belongs to
 
 
 _COLS = ("id", "title", "goal", "state", "project", "priority", "deadline", "owner", "budget", "plan",
-         "checkpoint", "last_error", "retries", "current_step", "created_at", "updated_at")
+         "checkpoint", "last_error", "retries", "current_step", "created_at", "updated_at", "workspace")
 _JSON = {"budget", "plan", "checkpoint"}
 
 
@@ -72,15 +73,17 @@ class TaskStore:
         return f"t-{(max(nums) + 1) if nums else 1:03d}"
 
     def create(self, goal: str, title: str | None = None, project: str | None = None, priority: int = 2,
-               deadline: str | None = None, budget: dict | None = None, state: str = "BACKLOG") -> Task:
+               deadline: str | None = None, budget: dict | None = None, state: str = "BACKLOG",
+               workspace: str = "personal") -> Task:
         task_id = self._next_id()
         self.db.execute(
-            """INSERT INTO tasks (id, title, goal, state, project, priority, deadline, budget)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (task_id, (title or goal)[:80], goal, state, project, priority, deadline, json.dumps(budget or {})),
+            """INSERT INTO tasks (id, title, goal, state, project, priority, deadline, budget, workspace)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (task_id, (title or goal)[:80], goal, state, project, priority, deadline, json.dumps(budget or {}),
+             workspace or "personal"),
         )
         self.db.commit()
-        self.event(task_id, "created", {"goal": goal, "project": project})
+        self.event(task_id, "created", {"goal": goal, "project": project, "workspace": workspace or "personal"})
         self.folder(task_id)
         return self.get(task_id)  # type: ignore[return-value]
 

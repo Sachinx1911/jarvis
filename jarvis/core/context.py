@@ -62,6 +62,8 @@ class ContextBuilder:
         self.max_privacy = max_privacy
         self.docs = docs          # DocLibrary; searched only while a project is active
         self.project: str | None = None
+        self.workspace: str = "personal"   # the office this chat works in (PLAN.md 18.2 step 0)
+        self.share_personal: bool = True   # personal memories visible here (a company may say no)
         self.options = RetrievalOptions()
         self.session_id: str | None = None   # the chat in progress; guessed from the newest message if unset
 
@@ -75,7 +77,8 @@ class ContextBuilder:
             return [], []
         rng = extract_range(user_text, now.date()) if self.options.time_aware and self.memory.time_aware else None
         scope = f"project:{self.project}" if self.project else None
-        hits = self.memory.search(user_text, k=k, scope=scope, time_range=rng)
+        hits = self.memory.search(user_text, k=k, scope=scope, time_range=rng,
+                                  workspace=self.workspace, share_personal=self.share_personal)
         if not self.options.excerpts or excerpts <= 0:
             return hits, []
         conn = self.memory.db

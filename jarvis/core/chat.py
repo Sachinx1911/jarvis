@@ -90,6 +90,20 @@ class ChatSession:
             provider=decision.provider, model=decision.model, reason=decision.reason,
         )
 
+    @property
+    def workspace(self) -> str:
+        return self.context.workspace
+
+    def set_workspace(self, slug: str, share_personal: bool = True) -> None:
+        """The office this chat works in (PLAN.md 18.2 step 0, law 4): one value, applied to retrieval,
+        the memory tools, usage records, stored messages and the memories extracted at the end."""
+        self.context.workspace = slug
+        self.context.share_personal = share_personal
+        self.loop.workspace = slug
+        self._deps.workspace = slug
+        self._deps.share_personal = share_personal
+        self.audit.write("workspace_set", session_id=self.session_id, workspace=slug, share_personal=share_personal)
+
     def _update_browser(self, text: str) -> None:
         """Links in the user's own words widen the browser allowlist; the model can never add a site."""
         from jarvis.browser import domains_from_text
@@ -115,7 +129,7 @@ class ChatSession:
         self._update_browser(text)
         user = Message.text("user", text)
         self.history.append(user)
-        self.store.add_message(self.session_id, user)
+        self.store.add_message(self.session_id, user, workspace=self.workspace)
         ctx = self.context.build(text, self.now())
         if ctx.withheld:
             self.audit.write("privacy_withheld", session_id=self.session_id, count=ctx.withheld)
@@ -165,7 +179,8 @@ class ChatSession:
 
         # The quiet-session job may have extracted part of this chat already.
         pending = unextracted_user_messages(self.store.conn, self.session_id)
-        results = self.extractor.extract_session(pending) if pending else []
+        results = self.extractor.extract_session(pending, workspace=self.workspace,
+                                                 share_personal=self.context.share_personal) if pending else []
         mark_extracted(self.store.conn, self.session_id, results)
         self.audit.write("session_extracted", session_id=self.session_id, results=results)
         return results
