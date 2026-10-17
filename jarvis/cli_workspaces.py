@@ -11,14 +11,25 @@ import argparse
 from dataclasses import replace
 from typing import Callable, TextIO
 
+from jarvis.core.runtime import task_store
 from jarvis.workspaces.model import PERSONAL, WorkspaceError, slugify
+from jarvis.workspaces.narada import Request, RequestStore
 from jarvis.workspaces.store import WorkspaceStore
 
 
+def ask_line(r: Request) -> str:
+    """What the CLI, chat and dashboard say after a request is filed: the id, the task and how to run it."""
+    return (f"Request {r.id}: {r.from_workspace} asked {r.to_workspace}: {r.goal[:80]}. Task {r.task_id} waits in "
+            f"{r.to_workspace}; run it with: jarvis task run {r.task_id}")
+
+
 def register(sub) -> dict[str, Callable]:
-    ws = sub.add_parser("workspace", help="offices: list, new, show, edit, archive, unarchive")
-    ws.add_argument("action", choices=["list", "new", "show", "edit", "archive", "unarchive"])
-    ws.add_argument("slug", nargs="?", default="")
+    ws = sub.add_parser("workspace", help="offices: list, new, show, edit, archive, unarchive; "
+                                          "ask, requests, request-archive (one office asks another)")
+    ws.add_argument("action", choices=["list", "new", "show", "edit", "archive", "unarchive",
+                                       "ask", "requests", "request-archive", "request-unarchive"])
+    ws.add_argument("slug", nargs="?", default="", help="workspace slug (ask: the asking office; request-archive: the request id)")
+    ws.add_argument("rest", nargs="*", help="ask: <to-workspace> \"<goal>\"")
     ws.add_argument("--name", help="new/edit: the office's name")
     ws.add_argument("--brief", help="new/edit: what this office is, in a few lines")
     ws.add_argument("--language", choices=["en", "mr"], help="new/edit: the office's working language")
@@ -69,9 +80,30 @@ def cmd_workspace(args: argparse.Namespace, out: TextIO, inp: TextIO, approver_f
             print(f"Workspace {w.slug} ({w.name}) created: {store.path(w.slug)}", file=out)
             print("Next: jarvis team add " + w.slug + " --from research   (see: jarvis team templates)", file=out)
             return 0
+        if args.action == "requests":   # Narada: requests from or to an office (all offices without a slug)
+            requests = RequestStore(rt.store.conn, rt.paths.home, rt.audit)
+            items = requests.list(args.slug or None, include_archived=args.all)
+            for r in items:
+                print(r.line(), file=out)
+            if not items:
+                print("No requests" + (f" for {args.slug}" if args.slug else "") + ". Make one: jarvis workspace ask <from> <to> \"<goal>\"", file=out)
+            return 0
         if not args.slug:
             print("Give a workspace slug (see: jarvis workspace list).", file=out)
             return 2
+        if args.action == "ask":
+            if len(args.rest) < 2:
+                print("Usage: jarvis workspace ask <from> <to> \"<goal>\"", file=out)
+                return 2
+            to, goal = args.rest[0], " ".join(args.rest[1:]).strip()
+            r = RequestStore(rt.store.conn, rt.paths.home, rt.audit).ask(args.slug, to, goal, task_store(rt), source="cli")
+            print(ask_line(r), file=out)
+            return 0
+        if args.action in ("request-archive", "request-unarchive"):
+            requests = RequestStore(rt.store.conn, rt.paths.home, rt.audit)
+            r = requests.archive(args.slug) if args.action == "request-archive" else requests.unarchive(args.slug)
+            print(f"{'Archived' if r.archived else 'Reopened'} request {r.id}.", file=out)
+            return 0
         if args.action == "show":
             w = store.get(args.slug)
             print(f"{w.name} ({w.slug}){' [archived]' if w.archived else ''}", file=out)

@@ -74,6 +74,15 @@ KINDS: tuple[Kind, ...] = (
          {"id": "id", "kind": "-", "owner": "workspace", "source": "source", "when": "created_at",
           "confidence": "-", "privacy": "-"},
          notes="cancel keeps the row with status cancelled (an end, not a delete)."),
+    Kind("request", "jarvis.workspaces.narada:RequestStore", "ask", ("get", "list"), "archive",
+         "table", "from_workspace",
+         {"id": "id", "kind": "-", "owner": "from_workspace", "source": "source", "when": "created_at",
+          "confidence": "-", "privacy": "-"},
+         rites=("loka_request_made", "loka_request_delivered"),
+         notes="Narada between lokas (27.5 item 6): one office asks another; the asked office's task carries "
+               "owner narada:<from>. Only the result and the deliverable file cross back (into the asker's "
+               "inbox), never memory. Also decline (an end with a reason); delete_forever is Sachin's logged "
+               "act on an archived row only."),
     Kind("skill", "jarvis.skills.loader:SkillLibrary", "-", ("index", "load"), None,
          "file", None,
          {"id": "name", "kind": "-", "source": "-", "when": "-", "confidence": "-", "privacy": "-"},

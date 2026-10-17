@@ -36,6 +36,8 @@ CHAT_HELP = """Commands:
   /record start <name>      record a demonstration (/record stop, /note <why>)
   /project <name>|off       set the active project (its memories and documents come first)
   /workspace <slug>|off     work in an office (company); its memories are in view, others' are not
+  /ask <slug> <goal>        ask another office for work (Narada); only its result comes back
+  /requests [all]           requests from or to this office, with their state and result
   /exit                     end the chat (Jarvis then saves what it learned)"""
 
 

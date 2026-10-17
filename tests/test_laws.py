@@ -101,7 +101,7 @@ def test_no_kind_is_hard_deleted_outside_a_declared_gap():
             table = m.group(1)
             # index and cache tables may be rebuilt; truth tables may not be deleted from
             if table in ("tasks", "sched_schedules", "trig_triggers", "reminder_items", "india_wallet",
-                         "standing_grants", "sched_pending_approvals"):
+                         "standing_grants", "sched_pending_approvals", "loka_requests"):
                 if rel not in allowed:
                     offenders.append(f"{rel}: DELETE FROM {table}")
     assert offenders == [], offenders
