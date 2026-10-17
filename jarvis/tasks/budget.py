@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
+from typing import Callable
 
 from jarvis.core.loop import BudgetExceeded
 from jarvis.db import notional_usd
@@ -29,19 +30,28 @@ class Budget:
 
 
 class BudgetTracker:
-    def __init__(self, budget: Budget, spent_calls: int = 0, spent_tokens: int = 0, spent_usd: float = 0.0):
+    """`extra(calls, usd) -> reason | None` is an outer ration checked after the task's own
+    (Kubera's per-loka cap, jarvis/control/loka_budget.LokaMeter.charge): the task stops on the
+    same path, with that reason."""
+
+    def __init__(self, budget: Budget, spent_calls: int = 0, spent_tokens: int = 0, spent_usd: float = 0.0,
+                 extra: Callable[[int, float], str | None] | None = None):
         self.budget = budget
         self.calls = spent_calls
         self.tokens = spent_tokens
         self.usd = spent_usd
+        self.extra = extra
         self._lock = threading.Lock()
 
     def charge(self, resp: LLMResponse) -> None:
+        usd = notional_usd(resp) or 0.0
         with self._lock:
             self.calls += 1
             self.tokens += resp.usage.input_tokens + resp.usage.output_tokens
-            self.usd += notional_usd(resp) or 0.0
+            self.usd += usd
             over = self._over()
+        if not over and self.extra is not None:
+            over = self.extra(1, usd)
         if over:
             raise BudgetExceeded(over)
 
