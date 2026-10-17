@@ -1666,7 +1666,9 @@ Decisions for Sachin before this is final:
 8. The astra discipline (27.4a) as the rule set for T2/T3, with its three new gate rules (recommended: yes,
    built in step 1 with the archive work).
 9. The eleven additions of the survey (27.10), all or a shorter list.
-10. Order: step 0 (lokas and teams as data, the owner tag) → step 1 (adhipati, dharma routing, archive
+10. File truth for tasks, schedules, triggers and sessions, with the pralaya test (27.12): recommended yes;
+    it is law 2 applied honestly, and it is the largest piece of new work in step 1–2.
+11. Order: step 0 (lokas and teams as data, the owner tag) → step 1 (adhipati, dharma routing, archive
    everywhere, kinds registry, receipts into memory, per-loka budgets) → step 2 (Office page, Narada
    between lokas) → Phase 9 (X-ray).
 
@@ -1759,3 +1761,105 @@ T3/T4, revoke by hand), `tests/test_injection_attacks.py`, `tests/test_migration
 (a T4 call is refused and logged), `Memory.source` values. Confirmed new, not present today: one
 irreversible action in flight at a time; automatic withdrawal of a grant after a failed verification;
 the `observed` source; per-loka budgets; inter-loka requests; routing by duties; archive on the older kinds.
+
+### 27.12 If the three built it: the Trimurti's design of Jarvis (2026-10-17)
+
+Sachin's exercise: suppose Brahma, Vishnu and Mahesh had to write this program today. What would they
+ask first, what would they put in so that it lasts and works right, and how would they build a memory that
+never fades? Taking their roles in turn, and checking the tradition's own words on machines and mind.
+
+**Brahma: begin with the seed, not the features.** Brahma does not make every creature by hand; he lays
+down the order from which creatures arise. His questions, and the answers for Jarvis:
+
+1. *What is the smallest set of laws?* Seven (27.1). Everything else is data or follows from them.
+2. *Can the whole world be regrown from the seed?* This is the test he would insist on, the **pralaya test**:
+   delete `data/jarvis.db` and every index, then from `config/` and the plain-text files under `data/`,
+   `memory/`, `profile/` alone, `jarvis rebuild` regenerates the database, and the result is identical.
+   Anything that cannot be regrown is not truth but cache. Today the memory index is regrown from markdown
+   (law 2 holds); tasks, schedules, triggers, model usage and chat messages live only in SQLite (law 2 does
+   not hold). So the plan gains file truth for them: a task's folder already holds its receipt and events,
+   and gets `task.yaml`; schedules and triggers get `data/schedules/<id>.yaml` and `data/triggers/<id>.yaml`;
+   usage is replayed from the audit log (Chitragupta's register is the truth); chat sessions get
+   `data/sessions/<id>.jsonl`. The database becomes what it already is for memory: an index. This is the
+   largest finding of the exercise.
+3. *Does every kind declare itself?* The kinds registry (27.7): no kind exists that the laws test cannot see.
+4. *Is the name given once, for ever?* Ids are never reused or renumbered (`m-0001` stays `m-0001` across
+   machines, rebuilds and archives); the name (namakarana) is the first sanskara and the last thing to change.
+
+**Vishnu: what keeps it alive across time.** The Vedas were carried for about three thousand years by
+voice alone, without loss, and the method is engineering, not faith (Wikipedia "Vedic chant"): the same
+text recited in several orders (samhita, pada, krama, jata, ghana) so that each order cross-checks the
+others; exact pitch and pronunciation, because the carrier must be exact; many schools (shakhas) holding
+copies; the pupil checked by the teacher before he may teach; and the text itself never edited (shruti).
+Vishnu's design of Jarvis's memory applies each:
+
+- *Plain text is the carrier.* Every truth is a markdown or YAML file a person can read in fifty years
+  without Jarvis. No truth is binary-only.
+- *Shakhas: copies that compare equal.* Local files, dated backup archives, a private encrypted repository
+  (the pending decision in section 24), each in the same canonical form so copies can be compared byte for
+  byte.
+- *Pathas: redundant orders that cross-check.* The nightly job rebuilds the index into a temporary database
+  and diffs it against the live one; MEMORY.md carries a checksum per file; a mismatch is a report to Sachin,
+  never a silent repair.
+- *Exactness: one canonical form.* One serialiser, fixed key order, Unicode NFC, so that two copies of the
+  same memory are identical and a diff means a change.
+- *Recitation keeps it alive.* A memory that is used is reinforced (`mark_used` today; samskara strength
+  below); one unused for a season is reviewed; forgetting is never silent: it is a decision (archive) with
+  a record and a reason.
+- *The pupil is checked.* Every migration is verified against the previous version (the migration eval);
+  every move to a new machine ends with `jarvis verify`, which rebuilds and compares.
+- *Shruti is not edited.* Identity (`SOUL.md`), the laws and `config/` change only by Sachin's hand.
+- *Formats carry their version, readers accept every old version for ever* (law 6).
+
+For the shape of memory itself Vishnu would use the tradition's own model of the inner instrument, the
+**antahkarana** (Wikipedia "Antahkarana"): manas (attention and the senses), buddhi (judgement, what is
+real from what is false), chitta (the store where impressions are kept, and where remembering and
+forgetting happen), ahamkara (the I-sense). In Jarvis: manas = the context builder, which decides what
+enters the prompt; buddhi = planner, checker and verifier, always separate from the doer (karma-yoga);
+chitta = the memory store; ahamkara = `SOUL.md` and the core memory. Inside chitta, Patanjali's five
+vrittis (Yoga Sutra 1.5–1.11) are the classes of content, and three of them change the design:
+
+| Vritti | Meaning | In Jarvis | Today |
+|---|---|---|---|
+| pramana | valid knowledge, with its means (shabda, pratyaksha, anumana) | a memory with `source` and `confidence` (27.10) | exists; `observed` is new |
+| viparyaya | error: taking one thing for another | **a "known wrong" record:** when a memory is corrected, the old one is not only superseded, it is marked wrong with the reason, so the same error is not learned again from the same evidence | new: today a wrong memory is archived with no mark |
+| vikalpa | imagination: a thought with no object | plans, drafts, hypotheses: kept apart from knowledge, never acted on until they become pramana (verified) | plans exist; the rule "a plan is not a fact" is new |
+| nidra | sleep | not applicable | dropped |
+| smriti | recollection of an experience | episodes | exists |
+
+Samskara (the impression a deed leaves) becomes a number on every memory: strength = confirmations and
+uses, decayed by time, raised by Sachin's "yes, that's right"; retrieval ranks by relevance and strength.
+Vasana (tendency) is the preference type: what Sachin tends to want, learned over many impressions.
+
+**Mahesh: what must end so that it lives.** Shiva is not the destroyer of the world but of what has
+served its purpose, so that the next thing can be. His design:
+
+- *Nothing without a purpose stays* (aparigraha): the review labels by guna; tamas is proposed for archive.
+- *Every ending is recorded* (antyeshti is a rite, not a disappearance): archive and supersede write why.
+- *Destruction of the derived proves the truth was kept:* the pralaya test is his; it runs before every
+  release and after every migration.
+- *Renewal has a cadence:* on every change the tests; nightly the review and the cross-check; weekly the
+  hand-check of twenty memories; on a measured fall, the avatara (27.10).
+
+**What all three would insist on so that it works right:** power only through the gate (Varuna);
+judgement by another, never by the doer (Yama, Sudarshana); measured truth and "I do not know" when there
+is no pramana (law 7, section 21); the laws test and the pralaya test as the two tests that never go red
+for long.
+
+**The tradition on machines and mind, checked.** Sachin asked whether the Puranas speak of AI. Checked:
+they do not. What exists is *yantra*, the machine: the Samarangana Sutradhara (eleventh century,
+attributed to Bhoja of Dhar; Wikipedia) describes in chapter 31 mechanical birds and insects, fountains,
+and dolls that refill lamps, dance, play instruments and act out scenes, and the author withholds
+construction details "for the sake of secrecy"; these are mechanisms, not judgement. (The Buddhist
+Lokapannatti's relic-guarding machines, and the claim that the Vaimanika Shastra is ancient, are not used:
+the former was not checked today, the latter is a twentieth-century text.) What the tradition does give an
+AI design, and what this section uses, is four things: the model of the mind (antahkarana, vrittis), the
+theory of valid knowledge (pramana), the engineering of a memory that does not fade (the pathas), and the
+ethics (yama, niyama). Claims that ancient texts describe computers are not supported by the sources and
+are not used.
+
+**Added to the plan by this exercise** (decision 11 in 27.8): file truth for tasks, schedules, triggers
+and sessions, with usage replayed from the audit log, and `jarvis rebuild` / `jarvis verify` with the
+pralaya test (step 1 for schedules and triggers, step 2 for tasks and sessions); the nightly index-versus-
+files cross-check with per-file checksums and one canonical form; viparyaya "known wrong" records; samskara
+strength in retrieval; the rule that a plan is not a fact.
