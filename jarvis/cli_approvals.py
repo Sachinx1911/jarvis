@@ -29,6 +29,7 @@ def register(sub) -> dict[str, Callable]:
     ap.add_argument("--days", type=float, default=7.0, help="expiry in days (max 90)")
     ap.add_argument("--uses", type=int, default=10, help="maximum number of uses (max 1000)")
     ap.add_argument("--note", default="")
+    ap.add_argument("--workspace", default="", help="grant: answers only in this office (default: every office)")
     ap.add_argument("--all", action="store_true", help="list also expired, used-up and revoked grants")
     return {"approvals": cmd_approvals}
 
@@ -115,7 +116,8 @@ def cmd_approvals(args: argparse.Namespace, out: TextIO, inp: TextIO, approver_f
             return 1
         try:
             rules = dict(parse_rule(r) for r in args.rule)
-            g = store.create(args.target, tier, rules, args.days, args.uses, args.note, created_by="cli")
+            g = store.create(args.target, tier, rules, args.days, args.uses, args.note, created_by="cli",
+                             workspace=args.workspace)
         except GrantError as e:
             rt.audit.write("grant_refused", source="cli", tool=args.target, detail=str(e))
             print(f"Not granted: {e}", file=out)

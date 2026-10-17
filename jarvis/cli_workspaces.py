@@ -83,6 +83,12 @@ def cmd_workspace(args: argparse.Namespace, out: TextIO, inp: TextIO, approver_f
             print("allies: " + (", ".join(w.allies) or "(none)"), file=out)
             print(f"tools: allow {list(w.tools_allow) or 'all'}; deny {list(w.tools_deny) or 'none'}; always ask {list(w.always_ask) or 'none'}", file=out)
             print(f"budget: {w.budget}", file=out)
+            from jarvis.control.astra import AstraStore
+            from jarvis.control.loka_budget import summary
+            print(summary(rt.store.conn, w.slug, w)["line"], file=out)
+            regrant = AstraStore(rt.store.conn).needs_regrant(w.slug)
+            if regrant:
+                print("needs a fresh grant (a check failed): " + ", ".join(x["tool"] for x in regrant), file=out)
             teams = store.teams(args.slug, include_archived=True)
             print("teams: " + (", ".join(f"{t.slug}{' (archived)' if t.archived else ''}" for t in teams) or "(none)"), file=out)
             _problems(store, out)

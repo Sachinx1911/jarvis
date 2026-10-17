@@ -493,6 +493,17 @@ class TriggerEngine:
             budget = RunBudget(*self.guard.clip(self.default_budget, rt.store.conn, now))
         else:
             budget = RunBudget(self.default_budget.get("max_model_calls"), self.default_budget.get("max_notional_usd"))
+        if not capped and t.action != "notify":   # Kubera (27.4): the office's own daily budget
+            from jarvis.control import loka_budget
+            from jarvis.workspaces.store import WorkspaceStore
+
+            try:
+                cfg = WorkspaceStore(rt.paths.home).get(t.workspace)
+            except Exception:  # noqa: BLE001 - no workspace file: no office cap
+                cfg = None
+            capped = loka_budget.allow_unattended(rt.store.conn, t.workspace, cfg, now)
+            if capped:
+                loka_budget.notify_capped(rt.store.conn, t.workspace, capped, self.notifier, now, rt.audit)
         status, text = "ok", ""
         summaries = "\n".join(f"- {e.summary}" for e in events)
         try:

@@ -505,6 +505,21 @@ class ScheduleRunner:
                     except Exception:  # noqa: BLE001 - a failed notice must not stop the scheduler
                         log.exception("cap notice failed")
                 return RunResult(sid, run_id, CAPPED, f"Not run: daily cap reached ({reason}).")
+        if not attended:   # Kubera (27.4): the office's own daily budget
+            from jarvis.control import loka_budget
+            from jarvis.workspaces.store import WorkspaceStore
+
+            try:
+                cfg = WorkspaceStore(rt.paths.home).get(s.workspace)
+            except Exception:  # noqa: BLE001 - no workspace file: no office cap
+                cfg = None
+            reason = loka_budget.allow_unattended(rt.store.conn, s.workspace, cfg, now)
+            if reason:
+                run_id = store.record(sid, trigger_kind, CAPPED, reason, now)
+                rt.audit.write("schedule_run", schedule_id=sid, trigger=trigger_kind, status=CAPPED, detail=reason)
+                store.set_next(sid, s.next_after(now))
+                loka_budget.notify_capped(rt.store.conn, s.workspace, reason, self.notifier, now, rt.audit)
+                return RunResult(sid, run_id, CAPPED, f"Not run: {reason}.")
         if not store.acquire(sid, now, self.stale_lock):
             run_id = store.record(sid, trigger_kind, "skipped_overlap", "previous run still going", now)
             rt.audit.write("schedule_run", schedule_id=sid, trigger=trigger_kind, status="skipped_overlap")

@@ -277,8 +277,8 @@ def build_registry(reg: ToolRegistry, d: ToolDeps) -> ToolRegistry:
     add(Tool(ToolSpec("media", "Media and volume keys. times = how many volume steps (1-10).",
                       _obj({"action": {"type": "string", "enum": list(MEDIA_ACTIONS)}, "times": {"type": "integer"}},
                            ["action"])), "T1", sysd.media))
-    add(Tool(ToolSpec("open_url", "Open a link in the user's browser.", _obj({"url": S}, ["url"])), "T2", sysd.open_url,
-             url_args=("url",)))
+    add(Tool(ToolSpec("open_url", "Open a link in the user's browser.", _obj({"url": S}, ["url"])), "T3", sysd.open_url,
+             url_args=("url",)))   # T3: an opened page cannot be withdrawn (astra, 27.4a); asks every time
     add(Tool(ToolSpec("set_brightness", "Set screen brightness, 0 to 100.",
                       _obj({"level": {"type": "integer"}}, ["level"])), "T2", sysd.brightness))
 
@@ -298,6 +298,12 @@ def build_registry(reg: ToolRegistry, d: ToolDeps) -> ToolRegistry:
     from jarvis.tools.extract_tool import make_web_extract_tool
 
     add(make_web_extract_tool(d))
+
+    # ---- astra discipline (PLAN.md 27.4a): each tool says how its act is checked or undone ----
+    from jarvis.control.astra import declare_samhara, enforce_samhara
+
+    declare_samhara(reg)
+    enforce_samhara(reg, d.audit)
     return reg
 
 

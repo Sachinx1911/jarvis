@@ -278,7 +278,7 @@ def test_approvals_command_lists_and_dismisses():
     s = core.p.save(core.p.draft("every day at 21:00 open the dashboard", use_model=False))
     core.p.runner().run(s.id, "cron")
     listing = _cmd(bot, "/approvals")[0][0]
-    assert "#1 from s-001" in listing and "open_url [T2]" in listing and "https://example.com" in listing
+    assert "#1 from s-001" in listing and "open_url [T3]" in listing and "https://example.com" in listing
     assert "Dismissed #1" in _cmd(bot, "/dismiss 1")[0][0]
     assert "Nothing waiting" in _cmd(bot, "/approvals")[0][0]
 

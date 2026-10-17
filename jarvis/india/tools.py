@@ -3,7 +3,7 @@
   mf_nav          T0  NAVs of Sachin's schemes or a search (AMFI's official file; numbers and fund names)
   bills_list      T0  bills/subscriptions; P2 (from mail bodies): withheld on routes below P2
   bill_add        T1  parse a bill SMS/email text Sachin pasted, locally, and track it
-  bill_upi_link   T2  UPI hand-off link for one bill, confirmed payee only; never pays (see upi.py)
+  bill_upi_link   T3  UPI hand-off link for one bill, confirmed payee only; never pays (see upi.py)
   wallet_list     T0  document wallet; P2: withheld on routes below P2
   wallet_add      T1  add a document record (numbers masked to the last 4)
 
@@ -187,7 +187,7 @@ class IndiaTools:
                  "T1", self.bill_add, taints=False),
             Tool(ToolSpec("bill_upi_link", "Only when the user explicitly asks for a payment link for a tracked bill: "
                           "make a UPI link for his own UPI app, to the payee he confirmed himself. Jarvis never pays.",
-                          _obj({"bill_id": I}, ["bill_id"])), "T2", self.bill_upi_link, taints=False),
+                          _obj({"bill_id": I}, ["bill_id"])), "T3", self.bill_upi_link, taints=False),   # money: no undo, asks every time
             Tool(ToolSpec("wallet_list", "List the user's document wallet (passport, PAN, licence, insurance, PUC, "
                           "warranties) with expiry dates. Private: may be withheld.", _obj({}, [])),
                  "T0", self.wallet_list, taints=False),

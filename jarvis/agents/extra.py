@@ -85,6 +85,8 @@ def run_extra_agent(spec: AgentSpec, name: str, order: WorkOrder, env: AgentEnv,
         # Only the Operator may reach Jarvis's approver; the Coder (and any worker) has none.
         gate_approver = _via_jarvis(approver, name) if approver and spec.role == "operator" else None
         registry = ToolRegistry(store, env.audit, ApprovalGate(store, env.audit, gate_approver))
+        from jarvis.control.fence import fence_for
+        registry.set_fence(fence_for(env.home, env.workspace), env.workspace)
         deps = ToolDeps(
             home=env.home, store=store, audit=env.audit, memory=MemoryStore(env.home, store), skills=None,
             session_id=lambda: name, max_privacy="P1", tools_config=tools_config,

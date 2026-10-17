@@ -98,6 +98,9 @@ class ChatSession:
         """The office this chat works in (PLAN.md 18.2 step 0, law 4): one value, applied to retrieval,
         the memory tools, usage records, stored messages and the memories extracted at the end."""
         self.context.workspace = slug
+        from jarvis.control.fence import fence_for
+        self.tools.fence = None                      # a new office: its own fence, not the last one narrowed
+        self.tools.set_fence(fence_for(self.home, slug), slug)
         self.context.share_personal = share_personal
         self.loop.workspace = slug
         self._deps.workspace = slug

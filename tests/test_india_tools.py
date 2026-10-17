@@ -61,7 +61,7 @@ def test_tiers_are_as_designed(env):
     *_, tools = env
     assert {n: t.tier for n, t in tools().items()} == {
         "mf_nav": "T0", "bills_list": "T0", "bill_add": "T1",
-        "bill_upi_link": "T2", "wallet_list": "T0", "wallet_add": "T1"}
+        "bill_upi_link": "T3", "wallet_list": "T0", "wallet_add": "T1"}
 
 
 def test_bill_details_are_withheld_below_p2(env):
@@ -153,7 +153,8 @@ def test_registry_includes_india_tools_with_their_tiers(tmp_path):
                                  session_id=lambda: "s", max_privacy="P1", tools_config={}, web=WebClient(),
                                  quarantine=None, tavily_key=lambda: None, system=SystemTools()))
     tiers = {t.spec.name: t.tier for t in reg.all()}
-    assert tiers["mf_nav"] == "T0" and tiers["bill_upi_link"] == "T2" and tiers["wallet_add"] == "T1"
+    # bill_upi_link is declared T2 but has no undo or verify path: the astra rule (27.4a) raises it to T3
+    assert tiers["mf_nav"] == "T0" and tiers["bill_upi_link"] == "T3" and tiers["wallet_add"] == "T1"
     store.close()
 
 

@@ -45,3 +45,15 @@ class Fence:
 
 def fence_from_workspace(w: Workspace) -> Fence:
     return Fence(frozenset(w.tools_allow), frozenset(w.tools_deny), frozenset(w.always_ask), w.slug)
+
+
+def fence_for(home, workspace: str) -> Fence:
+    """The fence of the office `workspace` under `home`. A missing or broken workspace file must
+    not stop the work, but it must not widen anything either: then the fence is empty (every
+    registered tool, no always-ask), the same as the personal office."""
+    from jarvis.workspaces.store import WorkspaceStore
+
+    try:
+        return fence_from_workspace(WorkspaceStore(home).get(workspace))
+    except Exception:  # noqa: BLE001 - see the docstring
+        return Fence(workspace=workspace)
