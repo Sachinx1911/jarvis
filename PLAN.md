@@ -1863,3 +1863,42 @@ and sessions, with usage replayed from the audit log, and `jarvis rebuild` / `ja
 pralaya test (step 1 for schedules and triggers, step 2 for tasks and sessions); the nightly index-versus-
 files cross-check with per-file checksums and one canonical form; viparyaya "known wrong" records; samskara
 strength in retrieval; the rule that a plan is not a fact.
+
+### 27.13 Self-learning: what Jarvis actually learns, and how (2026-10-17)
+
+Plain statement first: the model's weights do not change. Claude is the same after a year of use. So
+"self-learning" in Jarvis is learning at the system level, and it is real: what Jarvis remembers, what it
+can do, what it knows is wrong, how it ranks what it knows, and how well it works are all different after
+a year. Six things are learned, each with its own loop, each measurable; the loop is the same for all.
+
+**The one loop (every kind of learning passes through it):**
+experience → trace (audit, Chitragupta) → candidate (extractor, or a receipt, or a demonstration) →
+judgement (is there a pramana? is it new? is it a duplicate or a correction?) → store in chitta with a
+strength (samskara) → use (retrieval, replay) → feedback (Sachin's yes/no, the verifier's result, use or
+non-use) → reinforce, correct (viparyaya) or let fade (gunas) → review (nightly, weekly) → archive.
+
+| What is learned | Vritti | Candidate comes from | Judged by | Stored as | Feedback that changes it | Today |
+|---|---|---|---|---|---|---|
+| Facts and preferences about Sachin and his world (smriti, vasana) | pramana, smriti | chat extraction (session end and quiet sessions), `/remember`, the interview | the two-step extractor: evidence must be a quote; duplicates and conflicts decided; sensitivity classified | memory file + index, with source, confidence, strength | used in an answer (strength up); Sachin edits or says "wrong" (viparyaya record, supersede); unused for a season (tamas → archive proposal) | exists; strength and viparyaya new |
+| Procedures: how to do a task (vidhi) | pramana | teach-by-demonstration (recording → SKILL.md draft), and **a completed task whose receipt passed verification** | Sachin approves the skill; the receipt's verification is the judge for task-born procedures | skill folder (SKILL.md, steps, tools used) | replay success or failure counted on the skill; three failures → the skill asks to be re-taught | demonstration exists; skills born from receipts new (step 1) |
+| Corrections: what is wrong (viparyaya) | viparyaya | Sachin's correction, a failed verification, a checker finding | the correction itself is the pramana (shabda from Sachin, or pratyaksha from the verifier) | a "known wrong" record linked to the superseded memory, with the reason | retrieval shows the wrong one as a warning when the same evidence appears | new |
+| Judgement about tools and models: what works for what | pramana (pratyaksha) | every task's receipt: profile used, calls, cost, verification result | measured, not opined: the migration eval and the worker comparison (section 16) | `data/evals/*.json` and the routing recommendation | a route changes only by Sachin's hand in `config/routing.yaml`; Jarvis proposes with numbers | measurements exist; the proposal step new |
+| The quality of its own memory and prompts | pramana | nightly review (junk, conflicts, stale), weekly hand-check, evals | thresholds set by Sachin | review report; avatara trigger | a fall below baseline runs the repair job and tells Sachin; prompt changes are proposed, never self-applied (shruti) | review exists; avatara new |
+| Trust: what may run without asking | pramana | repeated identical T2 actions that verified | Sachin grants a standing approval (never T3/T4; a failed verification withdraws it: astra rule) | grant record | counted uses, expiry, withdrawal | exists; automatic withdrawal new |
+
+Rules that make this safe (and what it is not):
+
+- Jarvis never rewrites its own identity, laws, prompts or routing (shruti). It proposes, with the
+  measurements; Sachin applies.
+- A memory with no pramana is not stored; a plan is not a fact (vikalpa); a correction is kept as a
+  correction (viparyaya), so the same error cannot be relearned from the same evidence.
+- Learning from outside content (web, documents) is learning *about* it, not *from* it as instruction:
+  such memories carry source `imported` or `observed`, ranked below Sachin's word, and pass Patala first.
+- Fine-tuning a local model on Jarvis's own data is Stage C/D (section 16): possible later, decided by
+  measurement, not assumed.
+
+How we know it is learning (section 22 already has the memory eval; these are added): the act probe
+(does it behave by a memory without the prompt naming it) weekly; the repeat-task curve (the same kind of
+task, fewer steps and fewer approvals the third time than the first); the correction test (a corrected
+error does not recur in the next ten sessions); the junk rate (hand-check of twenty memories) trending
+down, not up.
