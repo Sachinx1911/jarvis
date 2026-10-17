@@ -5,6 +5,30 @@ Ending a session: update this file and commit.
 
 ## Current status
 
+- **Step 2 built, UI on hold (2026-10-17, office laptop, Windows):** on `main`, after step 1:
+  - **Narada between lokas (27.5 item 6):** `jarvis/workspaces/narada.py` — `jarvis workspace ask <from> <to>
+    "<goal>"`, `/ask <slug> <goal>` in chat, `POST /api/workspaces/{slug}/requests`; personal may ask any
+    office, a company only its `allies`; the asked office gets a task (`owner narada:<from>`); when it
+    finishes, only the deliverable crosses back into `data/workspaces/<from>/inbox/` (audited
+    `loka_request_delivered`); requests archive, `delete_forever` only when archived.
+  - **File truth and the pralaya test (law 2, 27.8 item 10):** tasks, schedules and triggers are files
+    (`data/tasks/<id>/task.json` + `events.jsonl`, `data/schedules/<id>.json`, `data/triggers/<id>.json`),
+    SQLite is the index. `jarvis verify` and `jarvis rebuild [--dry-run] [--prune]`; the nightly review adds a
+    "truth check" line. The pralaya test deletes the database and rebuilds the same world (tests and a CLI
+    smoke run). **On an existing machine run `jarvis rebuild --prune` once** so old rows get their files.
+  - **Task archive:** `jarvis task archive|unarchive <id>` (final tasks only), `jarvis tasks --archived`,
+    `POST /api/tasks/{id}/archive|unarchive`.
+  - **Office page API:** `GET /api/office` and `/api/office/{slug}/teams/{team}` (live counts per office and
+    team, brain, waiting items). The Office tab TSX exists but is **unbuilt and will be redone** to Sachin's
+    chosen design (see "Waiting for Sachin").
+  - Tests: `test_narada.py`, `test_web_api_narada.py`, `test_truth.py`, `test_web_api_office.py`,
+    `test_loka_wiring.py` (end-to-end request through the orchestrator). Whole suite: 1664 passed, 25 skipped (Windows, 2026-10-17).
+  - Gaps: requests (`loka_requests`), standing grants, sessions and model usage have no file truth yet (lost in
+    a pralaya; next); routing choices are not stored (`needs_choice` always 0 on the Office page); scheduled
+    approvals are not mapped to teams; no `decline` command for requests yet.
+  - Next: Sachin's design → the whole frontend to that design (nav, Command Center, Office, Chat, Tasks,
+    Memory) → Phase 9 (X-ray) → final Fable testing.
+
 - **Step 1 of the laws built (2026-10-17, office laptop, Windows):** Sachin took all eleven design
   decisions of PLAN.md 27.8 as recommended ("sarv final", 2026-10-17 on the Mac). Work follows 27.8 item 11:
   step 0 (lokas and teams as data, the owner tag) → step 1 (this) → step 2 (Office page, Narada between
@@ -312,5 +336,6 @@ See "Open decisions" in PLAN.md. Most important:
 | 2026-10-10 | Home MacBook M4 | Sachin updated Claude Code to 2.1.296. Live greeting through the subscription CLI: PASS on the Mac |
 | 2026-10-10 | Home MacBook M4 | Merged `wip/india-features` (wired tools, brief sections, CLI; brief shows bills/wallet as counts unless `india.brief.details`; offline tests now block all non-loopback network). Merged daily cap + runaway guard (`proactive unattended`), nightly review (`review` schedule kind, `memory/episodes/`), memory conflicts (`jarvis memory conflicts`, brief count). 970 passed. Agents running on `wip/verify-repeat`, `feature/backup`, `feature/dashboard-india` (India tab, triggers in dashboard), `feature/small-hooks` (why-panel for CLI/Telegram, sensitive-topic enforcement) |
 | 2026-10-10 | Home MacBook M4 | Pulled office work. `scripts/setup.sh` OK. Offline suite on macOS: 899/902, then 902 passed after fixes: Windows-style paths (`C:/...`, UNC) now refused on Mac/Linux in `PathPolicy` and grant rules (POSIX had treated them as names inside the workspace), shortcut path parsed as a Windows path. `jarvis health`: claude_code OK (Max); Claude Code CLI 2.1.260 too old for `--system-prompt-file` |
+| 2026-10-17 | Office laptop (Windows) | Step 2 backend built by three agents (Narada requests, file truth + pralaya + task archive, Office page API) and merged; Narada wired into the orchestrator. Sachin rejected the dashboard look: design prompts written (`reports/Dashboard design prompts.md`), UI on hold until he picks one. 1664 passed, 25 skipped (Windows, 2026-10-17) |
 | 2026-10-17 | Office laptop (Windows) | Step 0 merged. Step 1 built: lead (archive everywhere, owner tags, receipts into memory, wiring), agent A (adhipati, dharma routing, shruti, karma-yoga), agent B (Kubera budgets, fences, astra). Merged on `main`. 1628 passed, 25 skipped (Windows, 2026-10-17) |
 | 2026-10-10 | Office laptop (Windows) | Built Phase 3 (tasks, team, receipts, projects, teach-by-demo). Five parallel agents built Phases 4–8; all merged and wired in. 494 offline tests pass. First live laptop compare failed verification; quality fixes made; rerun started |
