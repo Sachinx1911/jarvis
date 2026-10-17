@@ -1,0 +1,16 @@
+{
+  "url": "https://demo-site.test/",
+  "title": "Demo Studio",
+  "observationMs": 8000,
+  "metrics": {"domNodes": 1240, "scripts": 3, "stylesheets": 2, "canvases": 1, "animationFrames": 480},
+  "scripts": [
+    {"url": "https://demo-site.test/assets/three.module.js",
+     "source": "/**\n * @license\n * Copyright 2010-2024 Three.js Authors\n * SPDX-License-Identifier: MIT\n */\nconst REVISION = '165';\nexport { REVISION };"},
+    {"url": "https://demo-site.test/assets/gsap.min.js",
+     "source": "/*!\n * GSAP 3.12.5\n * https://gsap.com\n * @license Copyright 2008-2024, GreenSock. All rights reserved.\n */\n!function(){}();"},
+    {"url": "https://demo-site.test/assets/app.js",
+     "source": "import Lenis from 'lenis';\nconst lenis = new Lenis(); // lenis 1.1.9 smooth scroll\n"}
+  ],
+  "events": ["scroll", "resize", "pointermove"],
+  "webgl": {"contexts": 1, "renderer": "WebGL 2.0"}
+}
