@@ -139,7 +139,7 @@ def test_only_the_registry_imports_the_local_adapter():
             names = [a.name for a in node.names] if isinstance(node, ast.Import) else (
                 [node.module or ""] if isinstance(node, ast.ImportFrom) else [])
             if any(n == "jarvis.providers.local" for n in names):
-                importers.append(str(path.relative_to(package)))
+                importers.append(path.relative_to(package).as_posix())
     assert sorted(set(importers)) == ["providers/__init__.py"]
 
 
@@ -301,7 +301,8 @@ def test_server_down_is_retryable_connection_error():
     provider = LocalProvider(MODELS, f"http://127.0.0.1:{_closed_port()}", timeout=2)
     with pytest.raises(ProviderError) as e:
         provider.generate(LLMRequest("r", "test-local-9b", [Message.text("user", "x")]))
-    assert e.value.kind == "connection" and e.value.retryable
+    # A closed port is refused on macOS/Linux but can time out on Windows; both must be retryable.
+    assert e.value.kind in ("connection", "timeout") and e.value.retryable
     assert not provider.health().ok
     count = provider.count_tokens(LLMRequest("r", "test-local-9b", [Message.text("user", "hello there")]))
     assert not count.exact and count.input_tokens >= 1

@@ -3,7 +3,11 @@
 import math
 import struct
 
-from jarvis.voice.audio_tools import normalize_peak, rms, to_16k
+import pytest
+
+pytest.importorskip("numpy", reason="numpy comes with the optional [voice] extra")
+
+from jarvis.voice.audio_tools import normalize_peak, rms, to_16k  # noqa: E402
 from jarvis.voice.base import Audio
 
 

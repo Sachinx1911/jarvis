@@ -1,3 +1,4 @@
+import importlib.util
 """Dashboard endpoints that make Jarvis usable without a terminal: projects and documents,
 teach-by-demonstration, schedules and reminders, setup (secrets never echoed), interview,
 evaluation, voice. Offline: fake provider, fake speech engines, fake Google flow."""
@@ -15,6 +16,9 @@ from jarvis.core.runtime import make_chat  # noqa: E402
 from jarvis.providers.fake import FakeProvider  # noqa: E402
 from jarvis.web.app import create_app  # noqa: E402
 from jarvis.web.settings import WebSettings  # noqa: E402
+needs_numpy = pytest.mark.skipif(importlib.util.find_spec("numpy") is None,
+                                 reason="numpy comes with the optional [voice] extra")
+
 
 TOKEN = "test-token-not-real"
 H = {"X-Jarvis-Token": TOKEN}
@@ -468,6 +472,7 @@ def test_eval_runs_in_background(client, monkeypatch):
 
 # ---- voice ----
 
+@needs_numpy
 def test_voice_not_installed_message(isolated, cfgdir):
     from jarvis.voice.base import VoiceUnavailable
 
@@ -486,6 +491,7 @@ def test_voice_not_installed_message(isolated, cfgdir):
         assert r.status_code == 503 and "speech-to-text not installed (run voice setup)" in r.json()["detail"]
 
 
+@needs_numpy
 def test_voice_transcribe_and_unclear(isolated, cfgdir):
     from jarvis.voice.base import Transcript
     from jarvis.voice.stt import FakeSTT
@@ -536,6 +542,7 @@ class FakeWake:
         return self.score, int(self.end * 16000) * 2
 
 
+@needs_numpy
 def test_hands_free_wake_cuts_the_wake_phrase_before_transcribing(isolated, cfgdir):
     from jarvis.voice.stt import FakeSTT
 
@@ -550,6 +557,7 @@ def test_hands_free_wake_cuts_the_wake_phrase_before_transcribing(isolated, cfgd
     assert abs(seen[0] - 2.2) < 0.01  # only the part after the wake phrase was transcribed
 
 
+@needs_numpy
 def test_hands_free_wake_alone_and_no_wake(isolated, cfgdir):
     from jarvis.voice.stt import FakeSTT
 
@@ -566,6 +574,7 @@ def test_hands_free_wake_alone_and_no_wake(isolated, cfgdir):
         assert "wake" not in r and wake.scanned == 0
 
 
+@needs_numpy
 def test_transcribe_accepts_the_microphone_rate_and_resamples(isolated, cfgdir):
     from jarvis.voice.stt import FakeSTT
 
