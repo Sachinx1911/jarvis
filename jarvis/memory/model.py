@@ -18,7 +18,7 @@ TYPE_DIRS = {
     "episode": "episodes",
 }
 STATUSES = ("active", "superseded", "archived")
-SOURCES = ("user-said", "inferred", "imported")
+SOURCES = ("user-said", "observed", "inferred", "imported")  # PLAN.md 27.10 pramanas: shabda, pratyaksha, anumana, imported word
 SENSITIVITIES = ("public", "normal", "sensitive", "secret")
 
 

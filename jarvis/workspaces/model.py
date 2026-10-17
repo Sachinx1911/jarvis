@@ -62,6 +62,8 @@ class Workspace:
     brief: str = ""
     language: str = "mr"
     projects: tuple[str, ...] = ()
+    duties: tuple[str, ...] = ()        # janapada: what this office is responsible for; routes work to it
+    allies: tuple[str, ...] = ()        # mitra: connectors and other workspaces it may ask
     tools_allow: tuple[str, ...] = ()   # empty = every registered tool the role may use
     tools_deny: tuple[str, ...] = ()
     always_ask: tuple[str, ...] = ()    # tools that need approval in this workspace, whatever their tier
@@ -115,6 +117,19 @@ def _names(data: dict, key: str, where: str) -> tuple[str, ...]:
     if not isinstance(v, list) or any(not isinstance(x, str) for x in v):
         raise WorkspaceError(f"{where}: {key} must be a list of names")
     return tuple(dict.fromkeys(x.strip() for x in v if x.strip()))
+
+
+def _lines(data: dict, key: str, where: str, max_items: int = 20, max_len: int = 200) -> tuple[str, ...]:
+    v = data.get(key) or []
+    if not isinstance(v, list) or any(not isinstance(x, str) for x in v):
+        raise WorkspaceError(f"{where}: {key} must be a list of short sentences")
+    out = tuple(x.strip() for x in v if x.strip())
+    if len(out) > max_items:
+        raise WorkspaceError(f"{where}: {key} has more than {max_items} entries")
+    for x in out:
+        if len(x) > max_len:
+            raise WorkspaceError(f"{where}: {key} entry longer than {max_len} characters: {x[:40]!r}")
+    return out
 
 
 def _choice(data: dict, key: str, allowed: tuple[str, ...], where: str, default: str) -> str:
@@ -180,9 +195,14 @@ def validate_workspace(data: Any, slug: str) -> Workspace:
     for pr in projects:
         if not re.match(r"^[a-z0-9-]{1,40}$", pr):
             raise WorkspaceError(f"{where}: project name {pr!r} is not a valid project slug")
+    allies = _names(data, "allies", where)
+    for a in allies:
+        if not re.match(r"^[a-z0-9][a-z0-9_-]{0,39}$", a):
+            raise WorkspaceError(f"{where}: ally {a!r} must be a connector name or a workspace slug")
     return Workspace(
         slug=slug, name=name, kind=kind, brief=_str(data, "brief", where),
         language=_choice(data, "language", LANGUAGES, where, "mr"), projects=projects,
+        duties=_lines(data, "duties", where), allies=allies,
         tools_allow=_names(tools, "allow", where), tools_deny=_names(tools, "deny", where),
         always_ask=_names(data, "always_ask", where), budget=budget, share_personal=share, archived=archived,
         version=version,
@@ -232,16 +252,17 @@ def validate_team(data: Any, slug: str, role_tools: dict[str, frozenset[str]] | 
 
 
 def workspace_to_dict(w: Workspace) -> dict[str, Any]:
+    """The file always shows the seven limbs (PLAN.md 27.10, saptanga), empty or not: lord and ministers
+    live in teams/, the rest are here: domain (projects, duties), fort (tools), treasury (budget),
+    allies; the rod (tiers) is the same for every workspace and is not a field."""
     out: dict[str, Any] = {"version": w.version, "name": w.name, "kind": w.kind, "brief": w.brief,
-                           "language": w.language, "projects": list(w.projects)}
-    if w.tools_allow or w.tools_deny:
-        out["tools"] = {"allow": list(w.tools_allow), "deny": list(w.tools_deny)}
-    if w.always_ask:
-        out["always_ask"] = list(w.always_ask)
+                           "language": w.language, "projects": list(w.projects), "duties": list(w.duties),
+                           "tools": {"allow": list(w.tools_allow), "deny": list(w.tools_deny)},
+                           "always_ask": list(w.always_ask)}
     budget = {k: v for k, v in (("max_runs", w.budget.max_runs), ("max_model_calls", w.budget.max_model_calls),
                                 ("max_notional_usd", w.budget.max_notional_usd)) if v is not None}
-    if budget:
-        out["budget"] = budget
+    out["budget"] = budget
+    out["allies"] = list(w.allies)
     if not w.share_personal:
         out["memory"] = {"share_personal": False}
     if w.archived:

@@ -1653,7 +1653,7 @@ task is retried or reported, never punished); rebirth of records (a superseded m
 history is kept, not recycled); any ranking of lokas by merit (budgets and duties are set by Sachin, not
 earned).
 
-Decisions for Sachin before this is final:
+Decisions for Sachin before this is final (**all taken as recommended, Sachin, 2026-10-17: "sarv final"**):
 
 1. The seven laws as written (27.1).
 2. Archive instead of delete everywhere; deletion only as Sachin's logged act.
