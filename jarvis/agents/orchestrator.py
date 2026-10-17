@@ -248,6 +248,10 @@ class TaskRunner:
             final = self.tasks.get(task_id)
             if final and final.state in ("COMPLETED", "FAILED", "CANCELLED", "PAUSED"):
                 write_receipt(self, task_id)
+                # Narada (27.5 item 6): if another office asked for this work, only the result crosses back
+                from jarvis.workspaces.narada import deliver_for_task
+
+                deliver_for_task(self.store.conn, self.home, final, None, self.audit, notifier=None)
         return self.tasks.get(task_id)  # type: ignore[return-value]
 
     # ---- planning ----

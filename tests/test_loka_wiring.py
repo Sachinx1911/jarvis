@@ -44,3 +44,21 @@ def test_office_daily_budget_stops_a_task(env):
     # the personal office is not capped by acme's budget
     t2 = ts.create("Compare 3 laptops under Rs 80,000")
     assert _runner(env, PLAN_TEAM)[0].run(t2.id).state == "COMPLETED"
+
+
+def test_narada_request_result_crosses_back_after_the_task_runs(env):
+    """27.5 item 6: personal asks acme; acme's court runs it; only the deliverable crosses back."""
+    from jarvis.workspaces.narada import RequestStore
+
+    home, store = env
+    _office(home)
+    runner, ts, _ = _runner(env, PLAN_TEAM)
+    req = RequestStore(store.conn, home, runner.audit).ask("personal", "acme", "Compare 3 laptops under Rs 80,000", ts)
+    task = ts.get(req.task_id)
+    assert task.workspace == "acme" and req.state == "requested"
+    assert runner.run(task.id).state == "COMPLETED"
+    done = RequestStore(store.conn, home).get(req.id)
+    assert done.state == "done" and done.result
+    inbox = home / "data" / "workspaces" / "personal" / "inbox"
+    assert inbox.exists() and any(p.name.startswith(task.id) for p in inbox.iterdir()), list(inbox.iterdir())
+    assert "loka_request_delivered" in (home / "data" / "audit.jsonl").read_text(encoding="utf-8")
