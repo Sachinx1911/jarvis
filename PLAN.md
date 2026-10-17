@@ -1342,6 +1342,7 @@ These rules are already in the repo's `CLAUDE.md`.
 - Anthropic API data-retention and training terms, for the privacy policy.
 - Whether an offline Marathi voice exists that runs on macOS.
 - Only if the Agent SDK is ever used: which errors trigger its `fallback_model`.
+- Section 27.10: the Mimamsa maxim names (samanya-vishesha nyaya, apaccheda nyaya) and Manusmriti 3.70 for the five daily duties (search quota ran out on 2026-10-17).
 
 ---
 
@@ -1696,18 +1697,18 @@ Grihya-sutras on the sanskaras, Bhagavata and Vishnu Purana for the cosmology.
 | Lokas, Indra's court | take | workspaces with lord, team, duties, tools, memory, rituals, inbox (27.3, 27.4) | step 0 and 1 |
 | Astras, shastras (hold, release, withdraw) | take | the T2/T3 discipline and the three new gate rules (27.4a) | step 1 |
 | **Saptanga** (Kautilya: the seven limbs of a state: swami, amatya, janapada, durga, kosha, danda, mitra) | take | the seven parts every loka file must have: lord (`lead`), ministers (`members`), domain (`duties` and `projects`), fort (`tools` allow/deny, `always_ask`), treasury (`budget`), the rod (tiers, approvals; the same for all), allies (`connectors` and other lokas it may ask) | the schema of `workspace.yaml` and the team file is complete by this list; the validator checks all seven are present or explicitly empty |
-| **Nyaya pramanas** (four means of valid knowledge: pratyaksha perception, anumana inference, upamana comparison, shabda testimony; memory and doubt are not knowledge) | take | the `source` and `confidence` of every memory and claim: shabda from the yajamana (Sachin said it) = high; pratyaksha (a tool result Jarvis saw) = high; anumana (inferred by the model) = medium; upamana (like something known) = low; a memory is not itself a pramana, it must point to one (law 3 evidence) | one scale for confidence across memories, research findings and receipts; a claim without a pramana is not stored |
+| **Nyaya pramanas** (four means of valid knowledge: pratyaksha perception, anumana inference, upamana comparison, shabda testimony; memory and doubt are not knowledge) | take | the `source` and `confidence` of every memory and claim: shabda from the yajamana (Sachin said it) = high; pratyaksha (a tool result Jarvis saw) = high; anumana (inferred by the model) = medium; upamana (like something known) = low; a memory is not itself a pramana, it must point to one (law 3 evidence) | one scale for confidence across memories, research findings and receipts; a claim without a pramana is not stored. Today `Memory.source` is user-said / inferred / imported: pramana adds `observed` (a tool result) and ranks imported (a document's word) below Sachin's own |
 | **Shruti and smriti** (what was heard: fixed, revealed; what is remembered: derived, may change) | take | shruti = `SOUL.md`, the laws, `config/` rules; smriti = `memory/`, core memory. Shruti is never edited by a model; smriti is | a hard rule: no route may write to shruti; the laws test checks the write paths |
 | Itihasa, purana, vidhi (what happened; stories; how a rite is done) | name only | memory types: episode = itihasa, procedure = vidhi, fact/preference = smriti, constraint = shruti | vocabulary for the Memory page |
-| **Mimamsa** (rules for reading injunctions when they conflict: the specific overrides the general, the later overrides the earlier, the explicit overrides the implied) | take | the precedence rule for every setting and instruction: `config/local.yaml` over `config/*.yaml` over defaults; Sachin's words in this session over his standing rules over memory; a tool's own tier over the role's; but never upward in power (a lower rule can narrow, not widen) | written once in `jarvis/config.py` and the gate; today it is implicit in several places |
+| **Mimamsa** (rules for reading injunctions when they conflict; its role in Hindu legal interpretation is confirmed, the exact maxim names, samanya-vishesha and apaccheda nyaya, are listed in section 25 to verify) | take | the precedence rule for every setting and instruction: `config/local.yaml` over `config/*.yaml` over defaults; Sachin's words in this session over his standing rules over memory; a tool's own tier over the role's; but never upward in power (a lower rule can narrow, not widen) | written once in `jarvis/config.py` and the gate; today it is implicit in several places |
 | Karma, phala (deed and fruit) | adapt | audit (Chitragupta), receipts, memory candidates (law 3) | receipts into memory (step 1) |
 | **Karma-yoga** (do the duty, do not judge your own fruit) | take | a worker never grades its own result: the checker and the verifier are other agents or deterministic code; the writer cannot mark its own work done | already so for teams; made a rule for every agent, including the solo path and the coder |
 | Samsara, moksha | adapt | the life of a record (candidate → saved → used → superseded → archived); moksha = release from the cloud: Stage D fully local (section 16) | nothing new |
 | Yugas, pralaya, avatara (decline of dharma; the descent that restores it) | take | quality drifts: memory junk grows, prompts age, evals slip. An avatara is a corrective job that descends when a measured threshold is crossed: eval score below baseline, junk rate above the weekly limit, a route's error rate up | the nightly review and the migration eval exist; the trigger "when the measure falls, run the repair and tell Sachin" is new (step 1) |
 | **Gunas** (sattva clear, rajas restless, tamas inert) | take | the health of a memory or a loka: sattva = used and confirmed, rajas = recently changed or conflicting, tamas = stale and unused. The nightly review labels; tamas candidates are proposed for archive, rajas ones for Sachin's look | replaces today's ad-hoc "stale" rules with three named states |
 | **Ashramas** (student, householder, forest, renunciant) | adapt | a skill or a loka: learning (draft), active, retiring (unused for a season), archived; the stage changes by use, not by hand | the gunas decide the move; same mechanism |
-| **Sanskaras** (rites of passage: birth, naming, initiation, marriage, last rites) | take | the lifecycle events every kind emits: created, named (id), initiated (granted its first tool), joined (added to a loka or team), ended (archived). One audit event name per rite, the same for every kind | the kinds registry declares them; stats and the Office page read them |
-| **Pancha-mahayajna** (five daily duties: to the gods, the ancestors, all beings, people, and study) | take | the daily upkeep set, one job each: rituals run (deva), backup and history kept (pitru), system upkeep: disk, indexes, stale sessions (bhuta), serving Sachin: the morning brief (manushya), self-study: the eval and nightly review (brahma). `jarvis daemon` runs all five; the heartbeat reports which ran | backups, brief, review exist; "bhuta" upkeep and the one-page daily report are new |
+| **Sanskaras** (rites of passage; the Grihya lists vary, sixteen is common: jatakarma, namakarana, upanayana, vivaha; antyeshti is counted separately in some lists) | take | the lifecycle events every kind emits: created, named (id), initiated (granted its first tool), joined (added to a loka or team), ended (archived). One audit event name per rite, the same for every kind | the kinds registry declares them; stats and the Office page read them |
+| **Pancha-mahayajna** (Manusmriti 3.70: the five daily duties, to the gods, the ancestors, all beings, guests, and study; verse quoted from memory, page not reachable on 2026-10-17) | take | the daily upkeep set, one job each: rituals run (deva), backup and history kept (pitru), system upkeep: disk, indexes, stale sessions (bhuta), serving Sachin: the morning brief (manushya), self-study: the eval and nightly review (brahma). `jarvis daemon` runs all five; the heartbeat reports which ran | backups, brief, review exist; "bhuta" upkeep and the one-page daily report are new |
 | **Arthashastra 1.19** (the king divides the day into eight parts, each with a duty; spies report at fixed hours) | adapt | the heartbeat and the schedule of unattended work: fixed hours for triggers' reports (chara), for accounts (usage and budget), for the brief; quiet hours at night | a default daily timetable in `config/proactive.yaml` |
 | Yama and niyama (Patanjali's restraints and observances) | take | ahimsa: no harm = the tiers and never T4; satya: law 7; asteya: no taking = copyright and privacy rules (one short quote, cite the source); **aparigraha: no hoarding = data minimisation: Jarvis stores only what has a use and a pramana, and the review drops the rest**; shaucha: cleanliness = dedupe and index upkeep; tapas: the test suite on every change; svadhyaya: self-study = evals; ishvara-pranidhana: defer to Sachin when unsure | aparigraha is new as a stated rule; the rest exist |
 | Guru-shishya parampara | adapt | teach-by-demonstration, `/remember`, the interview; the pupil repeats before it is trusted (skill approval) | nothing new |
@@ -1731,4 +1732,30 @@ corrective job; gunas as the three health states driving review and archive; san
 events of the kinds registry; the five daily duties as the daemon's upkeep set with a one-page report;
 Kautilya's timetable as the default day; aparigraha as data minimisation. Everything else is vocabulary.
 
-Decision for Sachin (added to 27.8 as item 10): the eleven additions above, as listed, or a shorter list.
+Decision for Sachin (added to 27.8 as item 9): the eleven additions above, as listed, or a shorter list.
+
+### 27.11 Verification record (2026-10-17)
+
+Checked against sources: the fourteen lokas and their order (Wikipedia "Loka", "Urdhva lokas", vedapath);
+Chitragupta as keeper of the register of deeds (Wikipedia "Chitragupta"); Varuna as upholder of rta, oaths
+and the noose (Wikipedia "Varuna", Rigveda section); Narada as the messenger between the worlds (Wikipedia
+"Narada"); Brihaspati as guru of the devas; Kubera as treasurer and lord of the north; astras: mantra
+invocation, the three competencies hold / release / withdraw, Ashwatthama's failure to withdraw, the
+Pashupatastra never against mortals (exoticindiaart, brewminate, Wikipedia "Pashupatastra"); the saptanga
+(testbook, learnthrupractice); Arthashastra 1.19, the eight parts of the day (wisdomlib, Shamasastry);
+Nyaya's four pramanas and memory not being one (Hindupedia, Wikipedia "Nyaya"); the five yamas and five
+niyamas (Wikipedia "Yamas", "Niyama"); shruti and smriti (Wikipedia "Śruti"); the sixteen sanskaras
+(Wikipedia "Saṃskāra").
+
+From memory, to confirm when the search quota returns: Manusmriti 3.70 for the five daily duties; the
+names of the Mimamsa maxims (the rules themselves are what Jarvis uses, the names are vocabulary).
+
+Checked against the code (every component the tables call "exists"): `jarvis/tasks/verify.py`
+(verify-after-act), `jarvis/proactive/review.py` (nightly review), `jarvis/backup.py`,
+`jarvis/control/stop.py` (emergency stop), `jarvis/proactive/heartbeat.py`, `jarvis/proactive/brief.py`,
+`jarvis/privacy.py`, `jarvis/tools/quarantine.py`, `jarvis/control/grants.py` (standing grants: never for
+T3/T4, revoke by hand), `tests/test_injection_attacks.py`, `tests/test_migration_eval.py`,
+`prompts/SOUL.example.md` (read only, never written by a route), the registry's `t4_attempt` audit event
+(a T4 call is refused and logged), `Memory.source` values. Confirmed new, not present today: one
+irreversible action in flight at a time; automatic withdrawal of a grant after a failed verification;
+the `observed` source; per-loka budgets; inter-loka requests; routing by duties; archive on the older kinds.
