@@ -9,7 +9,7 @@ from pathlib import Path
 
 from jarvis.providers.base import LLMResponse, Message, TextPart, ToolCall, ToolResult
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _SCHEMA_V1 = """
 CREATE TABLE IF NOT EXISTS tasks (
